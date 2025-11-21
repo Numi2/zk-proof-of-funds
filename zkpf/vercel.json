@@ -10,6 +10,7 @@
     { "source": "/zkpf/policies", "destination": "/api/zkpf/policies" },
     { "source": "/zkpf/verify", "destination": "/api/zkpf/verify" },
     { "source": "/zkpf/verify-bundle", "destination": "/api/zkpf/verify-bundle" },
+    { "source": "/zkpf/attest", "destination": "/api/zkpf/attest" },
     {
       "source": "/(.*)",
       "destination": "/index.html"

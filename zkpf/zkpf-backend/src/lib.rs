@@ -14,7 +14,7 @@ use axum::{
     Json, Router,
 };
 use once_cell::sync::Lazy;
-use sha3::{Digest, Keccak256};
+use blake3;
 use sled::Db;
 use tokio::net::TcpListener;
 use zkpf_circuit::ZkpfCircuitInput;
@@ -780,8 +780,12 @@ async fn attest_handler(
     }
 
     // At this point the bundle has been fully verified and the nullifier recorded.
-    let holder_hash = keccak256(req.holder_id.as_bytes());
-    let snapshot_hash = keccak256(req.snapshot_id.as_bytes());
+    //
+    // Identifiers are hashed to 32-byte values off-chain before being sent on-chain.
+    // We intentionally use BLAKE3 here; the EVM contracts only see opaque `bytes32`
+    // values and do not rely on Keccak for these particular identifiers.
+    let holder_hash = blake3_32(req.holder_id.as_bytes());
+    let snapshot_hash = blake3_32(req.snapshot_id.as_bytes());
 
     let mut holder_id_bytes = [0u8; 32];
     holder_id_bytes.copy_from_slice(&holder_hash);
@@ -1018,13 +1022,9 @@ fn parse_env_u64(var: &str) -> Option<u64> {
         .and_then(|value| value.parse::<u64>().ok())
 }
 
-fn keccak256(input: &[u8]) -> [u8; 32] {
-    let mut hasher = Keccak256::new();
-    hasher.update(input);
-    let digest = hasher.finalize();
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
+fn blake3_32(input: &[u8]) -> [u8; 32] {
+    let hash = blake3::hash(input);
+    *hash.as_bytes()
 }
 
 async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {

@@ -490,9 +490,6 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
             />
             <span className="file-input-button">Choose file</span>
           </label>
-          <p className="muted small">
-            💡 Tip: Run <code>cargo test -p zkpf-test-fixtures</code> to generate a test bundle
-          </p>
           {rawInput && (
             <div className="actions">
               <button type="button" className="ghost" onClick={handleClear}>

@@ -20,8 +20,8 @@ async function ensureWasmLoaded() {
     wasmReady = wasmInit()
       .then(() => undefined)
       .catch((err) => {
-      wasmReady = null;
-      throw err;
+        wasmReady = null;
+        throw err;
       });
   }
   return wasmReady;
@@ -33,7 +33,27 @@ export async function prepareProverArtifacts(artifacts: ProverArtifacts) {
     return;
   }
   resetCachedArtifacts();
-  initProverArtifacts(artifacts.params, artifacts.pk);
+  try {
+    initProverArtifacts(artifacts.params, artifacts.pk);
+  } catch (err) {
+    // Surface a more helpful error than the raw WebAssembly "unreachable" trap that
+    // browsers report when deserialization inside `initProverArtifacts` fails.
+    cachedArtifactsKey = null;
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'unknown WASM initialization error';
+    throw new Error(
+      [
+        'Failed to initialize zkpf WASM prover artifacts.',
+        'This usually means the params/proving key bytes returned by /zkpf/params',
+        'do not match the zkpf_wasm build or are corrupted.',
+        `Underlying error: ${message}`,
+      ].join(' '),
+    );
+  }
   cachedArtifactsKey = artifacts.key;
 }
 
