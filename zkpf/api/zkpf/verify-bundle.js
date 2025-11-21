@@ -1,7 +1,10 @@
 const { MOCK_POLICIES, makeVerifySuccess, makeVerifyFailure } = require('./mock-data');
-const { sendJson, readJsonBody } = require('./helpers');
+const { sendJson, readJsonBody, handleCors } = require('./helpers');
 
 module.exports = async function handler(req, res) {
+  if (handleCors(req, res)) {
+    return;
+  }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendJson(res, 405, { error: 'Method Not Allowed' });

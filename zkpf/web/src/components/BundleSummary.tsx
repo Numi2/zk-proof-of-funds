@@ -44,7 +44,7 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
 }
 
 export function BundleSummary({ bundle, assetRail }: Props) {
-  const { public_inputs: inputs } = bundle;
+  const { public_inputs: inputs, rail_id } = bundle;
   const proofBase64 = bytesToBase64(bundle.proof);
   const normalizedJson = JSON.stringify(bundle, null, 2);
   const rail = railMeta[assetRail];
@@ -111,6 +111,27 @@ export function BundleSummary({ bundle, assetRail }: Props) {
             <dt>Custodian pubkey hash</dt>
             <dd className="mono">
               {truncateMiddle(bytesToHex(inputs.custodian_pubkey_hash, 16), 80)}
+            </dd>
+          </div>
+        </dl>
+      </section>
+      <section>
+        <h3>Rail metadata</h3>
+        <dl>
+          <div>
+            <dt>Rail ID</dt>
+            <dd>{rail_id && rail_id.trim().length > 0 ? rail_id : 'CUSTODIAL_ATTESTATION (legacy)'}</dd>
+          </div>
+          <div>
+            <dt>Snapshot height</dt>
+            <dd>{inputs.snapshot_block_height ?? 'n/a'}</dd>
+          </div>
+          <div>
+            <dt>Snapshot anchor (Orchard)</dt>
+            <dd className="mono">
+              {inputs.snapshot_anchor_orchard
+                ? truncateMiddle(bytesToHex(inputs.snapshot_anchor_orchard, 16), 80)
+                : 'n/a'}
             </dd>
           </div>
         </dl>

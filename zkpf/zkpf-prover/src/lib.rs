@@ -54,11 +54,7 @@ pub fn prove_bundle(
     input: ZkpfCircuitInput,
 ) -> ProofBundle {
     let (proof, public_inputs) = prove_with_public_inputs(params, pk, input);
-    ProofBundle {
-        circuit_version: CIRCUIT_VERSION,
-        proof,
-        public_inputs,
-    }
+    ProofBundle::new(proof, public_inputs)
 }
 
 fn create_proof_bytes(

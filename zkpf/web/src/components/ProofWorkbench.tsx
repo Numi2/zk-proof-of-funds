@@ -104,8 +104,16 @@ export function ProofWorkbench({ client, connectionState }: Props) {
     }
     if (!selectedPolicyId || !policies.some((policy) => policy.policy_id === selectedPolicyId)) {
       setSelectedPolicyId(policies[0].policy_id);
+      return;
     }
   }, [policies, selectedPolicyId]);
+
+  // Whenever the selected policy changes, clear any previous verifier result so we
+  // don't show a stale "Proof accepted" banner for an earlier policy choice.
+  useEffect(() => {
+    setVerifyResponse(null);
+    setVerifyError(null);
+  }, [selectedPolicyId]);
 
   const selectedPolicy = selectedPolicyId
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
@@ -278,7 +286,9 @@ export function ProofWorkbench({ client, connectionState }: Props) {
       description: parseError
         ? parseError
         : bundle
-          ? `Circuit v${bundle.circuit_version} • Policy ${bundle.public_inputs.policy_id}`
+          ? `Circuit v${bundle.circuit_version} • Policy ${bundle.public_inputs.policy_id}${
+              bundle.rail_id ? ` • Rail ${bundle.rail_id}` : ''
+            }`
           : rawInput
             ? 'Validating bundle…'
             : 'Paste JSON, upload a file, or load the sample bundle.',
@@ -546,7 +556,12 @@ export function ProofWorkbench({ client, connectionState }: Props) {
             </button>
           </div>
           {verifyResponse && (
-            <VerificationBanner response={verifyResponse} endpoint={mode} assetRail={assetRail} />
+            <VerificationBanner
+              response={verifyResponse}
+              endpoint={mode}
+              assetRail={assetRail}
+              railId={bundle?.rail_id}
+            />
           )}
           {verifyError && <p className="error">{verifyError}</p>}
           <BundleSummary bundle={bundle} assetRail={assetRail} />
@@ -586,10 +601,12 @@ function VerificationBanner({
   response,
   endpoint,
   assetRail,
+  railId,
 }: {
   response: VerifyResponse;
   endpoint: VerificationMode;
   assetRail: AssetRail;
+  railId?: string;
 }) {
   const intent = response.valid ? 'success' : 'error';
   return (
@@ -603,6 +620,12 @@ function VerificationBanner({
           <p className="muted small">
             {endpoint === 'bundle' ? '/zkpf/verify-bundle' : '/zkpf/verify'} • Circuit version{' '}
             {response.circuit_version} • {assetRail === 'onchain' ? 'On-chain rail' : 'Fiat rail'}
+            {railId && (
+              <>
+                {' '}
+                • Rail ID <span className="mono">{railId}</span>
+              </>
+            )}
           </p>
         </div>
       </div>

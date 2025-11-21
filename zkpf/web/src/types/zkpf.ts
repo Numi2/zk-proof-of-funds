@@ -9,9 +9,21 @@ export interface VerifierPublicInputs {
   policy_id: number;
   nullifier: ByteArray;
   custodian_pubkey_hash: ByteArray;
+  /**
+   * Optional snapshot metadata for non-custodial rails (e.g. Zcash Orchard).
+   * Legacy custodial bundles omit these fields.
+   */
+  snapshot_block_height?: number;
+  snapshot_anchor_orchard?: ByteArray;
+  holder_binding?: ByteArray;
 }
 
 export interface ProofBundle {
+  /**
+   * Logical rail identifier for this bundle. When omitted or empty, the
+   * backend treats the bundle as belonging to the legacy custodial rail.
+   */
+  rail_id?: string;
   circuit_version: number;
   proof: ByteArray;
   public_inputs: VerifierPublicInputs;

@@ -20,7 +20,10 @@ use zkpf_circuit::{
     custodians, gadgets::attestation::Secp256k1Pubkey, public_instances, PublicInputs, ZkpfCircuit,
 };
 
+/// Number of public inputs in the legacy custodial circuit layout (V1).
 pub const PUBLIC_INPUT_COUNT: usize = 8;
+/// Number of public inputs in the Orchard layout (V2_ORCHARD): V1 prefix + 3 Orchard fields.
+pub const PUBLIC_INPUT_COUNT_V2_ORCHARD: usize = 11;
 const POSEIDON_T: usize = 6;
 const POSEIDON_RATE: usize = 5;
 const POSEIDON_FULL_ROUNDS: usize = 8;
@@ -36,10 +39,41 @@ pub struct VerifierPublicInputs {
     pub policy_id: u64,
     pub nullifier: [u8; 32],
     pub custodian_pubkey_hash: [u8; 32],
+    /// Optional snapshot metadata for non-custodial rails (e.g. Zcash Orchard).
+    ///
+    /// For the legacy custodial rail this will be `None`, and the corresponding
+    /// public-input layout (V1) does not include these fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_block_height: Option<u64>,
+    /// Orchard anchor (Merkle root) at `snapshot_block_height`, if applicable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_anchor_orchard: Option<[u8; 32]>,
+    /// Optional binding between holder identity and rail-specific key material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holder_binding: Option<[u8; 32]>,
+}
+
+/// Logical public-input layouts supported by the verifier.
+///
+/// - `V1` – legacy custodial attestation rail (8 public inputs).
+/// - `V2Orchard` – Orchard rail layout: V1 prefix plus Orchard snapshot fields.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum PublicInputLayout {
+    #[serde(rename = "V1")]
+    V1,
+    #[serde(rename = "V2_ORCHARD")]
+    V2Orchard,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProofBundle {
+    /// Logical rail identifier for this proof bundle.
+    ///
+    /// For legacy custodial proofs that predate rail-awareness, this may be the
+    /// empty string or omitted entirely in JSON, in which case verifiers should
+    /// treat it as the default custodial rail.
+    #[serde(default)]
+    pub rail_id: String,
     pub circuit_version: u32,
     pub proof: Vec<u8>,
     pub public_inputs: VerifierPublicInputs,
@@ -151,12 +185,56 @@ pub fn public_to_verifier_inputs(public: &PublicInputs) -> VerifierPublicInputs 
         policy_id: public.policy_id,
         nullifier: fr_to_bytes(&public.nullifier),
         custodian_pubkey_hash: fr_to_bytes(&public.custodian_pubkey_hash),
+        snapshot_block_height: None,
+        snapshot_anchor_orchard: None,
+        holder_binding: None,
     }
 }
 
 pub fn public_inputs_to_instances(inputs: &VerifierPublicInputs) -> Result<Vec<Vec<Fr>>> {
     let public = verifier_inputs_to_public(inputs)?;
     Ok(public_instances(&public))
+}
+
+/// Convert verifier-facing public inputs into Halo2 instances for a specific layout.
+///
+/// - `PublicInputLayout::V1` uses the legacy custodial layout (8 public inputs).
+/// - `PublicInputLayout::V2Orchard` appends Orchard snapshot metadata as additional
+///   instance columns while preserving the V1 prefix ordering.
+pub fn public_inputs_to_instances_with_layout(
+    layout: PublicInputLayout,
+    inputs: &VerifierPublicInputs,
+) -> Result<Vec<Vec<Fr>>> {
+    match layout {
+        PublicInputLayout::V1 => public_inputs_to_instances(inputs),
+        PublicInputLayout::V2Orchard => {
+            let snapshot_height = inputs.snapshot_block_height.ok_or_else(|| {
+                anyhow!("snapshot_block_height is required for V2_ORCHARD public-input layout")
+            })?;
+            let snapshot_anchor_bytes = inputs.snapshot_anchor_orchard.ok_or_else(|| {
+                anyhow!("snapshot_anchor_orchard is required for V2_ORCHARD public-input layout")
+            })?;
+
+            // For now we treat a missing holder_binding as zero; rails that require a
+            // binding can enforce its presence at a higher layer.
+            let holder_binding_bytes = inputs.holder_binding.unwrap_or([0u8; 32]);
+
+            // Reuse the existing PublicInputs conversion for the V1 prefix.
+            let public = verifier_inputs_to_public(inputs)?;
+            let mut cols = public_instances(&public);
+
+            // Orchard-specific trailing fields.
+            let snapshot_height_fr = Fr::from(snapshot_height);
+            let anchor_fr = reduce_be_bytes_to_fr(&snapshot_anchor_bytes);
+            let holder_binding_fr = reduce_be_bytes_to_fr(&holder_binding_bytes);
+
+            cols.push(vec![snapshot_height_fr]);
+            cols.push(vec![anchor_fr]);
+            cols.push(vec![holder_binding_fr]);
+
+            Ok(cols)
+        }
+    }
 }
 
 pub fn public_inputs_vector(public: &PublicInputs) -> [Fr; PUBLIC_INPUT_COUNT] {
@@ -215,6 +293,7 @@ pub fn deserialize_verifier_public_inputs(bytes: &[u8]) -> Result<VerifierPublic
 impl ProofBundle {
     pub fn new(proof: Vec<u8>, public_inputs: VerifierPublicInputs) -> Self {
         Self {
+            rail_id: String::new(),
             circuit_version: CIRCUIT_VERSION,
             proof,
             public_inputs,

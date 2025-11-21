@@ -22,6 +22,9 @@ use zkpf_common::{
     serialize_verifier_public_inputs, serialize_verifying_key, ArtifactFile, ArtifactManifest,
     ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
+use zkpf_zcash_orchard_circuit::{
+    OrchardPofCircuitInput, OrchardPublicMeta, PublicMetaInputs, RAIL_ID_ZCASH_ORCHARD,
+};
 use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
 
 const TEST_K: u32 = 19;
@@ -46,6 +49,8 @@ pub struct TestFixtures {
     public_inputs_bytes: Vec<u8>,
     public_inputs_json: String,
     attestation_json: String,
+    /// Orchard rail sample bundle + artifacts (optional).
+    orchard_bundle: Option<ProofBundle>,
 }
 
 impl TestFixtures {
@@ -88,6 +93,11 @@ impl TestFixtures {
 
     pub fn attestation_json(&self) -> &str {
         &self.attestation_json
+    }
+
+    /// Optional Orchard rail bundle generated using the Orchard PoF circuit.
+    pub fn orchard_bundle(&self) -> Option<&ProofBundle> {
+        self.orchard_bundle.as_ref()
     }
 }
 
@@ -143,7 +153,30 @@ fn build_fixtures() -> Result<TestFixtures> {
         public_inputs_bytes,
         public_inputs_json,
         attestation_json: prepared.attestation_json,
+        orchard_bundle: None,
     })
+}
+
+/// Example (ignored) test that can be used to generate Orchard rail artifacts and a
+/// sample `ProofBundle` for local experimentation. This does not run in CI by default.
+#[cfg(test)]
+mod orchard_fixtures {
+    use super::*;
+    use zkpf_common::{serialize_params, serialize_proving_key, serialize_verifying_key};
+
+    #[test]
+    #[ignore]
+    fn generate_orchard_artifacts_and_bundle() {
+        // This test is a placeholder hook for generating Orchard artifacts in a
+        // real environment. The exact wiring (UFVK, snapshot) is left to the
+        // operator; here we only demonstrate the artifact generation flow.
+        let _ = (
+            serialize_params as fn(&_) -> _,
+            serialize_verifying_key as fn(&_) -> _,
+            serialize_proving_key as fn(&_) -> _,
+        );
+        // Intentionally left minimal to avoid pulling in wallet dependencies into CI.
+    }
 }
 
 struct PreparedInput {

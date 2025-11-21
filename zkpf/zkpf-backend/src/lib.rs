@@ -18,8 +18,10 @@ use sled::Db;
 use tokio::net::TcpListener;
 use zkpf_common::{
     allowlisted_custodian_hash_bytes, deserialize_verifier_public_inputs, load_prover_artifacts,
-    public_inputs_to_instances, ProofBundle, ProverArtifacts, VerifierPublicInputs,
+    load_verifier_artifacts, public_inputs_to_instances_with_layout, ProofBundle, ProverArtifacts,
+    PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
 };
+use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
 use zkpf_verifier::verify;
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
@@ -31,6 +33,7 @@ const POLICY_PATH_ENV: &str = "ZKPF_POLICY_PATH";
 const DEFAULT_POLICY_PATH: &str = "config/policies.json";
 const NULLIFIER_DB_ENV: &str = "ZKPF_NULLIFIER_DB";
 const DEFAULT_NULLIFIER_DB_PATH: &str = "data/nullifiers.db";
+const MULTIRAIL_MANIFEST_ENV: &str = "ZKPF_MULTI_RAIL_MANIFEST_PATH";
 const NULLIFIER_SPENT_ERR: &str = "nullifier already spent for this scope/policy";
 const CODE_CIRCUIT_VERSION: &str = "CIRCUIT_VERSION_MISMATCH";
 const CODE_PUBLIC_INPUTS: &str = "PUBLIC_INPUTS_INVALID";
@@ -41,9 +44,140 @@ const CODE_EPOCH_DRIFT: &str = "EPOCH_DRIFT";
 const CODE_NULLIFIER_REPLAY: &str = "NULLIFIER_REPLAY";
 const CODE_NULLIFIER_STORE_ERROR: &str = "NULLIFIER_STORE_ERROR";
 const CODE_PROOF_INVALID: &str = "PROOF_INVALID";
+const CODE_RAIL_UNKNOWN: &str = "RAIL_UNKNOWN";
+const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
 static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
+static RAILS: Lazy<RailRegistry> = Lazy::new(RailRegistry::from_env);
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct RailManifestEntry {
+    rail_id: String,
+    circuit_version: u32,
+    /// Path to a per-rail artifact manifest (params + vk, pk optional).
+    manifest_path: String,
+    /// Public-input layout identifier, e.g. "V1" or "V2_ORCHARD".
+    layout: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct MultiRailManifest {
+    rails: Vec<RailManifestEntry>,
+}
+
+#[derive(Clone)]
+enum RailArtifacts {
+    Prover(Arc<ProverArtifacts>),
+    Verifier(Arc<VerifierArtifacts>),
+}
+
+#[derive(Clone)]
+struct RailVerifier {
+    rail_id: String,
+    circuit_version: u32,
+    layout: PublicInputLayout,
+    artifacts: RailArtifacts,
+}
+
+#[derive(Clone)]
+struct RailRegistry {
+    rails: Arc<HashMap<String, RailVerifier>>,
+}
+
+impl RailRegistry {
+    fn from_env() -> Self {
+        // Start with the legacy custodial rail backed by the full prover artifacts.
+        let mut map = HashMap::new();
+
+        let default = RailVerifier {
+            rail_id: String::new(),
+            circuit_version: ARTIFACTS.manifest.circuit_version,
+            layout: PublicInputLayout::V1,
+            artifacts: RailArtifacts::Prover(ARTIFACTS.clone()),
+        };
+
+        // Empty rail_id is used for backward-compat bundles; DEFAULT_RAIL_ID is a
+        // stable explicit identifier for the same rail.
+        map.insert(String::new(), default.clone());
+        map.insert(DEFAULT_RAIL_ID.to_string(), default);
+
+        if let Ok(path) = env::var(MULTIRAIL_MANIFEST_ENV) {
+            let bytes = fs::read(&path).unwrap_or_else(|err| {
+                panic!(
+                    "failed to read multi-rail manifest from {}: {}",
+                    path, err
+                )
+            });
+            let manifest: MultiRailManifest =
+                serde_json::from_slice(&bytes).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to parse multi-rail manifest from {}: {}",
+                        path, err
+                    )
+                });
+
+            for rail in manifest.rails {
+                if map.contains_key(&rail.rail_id) {
+                    panic!("duplicate rail_id {} in multi-rail manifest", rail.rail_id);
+                }
+
+                let layout = match rail.layout.as_str() {
+                    "V1" => PublicInputLayout::V1,
+                    "V2_ORCHARD" => PublicInputLayout::V2Orchard,
+                    other => panic!("unsupported public-input layout '{}'", other),
+                };
+
+                let artifacts = if rail.rail_id == RAIL_ID_ZCASH_ORCHARD {
+                    load_orchard_verifier_artifacts(&rail.manifest_path).unwrap_or_else(|err| {
+                        panic!(
+                            "failed to load Orchard verifier artifacts for rail {} from {}: {}",
+                            rail.rail_id, rail.manifest_path, err
+                        )
+                    })
+                } else {
+                    load_verifier_artifacts(&rail.manifest_path).unwrap_or_else(|err| {
+                        panic!(
+                            "failed to load verifier artifacts for rail {} from {}: {}",
+                            rail.rail_id, rail.manifest_path, err
+                        )
+                    })
+                };
+
+                if artifacts.manifest.circuit_version != rail.circuit_version {
+                    panic!(
+                        "circuit_version mismatch for rail {}: manifest {} vs config {}",
+                        rail.rail_id,
+                        artifacts.manifest.circuit_version,
+                        rail.circuit_version
+                    );
+                }
+
+                map.insert(
+                    rail.rail_id.clone(),
+                    RailVerifier {
+                        rail_id: rail.rail_id,
+                        circuit_version: rail.circuit_version,
+                        layout,
+                        artifacts: RailArtifacts::Verifier(Arc::new(artifacts)),
+                    },
+                );
+            }
+        }
+
+        RailRegistry {
+            rails: Arc::new(map),
+        }
+    }
+
+    fn get(&self, rail_id: &str) -> Option<&RailVerifier> {
+        if rail_id.is_empty() {
+            self.rails.get("")
+        } else {
+            self.rails.get(rail_id)
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -365,13 +499,16 @@ async fn verify_handler(
     State(state): State<AppState>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    let manifest = &state.artifacts().manifest;
-    if req.circuit_version != manifest.circuit_version {
+    // Legacy /zkpf/verify endpoint is bound to the default custodial rail.
+    let rail = RAILS
+        .get("")
+        .expect("default custodial rail not configured in RailRegistry");
+    if req.circuit_version != rail.circuit_version {
         return Err(ApiError::bad_request(
             CODE_CIRCUIT_VERSION,
             format!(
                 "circuit_version mismatch: expected {}, got {}",
-                manifest.circuit_version, req.circuit_version
+                rail.circuit_version, req.circuit_version
             ),
         ));
     }
@@ -388,7 +525,7 @@ async fn verify_handler(
         )
     })?;
 
-    let response = process_verification(&state, manifest, &policy, &public_inputs, &req.proof)?;
+    let response = process_verification(&state, rail, &policy, &public_inputs, &req.proof)?;
     Ok(Json(response))
 }
 
@@ -396,13 +533,30 @@ async fn verify_bundle_handler(
     State(state): State<AppState>,
     Json(req): Json<VerifyBundleRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    let manifest = &state.artifacts().manifest;
-    if req.bundle.circuit_version != manifest.circuit_version {
+    let rail = RAILS
+        .get(&req.bundle.rail_id)
+        .ok_or_else(|| {
+            ApiError::bad_request(
+                CODE_RAIL_UNKNOWN,
+                format!(
+                    "unknown rail_id '{}'; configure it via {}",
+                    req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
+                ),
+            )
+        })?;
+
+    if req.bundle.circuit_version != rail.circuit_version {
         return Err(ApiError::bad_request(
             CODE_CIRCUIT_VERSION,
             format!(
-                "circuit_version mismatch: expected {}, got {}",
-                manifest.circuit_version, req.bundle.circuit_version
+                "circuit_version mismatch for rail {}: expected {}, got {}",
+                if req.bundle.rail_id.is_empty() {
+                    DEFAULT_RAIL_ID
+                } else {
+                    &req.bundle.rail_id
+                },
+                rail.circuit_version,
+                req.bundle.circuit_version
             ),
         ));
     }
@@ -414,7 +568,7 @@ async fn verify_bundle_handler(
 
     let response = process_verification(
         &state,
-        manifest,
+        rail,
         &policy,
         &req.bundle.public_inputs,
         &req.bundle.proof,
@@ -424,30 +578,34 @@ async fn verify_bundle_handler(
 
 fn process_verification(
     state: &AppState,
-    manifest: &zkpf_common::ArtifactManifest,
+    rail: &RailVerifier,
     policy: &PolicyExpectations,
     public_inputs: &VerifierPublicInputs,
     proof: &[u8],
 ) -> Result<VerifyResponse, ApiError> {
     if let Err(err) = policy.validate_against(public_inputs) {
         return Ok(VerifyResponse::failure(
-            manifest.circuit_version,
+            rail.circuit_version,
             CODE_POLICY_MISMATCH,
             err,
         ));
     }
 
-    if let Err(err) = validate_custodian_hash(public_inputs) {
-        return Ok(VerifyResponse::failure(
-            manifest.circuit_version,
-            CODE_CUSTODIAN_MISMATCH,
-            err,
-        ));
+    // Custodial rails (V1 layout) enforce the custodian allowlist. Orchard and
+    // other non-custodial rails may not use this field.
+    if matches!(rail.layout, PublicInputLayout::V1) {
+        if let Err(err) = validate_custodian_hash(public_inputs) {
+            return Ok(VerifyResponse::failure(
+                rail.circuit_version,
+                CODE_CUSTODIAN_MISMATCH,
+                err,
+            ));
+        }
     }
 
     if let Err(err) = validate_epoch(state.epoch_config(), public_inputs) {
         return Ok(VerifyResponse::failure(
-            manifest.circuit_version,
+            rail.circuit_version,
             CODE_EPOCH_DRIFT,
             err,
         ));
@@ -457,7 +615,7 @@ fn process_verification(
     match state.nullifier_store().already_spent(&nullifier_key) {
         Ok(true) => {
             return Ok(VerifyResponse::failure(
-                manifest.circuit_version,
+                rail.circuit_version,
                 CODE_NULLIFIER_REPLAY,
                 NULLIFIER_SPENT_ERR,
             ))
@@ -466,23 +624,28 @@ fn process_verification(
         Err(err) => return Err(ApiError::nullifier_store(err)),
     }
 
-    let instances = public_inputs_to_instances(public_inputs).map_err(|err| {
-        ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid public inputs: {err}"))
-    })?;
+    let instances =
+        public_inputs_to_instances_with_layout(rail.layout, public_inputs).map_err(|err| {
+            ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid public inputs: {err}"))
+        })?;
 
-    let artifacts = state.artifacts();
-    if !verify(&artifacts.params, &artifacts.vk, proof, &instances) {
+    let (params, vk) = match &rail.artifacts {
+        RailArtifacts::Prover(a) => (&a.params, &a.vk),
+        RailArtifacts::Verifier(a) => (&a.params, &a.vk),
+    };
+
+    if !verify(params, vk, proof, &instances) {
         return Ok(VerifyResponse::failure(
-            manifest.circuit_version,
+            rail.circuit_version,
             CODE_PROOF_INVALID,
             "proof verification failed",
         ));
     }
 
     match state.nullifier_store().record(nullifier_key) {
-        Ok(()) => Ok(VerifyResponse::success(manifest.circuit_version)),
+        Ok(()) => Ok(VerifyResponse::success(rail.circuit_version)),
         Err(err) if err == NULLIFIER_SPENT_ERR => Ok(VerifyResponse::failure(
-            manifest.circuit_version,
+            rail.circuit_version,
             CODE_NULLIFIER_REPLAY,
             err,
         )),

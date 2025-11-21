@@ -61,9 +61,14 @@ function App() {
     <div className="app-shell">
       <header className="hero">
         <div className="header-top">
-          <div>
-            <p className="eyebrow">Institutional zk stack</p>
-            <h1>Zero-knowledge proof-of-funds for capital markets</h1>
+          <div className="brand">
+            <div className="logo">
+              <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
+            </div>
+            <div>
+              <p className="eyebrow">Institutional zk stack</p>
+              <h1>Zero-knowledge proof-of-funds for capital markets</h1>
+            </div>
           </div>
           <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
             <span className="status-dot"></span>

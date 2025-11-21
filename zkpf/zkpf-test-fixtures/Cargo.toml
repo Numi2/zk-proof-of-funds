@@ -18,6 +18,7 @@ zkpf-circuit = { path = "../zkpf-circuit" }
 zkpf-common = { path = "../zkpf-common" }
 zkpf-prover = { path = "../zkpf-prover" }
 zkpf-verifier = { path = "../zkpf-verifier" }
+zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
 
 [dev-dependencies]
 base64 = "0.21"

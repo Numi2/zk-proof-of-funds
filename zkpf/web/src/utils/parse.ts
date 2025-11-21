@@ -13,9 +13,13 @@ const publicInputsSchema = z.object({
   policy_id: z.number().nonnegative(),
   nullifier: byteSourceSchema,
   custodian_pubkey_hash: byteSourceSchema,
+  snapshot_block_height: z.number().nonnegative().optional(),
+  snapshot_anchor_orchard: byteSourceSchema.optional(),
+  holder_binding: byteSourceSchema.optional(),
 });
 
 const proofBundleSchema = z.object({
+  rail_id: z.string().optional(),
   circuit_version: z.number().int().nonnegative(),
   proof: byteSourceSchema,
   public_inputs: publicInputsSchema,
@@ -31,12 +35,12 @@ export function parseProofBundle(json: string): ProofBundle {
     throw new Error(`Invalid JSON: ${(err as Error).message}`);
   }
 
-  const bundle = proofBundleSchema.safeParse(parsed);
-  if (!bundle.success) {
-    throw new Error(bundle.error.issues[0]?.message ?? 'Malformed proof bundle');
+  const bundleResult = proofBundleSchema.safeParse(parsed);
+  if (!bundleResult.success) {
+    throw new Error(bundleResult.error.issues[0]?.message ?? 'Malformed proof bundle');
   }
 
-  const raw = bundle.data;
+  const raw = bundleResult.data;
   const inputs = raw.public_inputs;
 
   const normalizedInputs: VerifierPublicInputs = {
@@ -52,9 +56,21 @@ export function parseProofBundle(json: string): ProofBundle {
       'public_inputs.custodian_pubkey_hash',
       32,
     ),
+    snapshot_block_height: inputs.snapshot_block_height,
+    snapshot_anchor_orchard: inputs.snapshot_anchor_orchard
+      ? normalizeByteArray(
+          inputs.snapshot_anchor_orchard,
+          'public_inputs.snapshot_anchor_orchard',
+          32,
+        )
+      : undefined,
+    holder_binding: inputs.holder_binding
+      ? normalizeByteArray(inputs.holder_binding, 'public_inputs.holder_binding', 32)
+      : undefined,
   };
 
   return {
+    rail_id: raw.rail_id,
     circuit_version: raw.circuit_version,
     proof: normalizeByteArray(raw.proof, 'proof'),
     public_inputs: normalizedInputs,

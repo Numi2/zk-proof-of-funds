@@ -4,9 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+blake3 = "1"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 zkpf-common = { path = "../zkpf-common" }
 zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
+
+# Halo2 / circuit dependencies (reuse the same stack as zkpf-circuit).
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
+halo2-base = { version = "0.5.1", default-features = false, features = ["halo2-axiom"] }
+halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+anyhow = "1"
+zkpf-circuit = { path = "../zkpf-circuit" }
+
 
 
