@@ -1,0 +1,10 @@
+[
+  {
+    "policy_id": 271828,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 840,
+    "required_custodian_id": 42,
+    "verifier_scope_id": 31415
+  }
+]
+

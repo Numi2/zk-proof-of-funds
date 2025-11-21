@@ -1,0 +1,9 @@
+{
+  "manifest_path": "/Users/home/zk-proof-of-funds/zkpf/zkpf-test-fixtures/fixtures/manifest.json",
+  "circuit_version": 3,
+  "manifest_version": 1,
+  "params_hash": "8fff1f540aaa8202a59ca6b2cfebb85b3caf7a001b3cd847dfdd5ab8ca3d48f3",
+  "params_size": 67109124,
+  "k": 19,
+  "n": 524288
+}

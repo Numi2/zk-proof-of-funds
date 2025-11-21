@@ -1,0 +1,694 @@
+use std::{
+    collections::{HashMap, HashSet},
+    env, fs,
+    path::Path,
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
+use once_cell::sync::Lazy;
+use sled::Db;
+use tokio::net::TcpListener;
+use zkpf_common::{
+    allowlisted_custodian_hash_bytes, deserialize_verifier_public_inputs, load_prover_artifacts,
+    public_inputs_to_instances, ProofBundle, ProverArtifacts, VerifierPublicInputs,
+};
+use zkpf_verifier::verify;
+
+const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
+const MANIFEST_ENV: &str = "ZKPF_MANIFEST_PATH";
+const EPOCH_OVERRIDE_ENV: &str = "ZKPF_VERIFIER_EPOCH";
+const EPOCH_DRIFT_ENV: &str = "ZKPF_VERIFIER_MAX_DRIFT_SECS";
+const DEFAULT_MAX_EPOCH_DRIFT_SECS: u64 = 300;
+const POLICY_PATH_ENV: &str = "ZKPF_POLICY_PATH";
+const DEFAULT_POLICY_PATH: &str = "config/policies.json";
+const NULLIFIER_DB_ENV: &str = "ZKPF_NULLIFIER_DB";
+const DEFAULT_NULLIFIER_DB_PATH: &str = "data/nullifiers.db";
+const NULLIFIER_SPENT_ERR: &str = "nullifier already spent for this scope/policy";
+const CODE_CIRCUIT_VERSION: &str = "CIRCUIT_VERSION_MISMATCH";
+const CODE_PUBLIC_INPUTS: &str = "PUBLIC_INPUTS_INVALID";
+const CODE_POLICY_NOT_FOUND: &str = "POLICY_NOT_FOUND";
+const CODE_POLICY_MISMATCH: &str = "POLICY_MISMATCH";
+const CODE_CUSTODIAN_MISMATCH: &str = "CUSTODIAN_MISMATCH";
+const CODE_EPOCH_DRIFT: &str = "EPOCH_DRIFT";
+const CODE_NULLIFIER_REPLAY: &str = "NULLIFIER_REPLAY";
+const CODE_NULLIFIER_STORE_ERROR: &str = "NULLIFIER_STORE_ERROR";
+const CODE_PROOF_INVALID: &str = "PROOF_INVALID";
+
+static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
+static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
+
+#[derive(Clone)]
+pub struct AppState {
+    artifacts: Arc<ProverArtifacts>,
+    epoch: EpochConfig,
+    nullifiers: NullifierStore,
+    policies: PolicyStore,
+}
+
+impl AppState {
+    pub fn new(artifacts: Arc<ProverArtifacts>) -> Self {
+        Self::with_components(
+            artifacts,
+            EpochConfig::from_env(),
+            NullifierStore::from_env(),
+            POLICIES.clone(),
+        )
+    }
+
+    pub fn with_components(
+        artifacts: Arc<ProverArtifacts>,
+        epoch: EpochConfig,
+        nullifiers: NullifierStore,
+        policies: PolicyStore,
+    ) -> Self {
+        Self {
+            artifacts,
+            epoch,
+            nullifiers,
+            policies,
+        }
+    }
+
+    pub fn with_epoch_config(artifacts: Arc<ProverArtifacts>, epoch: EpochConfig) -> Self {
+        Self::with_components(
+            artifacts,
+            epoch,
+            NullifierStore::from_env(),
+            POLICIES.clone(),
+        )
+    }
+
+    pub fn global() -> Self {
+        Self::new(ARTIFACTS.clone())
+    }
+
+    pub fn artifacts(&self) -> &ProverArtifacts {
+        &self.artifacts
+    }
+
+    pub fn epoch_config(&self) -> &EpochConfig {
+        &self.epoch
+    }
+
+    pub fn nullifier_store(&self) -> &NullifierStore {
+        &self.nullifiers
+    }
+
+    pub fn policy_store(&self) -> &PolicyStore {
+        &self.policies
+    }
+}
+
+#[derive(Debug)]
+struct ApiError {
+    status: StatusCode,
+    code: &'static str,
+    message: String,
+}
+
+impl ApiError {
+    fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, code, message)
+    }
+
+    fn policy_not_found(policy_id: u64) -> Self {
+        Self::new(
+            StatusCode::NOT_FOUND,
+            CODE_POLICY_NOT_FOUND,
+            format!("policy_id {} not found", policy_id),
+        )
+    }
+
+    fn nullifier_store(err: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            CODE_NULLIFIER_STORE_ERROR,
+            err,
+        )
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ErrorResponse {
+    error: String,
+    error_code: &'static str,
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let body = ErrorResponse {
+            error: self.message,
+            error_code: self.code,
+        };
+        (self.status, Json(body)).into_response()
+    }
+}
+
+pub async fn serve() {
+    let app = app_router(AppState::global());
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app.into_make_service())
+        .await
+        .unwrap();
+}
+
+pub fn app_router(state: AppState) -> Router {
+    Router::new()
+        .route("/zkpf/policies", get(list_policies))
+        .route("/zkpf/params", get(get_params))
+        .route("/zkpf/epoch", get(get_epoch))
+        .route("/zkpf/verify", post(verify_handler))
+        .route("/zkpf/verify-bundle", post(verify_bundle_handler))
+        .with_state(state)
+}
+
+async fn get_params(State(state): State<AppState>) -> Json<ParamsResponse> {
+    let manifest = &state.artifacts().manifest;
+    Json(ParamsResponse {
+        circuit_version: manifest.circuit_version,
+        manifest_version: manifest.manifest_version,
+        params_hash: manifest.params.blake3.clone(),
+        vk_hash: manifest.vk.blake3.clone(),
+        pk_hash: manifest.pk.blake3.clone(),
+        params: state.artifacts().params_bytes.clone(),
+        vk: state.artifacts().vk_bytes.clone(),
+        pk: state.artifacts().pk_bytes.clone(),
+    })
+}
+
+async fn list_policies(State(state): State<AppState>) -> Json<PoliciesResponse> {
+    Json(PoliciesResponse {
+        policies: state.policy_store().all(),
+    })
+}
+
+#[derive(serde::Serialize)]
+struct ParamsResponse {
+    circuit_version: u32,
+    manifest_version: u32,
+    params_hash: String,
+    vk_hash: String,
+    pk_hash: String,
+    params: Vec<u8>,
+    vk: Vec<u8>,
+    pk: Vec<u8>,
+}
+
+#[derive(serde::Serialize)]
+struct EpochResponse {
+    current_epoch: u64,
+    max_drift_secs: u64,
+}
+
+#[derive(serde::Serialize)]
+struct PoliciesResponse {
+    policies: Vec<PolicyExpectations>,
+}
+
+#[derive(serde::Deserialize)]
+struct VerifyRequest {
+    circuit_version: u32,
+    proof: Vec<u8>,
+    public_inputs: Vec<u8>,
+    policy_id: u64,
+}
+
+#[derive(serde::Serialize)]
+struct VerifyResponse {
+    valid: bool,
+    circuit_version: u32,
+    error: Option<String>,
+    error_code: Option<&'static str>,
+}
+
+impl VerifyResponse {
+    fn success(circuit_version: u32) -> Self {
+        Self {
+            valid: true,
+            circuit_version,
+            error: None,
+            error_code: None,
+        }
+    }
+
+    fn failure(circuit_version: u32, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            circuit_version,
+            error: Some(message.into()),
+            error_code: Some(code),
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct VerifyBundleRequest {
+    policy_id: u64,
+    bundle: ProofBundle,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PolicyExpectations {
+    pub threshold_raw: u64,
+    pub required_currency_code: u32,
+    pub required_custodian_id: u32,
+    pub verifier_scope_id: u64,
+    pub policy_id: u64,
+}
+
+impl PolicyExpectations {
+    fn validate_against(&self, inputs: &VerifierPublicInputs) -> Result<(), String> {
+        if inputs.threshold_raw != self.threshold_raw {
+            return Err(format!(
+                "threshold_raw mismatch: expected {}, got {}",
+                self.threshold_raw, inputs.threshold_raw
+            ));
+        }
+        if inputs.required_currency_code != self.required_currency_code {
+            return Err(format!(
+                "required_currency_code mismatch: expected {}, got {}",
+                self.required_currency_code, inputs.required_currency_code
+            ));
+        }
+        if inputs.required_custodian_id != self.required_custodian_id {
+            return Err(format!(
+                "required_custodian_id mismatch: expected {}, got {}",
+                self.required_custodian_id, inputs.required_custodian_id
+            ));
+        }
+        if inputs.verifier_scope_id != self.verifier_scope_id {
+            return Err(format!(
+                "verifier_scope_id mismatch: expected {}, got {}",
+                self.verifier_scope_id, inputs.verifier_scope_id
+            ));
+        }
+        if inputs.policy_id != self.policy_id {
+            return Err(format!(
+                "policy_id mismatch: expected {}, got {}",
+                self.policy_id, inputs.policy_id
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct PolicyStore {
+    policies: Arc<HashMap<u64, PolicyExpectations>>,
+}
+
+impl PolicyStore {
+    fn from_env() -> Self {
+        let path = env::var(POLICY_PATH_ENV).unwrap_or_else(|_| DEFAULT_POLICY_PATH.to_string());
+        Self::from_path(path)
+    }
+
+    pub fn from_path(path: impl AsRef<Path>) -> Self {
+        let path_ref = path.as_ref();
+        let bytes = fs::read(path_ref).unwrap_or_else(|err| {
+            panic!(
+                "failed to read policy configuration from {}: {}",
+                path_ref.display(),
+                err
+            )
+        });
+        let policies: Vec<PolicyExpectations> =
+            serde_json::from_slice(&bytes).unwrap_or_else(|err| {
+                panic!(
+                    "failed to parse policy configuration from {}: {}",
+                    path_ref.display(),
+                    err
+                )
+            });
+        Self::from_policies(policies)
+    }
+
+    pub fn from_policies(policies: Vec<PolicyExpectations>) -> Self {
+        let mut map = HashMap::new();
+        for policy in policies {
+            let id = policy.policy_id;
+            if map.insert(id, policy).is_some() {
+                panic!("duplicate policy_id {} in policy configuration", id);
+            }
+        }
+        Self {
+            policies: Arc::new(map),
+        }
+    }
+
+    pub fn get(&self, policy_id: u64) -> Option<PolicyExpectations> {
+        self.policies.get(&policy_id).cloned()
+    }
+
+    pub fn all(&self) -> Vec<PolicyExpectations> {
+        self.policies.values().cloned().collect()
+    }
+}
+
+async fn verify_handler(
+    State(state): State<AppState>,
+    Json(req): Json<VerifyRequest>,
+) -> Result<Json<VerifyResponse>, ApiError> {
+    let manifest = &state.artifacts().manifest;
+    if req.circuit_version != manifest.circuit_version {
+        return Err(ApiError::bad_request(
+            CODE_CIRCUIT_VERSION,
+            format!(
+                "circuit_version mismatch: expected {}, got {}",
+                manifest.circuit_version, req.circuit_version
+            ),
+        ));
+    }
+
+    let policy = state
+        .policy_store()
+        .get(req.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
+
+    let public_inputs = deserialize_verifier_public_inputs(&req.public_inputs).map_err(|err| {
+        ApiError::bad_request(
+            CODE_PUBLIC_INPUTS,
+            format!("invalid public_inputs encoding: {err}"),
+        )
+    })?;
+
+    let response = process_verification(&state, manifest, &policy, &public_inputs, &req.proof)?;
+    Ok(Json(response))
+}
+
+async fn verify_bundle_handler(
+    State(state): State<AppState>,
+    Json(req): Json<VerifyBundleRequest>,
+) -> Result<Json<VerifyResponse>, ApiError> {
+    let manifest = &state.artifacts().manifest;
+    if req.bundle.circuit_version != manifest.circuit_version {
+        return Err(ApiError::bad_request(
+            CODE_CIRCUIT_VERSION,
+            format!(
+                "circuit_version mismatch: expected {}, got {}",
+                manifest.circuit_version, req.bundle.circuit_version
+            ),
+        ));
+    }
+
+    let policy = state
+        .policy_store()
+        .get(req.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
+
+    let response = process_verification(
+        &state,
+        manifest,
+        &policy,
+        &req.bundle.public_inputs,
+        &req.bundle.proof,
+    )?;
+    Ok(Json(response))
+}
+
+fn process_verification(
+    state: &AppState,
+    manifest: &zkpf_common::ArtifactManifest,
+    policy: &PolicyExpectations,
+    public_inputs: &VerifierPublicInputs,
+    proof: &[u8],
+) -> Result<VerifyResponse, ApiError> {
+    if let Err(err) = policy.validate_against(public_inputs) {
+        return Ok(VerifyResponse::failure(
+            manifest.circuit_version,
+            CODE_POLICY_MISMATCH,
+            err,
+        ));
+    }
+
+    if let Err(err) = validate_custodian_hash(public_inputs) {
+        return Ok(VerifyResponse::failure(
+            manifest.circuit_version,
+            CODE_CUSTODIAN_MISMATCH,
+            err,
+        ));
+    }
+
+    if let Err(err) = validate_epoch(state.epoch_config(), public_inputs) {
+        return Ok(VerifyResponse::failure(
+            manifest.circuit_version,
+            CODE_EPOCH_DRIFT,
+            err,
+        ));
+    }
+
+    let nullifier_key = NullifierKey::from_inputs(public_inputs);
+    match state.nullifier_store().already_spent(&nullifier_key) {
+        Ok(true) => {
+            return Ok(VerifyResponse::failure(
+                manifest.circuit_version,
+                CODE_NULLIFIER_REPLAY,
+                NULLIFIER_SPENT_ERR,
+            ))
+        }
+        Ok(false) => {}
+        Err(err) => return Err(ApiError::nullifier_store(err)),
+    }
+
+    let instances = public_inputs_to_instances(public_inputs).map_err(|err| {
+        ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid public inputs: {err}"))
+    })?;
+
+    let artifacts = state.artifacts();
+    if !verify(&artifacts.params, &artifacts.vk, proof, &instances) {
+        return Ok(VerifyResponse::failure(
+            manifest.circuit_version,
+            CODE_PROOF_INVALID,
+            "proof verification failed",
+        ));
+    }
+
+    match state.nullifier_store().record(nullifier_key) {
+        Ok(()) => Ok(VerifyResponse::success(manifest.circuit_version)),
+        Err(err) if err == NULLIFIER_SPENT_ERR => Ok(VerifyResponse::failure(
+            manifest.circuit_version,
+            CODE_NULLIFIER_REPLAY,
+            err,
+        )),
+        Err(err) => Err(ApiError::nullifier_store(err)),
+    }
+}
+
+fn load_artifacts() -> ProverArtifacts {
+    let path = env::var(MANIFEST_ENV).unwrap_or_else(|_| DEFAULT_MANIFEST_PATH.to_string());
+    load_prover_artifacts(&path)
+        .unwrap_or_else(|err| panic!("failed to load artifacts from {path}: {err}"))
+}
+
+fn validate_custodian_hash(inputs: &zkpf_common::VerifierPublicInputs) -> Result<(), String> {
+    let expected =
+        allowlisted_custodian_hash_bytes(inputs.required_custodian_id).ok_or_else(|| {
+            format!(
+                "custodian_id {} is not allow-listed",
+                inputs.required_custodian_id
+            )
+        })?;
+    if expected != inputs.custodian_pubkey_hash {
+        return Err("custodian_pubkey_hash does not match allow-listed key".into());
+    }
+    Ok(())
+}
+
+fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result<(), String> {
+    let server_epoch = config.current_epoch();
+    let drift = config.max_drift_secs();
+    let epoch = inputs.current_epoch;
+    if epoch > server_epoch {
+        let delta = epoch - server_epoch;
+        if delta > drift {
+            return Err(format!(
+                "current_epoch {} is {} seconds ahead of verifier epoch {}",
+                epoch, delta, server_epoch
+            ));
+        }
+    } else {
+        let delta = server_epoch - epoch;
+        if delta > drift {
+            return Err(format!(
+                "current_epoch {} lags verifier epoch {} by {} seconds",
+                epoch, server_epoch, delta
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
+pub struct EpochConfig {
+    epoch_override: Option<u64>,
+    max_drift_secs: u64,
+}
+
+impl EpochConfig {
+    fn from_env() -> Self {
+        Self {
+            epoch_override: parse_env_u64(EPOCH_OVERRIDE_ENV),
+            max_drift_secs: parse_env_u64(EPOCH_DRIFT_ENV).unwrap_or(DEFAULT_MAX_EPOCH_DRIFT_SECS),
+        }
+    }
+
+    pub fn fixed(epoch: u64) -> Self {
+        Self {
+            epoch_override: Some(epoch),
+            max_drift_secs: 0,
+        }
+    }
+
+    fn current_epoch(&self) -> u64 {
+        if let Some(epoch) = self.epoch_override {
+            epoch
+        } else {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        }
+    }
+
+    fn max_drift_secs(&self) -> u64 {
+        self.max_drift_secs
+    }
+}
+
+fn parse_env_u64(var: &str) -> Option<u64> {
+    env::var(var)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+}
+
+async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {
+    let epoch = state.epoch_config().current_epoch();
+    let drift = state.epoch_config().max_drift_secs();
+    Json(EpochResponse {
+        current_epoch: epoch,
+        max_drift_secs: drift,
+    })
+}
+
+#[derive(Clone)]
+pub struct NullifierStore {
+    backend: Arc<NullifierBackend>,
+}
+
+enum NullifierBackend {
+    InMemory(Mutex<HashSet<NullifierKey>>),
+    Persistent(Db),
+}
+
+impl NullifierStore {
+    pub fn in_memory() -> Self {
+        Self {
+            backend: Arc::new(NullifierBackend::InMemory(Mutex::new(HashSet::new()))),
+        }
+    }
+
+    pub fn persistent(path: impl AsRef<Path>) -> Self {
+        let path_ref = path.as_ref();
+        if let Some(parent) = path_ref.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).unwrap_or_else(|err| {
+                    panic!(
+                        "failed to create directory for nullifier db at {}: {}",
+                        path_ref.display(),
+                        err
+                    )
+                });
+            }
+        }
+        let db = sled::open(path_ref).unwrap_or_else(|err| {
+            panic!(
+                "failed to open nullifier db at {}: {}",
+                path_ref.display(),
+                err
+            )
+        });
+        Self {
+            backend: Arc::new(NullifierBackend::Persistent(db)),
+        }
+    }
+
+    pub fn from_env() -> Self {
+        let path =
+            env::var(NULLIFIER_DB_ENV).unwrap_or_else(|_| DEFAULT_NULLIFIER_DB_PATH.to_string());
+        Self::persistent(path)
+    }
+
+    fn already_spent(&self, key: &NullifierKey) -> Result<bool, String> {
+        match &*self.backend {
+            NullifierBackend::InMemory(store) => Ok(store
+                .lock()
+                .expect("nullifier store poisoned")
+                .contains(key)),
+            NullifierBackend::Persistent(db) => db
+                .contains_key(key.storage_key())
+                .map_err(|err| format!("nullifier db contains_key error: {err}")),
+        }
+    }
+
+    fn record(&self, key: NullifierKey) -> Result<(), String> {
+        match &*self.backend {
+            NullifierBackend::InMemory(store) => {
+                let mut guard = store.lock().expect("nullifier store poisoned");
+                if !guard.insert(key) {
+                    return Err(NULLIFIER_SPENT_ERR.into());
+                }
+                Ok(())
+            }
+            NullifierBackend::Persistent(db) => {
+                let inserted = db
+                    .insert(key.storage_key(), &[])
+                    .map_err(|err| format!("nullifier db insert error: {err}"))?;
+                if inserted.is_some() {
+                    return Err(NULLIFIER_SPENT_ERR.into());
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct NullifierKey {
+    scope_id: u64,
+    policy_id: u64,
+    nullifier: [u8; 32],
+}
+
+impl NullifierKey {
+    fn from_inputs(inputs: &VerifierPublicInputs) -> Self {
+        Self {
+            scope_id: inputs.verifier_scope_id,
+            policy_id: inputs.policy_id,
+            nullifier: inputs.nullifier,
+        }
+    }
+
+    fn storage_key(&self) -> [u8; 48] {
+        let mut buf = [0u8; 48];
+        buf[..8].copy_from_slice(&self.scope_id.to_be_bytes());
+        buf[8..16].copy_from_slice(&self.policy_id.to_be_bytes());
+        buf[16..].copy_from_slice(&self.nullifier);
+        buf
+    }
+}

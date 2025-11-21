@@ -1,0 +1,21 @@
+[package]
+name = "zkpf-circuit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
+halo2-base = { version = "0.5.1", default-features = false, features = ["halo2-axiom"] }
+halo2-ecc  = { version = "0.5.1", default-features = false, features = ["halo2-axiom"] }
+halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1.5"
+thiserror = "1"
+once_cell = "1"
+
+[dev-dependencies]
+secp256k1 = "0.29"
+hex-literal = "0.4"
+k256 = { version = "0.12", features = ["ecdsa"] }

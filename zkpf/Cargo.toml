@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "zkpf-circuit",
+    "zkpf-prover",
+    "zkpf-verifier",
+    "zkpf-wasm",
+    "zkpf-backend",
+    "zkpf-common",
+    "zkpf-tools",
+    "zkpf-test-fixtures",
+    "xtask",
+    "zkpf-zcash-orchard-wallet",
+    "zkpf-zcash-orchard-circuit",
+    "zkpf-rails-zcash-orchard",
+]
+
+[patch.crates-io]
+base64ct = { git = "https://github.com/RustCrypto/formats.git", rev = "0ebdd64122a6dc5f0461140a91c7f2cdcec8e015", package = "base64ct" }

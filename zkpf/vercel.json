@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "framework": "vite",
+  "installCommand": "cd web && npm install",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/dist",
+  "rewrites": [
+    { "source": "/zkpf/params", "destination": "/api/zkpf/params" },
+    { "source": "/zkpf/epoch", "destination": "/api/zkpf/epoch" },
+    { "source": "/zkpf/policies", "destination": "/api/zkpf/policies" },
+    { "source": "/zkpf/verify", "destination": "/api/zkpf/verify" },
+    { "source": "/zkpf/verify-bundle", "destination": "/api/zkpf/verify-bundle" },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+

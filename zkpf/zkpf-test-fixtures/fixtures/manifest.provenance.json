@@ -1,0 +1,10 @@
+{
+  "manifest_version": 1,
+  "circuit_version": 3,
+  "k": 19,
+  "params_hash": "8fff1f540aaa8202a59ca6b2cfebb85b3caf7a001b3cd847dfdd5ab8ca3d48f3",
+  "vk_hash": "613de961f5e806203307e3cd604e247ba2fea979fd0660c50bc55bff881f848b",
+  "pk_hash": "9adffc4c5bbe9d76284bbae9edf05e6c836f61421402e65a5d8893d6ebe4a172",
+  "generated_at_unix": 1763694739,
+  "generated_at_iso8601": "2025-11-21T03:12:19.036266+00:00"
+}

@@ -1,0 +1,16 @@
+[package]
+name = "zkpf-rails-zcash-orchard"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+thiserror = "1"
+zkpf-common = { path = "../zkpf-common" }
+zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
+zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
+
+
