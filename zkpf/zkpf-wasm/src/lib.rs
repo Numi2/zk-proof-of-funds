@@ -123,6 +123,9 @@ impl PublicInputsWasm {
                     "custodianPubkeyHash",
                     custodian_pubkey_hash,
                 )?,
+                snapshot_block_height: None,
+                snapshot_anchor_orchard: None,
+                holder_binding: None,
             },
         })
     }

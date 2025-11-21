@@ -1,0 +1,15 @@
+{
+  "name": "zkpf-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "zkpf_wasm_bg.wasm",
+    "zkpf_wasm.js",
+    "zkpf_wasm.d.ts"
+  ],
+  "main": "zkpf_wasm.js",
+  "types": "zkpf_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

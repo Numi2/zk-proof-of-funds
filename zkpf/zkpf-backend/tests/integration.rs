@@ -7,7 +7,7 @@ use tower::util::ServiceExt;
 use zkpf_backend::{
     app_router, AppState, EpochConfig, NullifierStore, PolicyExpectations, PolicyStore,
 };
-use zkpf_common::ArtifactManifest;
+use zkpf_common::{ArtifactManifest, ProofBundle};
 use zkpf_test_fixtures::{fixtures, TestFixtures};
 
 const BODY_LIMIT: usize = usize::MAX;
@@ -223,6 +223,47 @@ async fn verify_bundle_endpoint_accepts_fixture_bundle() {
     let payload: Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(payload["valid"], true);
     assert!(payload["error"].is_null());
+}
+
+#[tokio::test]
+async fn prove_bundle_endpoint_generates_fixture_bundle() {
+    let (app, _) = test_app();
+    let fixtures = fixtures();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/zkpf/prove-bundle")
+                .header("content-type", "application/json")
+                .body(Body::from(fixtures.attestation_json().to_string()))
+                .unwrap(),
+        )
+        .await
+        .expect("prove bundle response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = body::to_bytes(response.into_body(), BODY_LIMIT)
+        .await
+        .unwrap();
+    let bundle: ProofBundle = serde_json::from_slice(&bytes).unwrap();
+
+    let expected = fixtures.bundle();
+    assert!(bundle.rail_id.is_empty());
+    assert_eq!(bundle.circuit_version, expected.circuit_version);
+    assert_eq!(bundle.proof.as_slice(), expected.proof.as_slice());
+
+    let public = fixtures.public_inputs();
+    assert_eq!(bundle.public_inputs.policy_id, public.policy_id);
+    assert_eq!(
+        bundle.public_inputs.verifier_scope_id,
+        public.verifier_scope_id
+    );
+    assert_eq!(bundle.public_inputs.nullifier, public.nullifier);
+    assert_eq!(
+        bundle.public_inputs.custodian_pubkey_hash,
+        public.custodian_pubkey_hash
+    );
 }
 
 #[tokio::test]

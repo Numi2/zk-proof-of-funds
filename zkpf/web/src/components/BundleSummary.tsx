@@ -27,6 +27,16 @@ const railMeta: Record<
     summary: 'Bank, trust, or money market balances mirrored in witness data for the verifier.',
     highlights: ['ISO currency mapping', 'Custodian IDs mirror treasury ledgers', 'Pairs with bank attestations'],
   },
+  orchard: {
+    label: 'Zcash Orchard',
+    summary:
+      'Non-custodial Zcash Orchard shielded balances proven against an Orchard anchor and UFVK, with Merkle paths enforced in-circuit.',
+    highlights: [
+      'Snapshot height and Orchard Merkle anchor surfaced as public inputs',
+      'UFVK-bound holder binding without exposing raw keys',
+      'Inner Orchard circuit uses consensus MerkleChip + Sinsemilla',
+    ],
+  },
 };
 
 function showToast(message: string, type: 'success' | 'error' = 'success') {
@@ -131,6 +141,14 @@ export function BundleSummary({ bundle, assetRail }: Props) {
             <dd className="mono">
               {inputs.snapshot_anchor_orchard
                 ? truncateMiddle(bytesToHex(inputs.snapshot_anchor_orchard, 16), 80)
+                : 'n/a'}
+            </dd>
+          </div>
+          <div>
+            <dt>Holder binding</dt>
+            <dd className="mono">
+              {inputs.holder_binding
+                ? truncateMiddle(bytesToHex(inputs.holder_binding, 16), 80)
                 : 'n/a'}
             </dd>
           </div>

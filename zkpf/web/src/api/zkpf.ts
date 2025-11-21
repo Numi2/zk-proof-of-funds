@@ -1,4 +1,6 @@
 import type {
+  AttestRequest,
+  AttestResponse,
   EpochResponse,
   ParamsResponse,
   PoliciesResponse,
@@ -54,6 +56,13 @@ export class ZkpfClient {
     return this.request<VerifyResponse>('/zkpf/verify-bundle', {
       method: 'POST',
       body: JSON.stringify({ policy_id: policyId, bundle }),
+    });
+  }
+
+  async attestOnChain(payload: AttestRequest): Promise<AttestResponse> {
+    return this.request<AttestResponse>('/zkpf/attest', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   }
 

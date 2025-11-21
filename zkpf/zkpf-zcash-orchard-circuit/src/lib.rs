@@ -19,12 +19,13 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{ensure, Result};
+use anyhow::Context as _;
 use blake3::Hasher;
+use rand::rngs::OsRng;
 use halo2_proofs_axiom::{
     circuit::{Layouter, SimpleFloorPlanner},
     plonk::{self, Circuit, ConstraintSystem, Error},
-    poly::kzg::commitment::ParamsKZG,
     SerdeFormat,
 };
 use halo2_base::{
@@ -32,22 +33,23 @@ use halo2_base::{
         circuit::builder::BaseCircuitBuilder,
         circuit::{BaseCircuitParams, BaseConfig, CircuitBuilderStage},
         range::RangeChip,
-        GateChip, GateInstructions, RangeInstructions,
+        GateInstructions, RangeInstructions,
     },
-    AssignedValue, Context,
-    QuantumCell::Constant,
+    AssignedValue, Context as Halo2Context,
 };
 use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
+use halo2_proofs_axiom::transcript::TranscriptWriterBuffer;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zkpf_circuit::gadgets::compare;
 use zkpf_common::{
-    hash_bytes_hex, public_inputs_to_instances_with_layout, reduce_be_bytes_to_fr,
-    deserialize_params, fr_from_bytes, read_manifest, ArtifactFile, ArtifactManifest, ProofBundle,
+    deserialize_params, hash_bytes_hex, public_inputs_to_instances_with_layout,
+    reduce_be_bytes_to_fr, read_manifest, ArtifactFile, ArtifactManifest, ProofBundle,
     ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION,
     MANIFEST_VERSION,
 };
+use zkpf_orchard_inner::OrchardInnerPublicInputs;
 use zkpf_zcash_orchard_wallet::{OrchardFvk, OrchardSnapshot};
 
 /// Constant rail identifier for the Orchard rail.
@@ -289,13 +291,13 @@ fn build_orchard_constraints(
     Ok(())
 }
 
-fn assign_u64(ctx: &mut Context<Fr>, range: &RangeChip<Fr>, value: u64) -> AssignedValue<Fr> {
+fn assign_u64(ctx: &mut Halo2Context<Fr>, range: &RangeChip<Fr>, value: u64) -> AssignedValue<Fr> {
     let cell = ctx.load_witness(Fr::from(value));
     range.range_check(ctx, cell, 64);
     cell
 }
 
-fn assign_u32(ctx: &mut Context<Fr>, range: &RangeChip<Fr>, value: u32) -> AssignedValue<Fr> {
+fn assign_u32(ctx: &mut Halo2Context<Fr>, range: &RangeChip<Fr>, value: u32) -> AssignedValue<Fr> {
     let cell = ctx.load_witness(Fr::from(value as u64));
     range.range_check(ctx, cell, 32);
     cell
@@ -344,6 +346,39 @@ pub fn build_verifier_public_inputs(
     inputs.holder_binding = Some(orchard_meta.holder_binding);
 
     inputs
+}
+
+/// Map the public inputs of the **inner** Orchard PoF circuit into the
+/// canonical `VerifierPublicInputs` structure used by the outer bn256 circuit
+/// and backend.
+///
+/// This function is intended to be called by the recursive/outer circuit
+/// wrapper once it has verified an inner Orchard proof. It ensures that:
+/// - `threshold_raw` matches `inner.threshold_zats`,
+/// - `snapshot_block_height` and `snapshot_anchor_orchard` match the Orchard
+///   public inputs,
+/// - policy / scope / epoch metadata match the zkpf rail configuration, and
+/// - nullifier / custodian fields are wired consistently with the other rails.
+pub fn map_inner_to_verifier_public_inputs(
+    inner: &OrchardInnerPublicInputs,
+    meta: &PublicMetaInputs,
+    nullifier: [u8; 32],
+    custodian_pubkey_hash: [u8; 32],
+    holder_binding: [u8; 32],
+) -> VerifierPublicInputs {
+    VerifierPublicInputs {
+        threshold_raw: inner.threshold_zats,
+        required_currency_code: meta.required_currency_code,
+        required_custodian_id: 0,
+        current_epoch: meta.current_epoch,
+        verifier_scope_id: meta.verifier_scope_id,
+        policy_id: meta.policy_id,
+        nullifier,
+        custodian_pubkey_hash,
+        snapshot_block_height: Some(inner.height as u64),
+        snapshot_anchor_orchard: Some(inner.anchor_orchard),
+        holder_binding: Some(holder_binding),
+    }
 }
 
 /// High-level entrypoint that the prover rail calls to generate a `ProofBundle` for
@@ -432,7 +467,7 @@ pub fn prove_orchard_pof(
 
     let (proof, _) = create_orchard_proof_with_public_inputs(&circuit_input)?;
 
-    let mut bundle = ProofBundle {
+    let bundle = ProofBundle {
         rail_id: RAIL_ID_ZCASH_ORCHARD.to_string(),
         circuit_version: CIRCUIT_VERSION,
         proof,
@@ -693,7 +728,7 @@ fn create_orchard_proof_with_public_inputs(
         &artifacts.pk,
         &[circuit],
         &[instance_refs.as_slice()],
-        rand::rngs::OsRng,
+        OsRng,
         &mut transcript,
     )
     .map_err(|e| OrchardRailError::InvalidInput(format!("proof generation failed: {e}")))?;

@@ -104,8 +104,11 @@ Once implemented as a new circuit version, the `zkpf-common` layer would expose 
 
 5. **Optional: on-chain attestation**
    - If the bank wants a reusable on-chain record:
-     - After `valid == true`, the verifier service calls:
-       - `AttestationRegistry.attest(holderId, policyId, snapshotId, nullifier)`.
+     - After `valid == true`, the verifier service can either:
+       - Call `AttestationRegistry.attest(holderId, policyId, snapshotId, nullifier)` directly, **or**
+       - Invoke the HTTP rail `POST /zkpf/attest` with `{ holder_id, snapshot_id, policy_id, bundle }`, which:
+         - Re-runs verification of the supplied `ProofBundle` under the chosen policy, and
+         - When configured, uses a backend relayer wallet to call `AttestationRegistry.attest` on the target EVM chain.
    - Future counterparties can:
      - Query `hasAttestation(...)` as a quick indication that a proof was checked under a given policy and snapshot.
      - Or demand a fresh proof using a newer snapshot if they require up-to-date balances.

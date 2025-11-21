@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import './App.css';
 import { ZkpfClient, detectDefaultBase } from './api/zkpf';
-import { EpochCard, ParamsCard } from './components/StatusCards';
+import { VerifierEndpointCard } from './components/StatusCards';
 import { ProofWorkbench, type ConnectionState } from './components/ProofWorkbench';
 import { FinanceContext } from './components/FinanceContext';
 import { UsageGuide } from './components/UsageGuide';
+import { ProofBuilder } from './components/ProofBuilder';
+import type { ProofBundle } from './types/zkpf';
 
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
@@ -25,6 +27,7 @@ const HERO_HIGHLIGHTS = [
 
 function App() {
   const client = useMemo(() => new ZkpfClient(DEFAULT_BASE), []);
+  const [prefillBundle, setPrefillBundle] = useState<string | null>(null);
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -40,12 +43,6 @@ function App() {
     refetchInterval: 60 * 1000,
     retry: 1,
   });
-  const paramsError = paramsQuery.error
-    ? (paramsQuery.error as Error).message ?? 'Unable to load manifest'
-    : undefined;
-  const epochError = epochQuery.error
-    ? (epochQuery.error as Error).message ?? 'Unable to load epoch'
-    : undefined;
 
   const isConnected = !paramsQuery.isLoading && !paramsQuery.error && paramsQuery.data !== undefined;
   const isConnecting = paramsQuery.isLoading || epochQuery.isLoading;
@@ -93,29 +90,32 @@ function App() {
 
       <FinanceContext
         params={paramsQuery.data}
-        epoch={epochQuery.data}
         connectionState={connectionState}
         verifierUrl={client.baseUrl}
       />
 
       <section className="info-grid">
-        <ParamsCard
-          data={paramsQuery.data}
-          isLoading={paramsQuery.isLoading}
-          error={paramsError}
-          onRefresh={() => paramsQuery.refetch()}
-        />
-        <EpochCard
-          data={epochQuery.data}
-          isLoading={epochQuery.isLoading}
-          error={epochError}
-          onRefresh={() => epochQuery.refetch()}
+        <VerifierEndpointCard
+          endpoint={client.baseUrl}
+          connectionState={connectionState}
         />
       </section>
 
       <UsageGuide />
 
-      <ProofWorkbench client={client} connectionState={connectionState} />
+      <ProofBuilder
+        client={client}
+        connectionState={connectionState}
+        onBundleReady={(bundle: ProofBundle) =>
+          setPrefillBundle(JSON.stringify(bundle, null, 2))}
+      />
+
+      <ProofWorkbench
+        client={client}
+        connectionState={connectionState}
+        prefillBundle={prefillBundle}
+        onPrefillConsumed={() => setPrefillBundle(null)}
+      />
 
       <footer>
         <p>

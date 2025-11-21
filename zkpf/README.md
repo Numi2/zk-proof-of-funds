@@ -23,7 +23,8 @@ This workspace hosts an end-to-end proving stack for custodial proof-of-funds at
 | `zkpf-wasm` | WASM bindings for browser or mobile environments. |
 | `xtask` | Placeholder for future automation; exists to keep `cargo fmt` and `cargo test` workspace operations happy. |
 | `zkpf-zcash-orchard-wallet` | Zcash/Orchard-specific wallet backend and snapshot API. Owns a global `WalletDb` + `BlockDb` (via `zcash_client_sqlite`), loads config from env, runs a background sync loop against `lightwalletd`, and exposes `build_snapshot_for_fvk(fvk, height) -> OrchardSnapshot` backed by real Orchard notes (values, commitments, Merkle paths, and anchors) for an imported UFVK. |
-| `zkpf-zcash-orchard-circuit` | Public API for the `ZCASH_ORCHARD` rail circuit, including Orchard-specific public metadata and a `prove_orchard_pof` entrypoint. Input validation and `VerifierPublicInputs` construction (including Orchard snapshot fields) are implemented; the Halo2 Orchard circuit and proof generation are still TODO. |
+| `zkpf-zcash-orchard-circuit` | Public API for the `ZCASH_ORCHARD` rail circuit, including Orchard-specific public metadata and a `prove_orchard_pof` entrypoint. It builds `VerifierPublicInputs` in the V2_ORCHARD layout and wraps a bn256 circuit that will eventually act as an **outer recursive verifier** of an inner Orchard PoF circuit. |
+| `zkpf-orchard-inner` | Defines the data model and prover interface for the **inner Orchard proof-of-funds circuit** over the Pallas/Vesta fields. This circuit is expected to use Orchard’s own Halo2 gadgets (MerkleChip, Sinsemilla `MerklePath::calculate_root`, etc.) to enforce consensus-compatible Orchard semantics. |
 | `zkpf-rails-zcash-orchard` | Axum-based rail service exposing `POST /rails/zcash-orchard/proof-of-funds`. On startup it initializes the global Orchard wallet from env and spawns a background sync loop; each request builds a snapshot via `build_snapshot_for_fvk`, derives Orchard + policy metadata, and calls `prove_orchard_pof` to obtain a `ProofBundle` for the Orchard rail (currently still unimplemented at the circuit level). |
 
 ### Public Input Vector (custodial rail, v1)
@@ -58,10 +59,40 @@ These are represented on the Rust side via `zkpf_common::VerifierPublicInputs` p
 The backend exposes:
 
 - `GET /zkpf/policies` – returns the configured policy catalog so operators can pick a `policy_id`.
+- `POST /zkpf/prove-bundle` – runs the custodial prover over a `ZkpfCircuitInput` (attestation + public inputs) and returns a normalized `ProofBundle` JSON.
 - `POST /zkpf/verify` – verifies raw proof bytes + serialized public inputs for a specific policy using the **default custodial rail**.
 - `POST /zkpf/verify-bundle` – verifies a pre-serialized `ProofBundle` for a specific policy across **multiple rails**.
+- `POST /zkpf/attest` – re-verifies a `ProofBundle` and, when EVM attestation is configured, records an attestation in the on-chain `AttestationRegistry`.
 
 Example bodies:
+
+```jsonc
+POST /zkpf/prove-bundle
+{
+  "attestation": {
+    "balance_raw": 5_000_000_000,
+    "currency_code_int": 840,
+    "custodian_id": 77,
+    "attestation_id": 4242,
+    "issued_at": 1_705_000_000,
+    "valid_until": 1_705_086_400,
+    "account_id_hash": "d202964900000000000000000000000000000000000000000000000000000000",
+    "custodian_pubkey": { "x": [/* 32 bytes */], "y": [/* 32 bytes */] },
+    "signature": { "r": [/* 32 bytes */], "s": [/* 32 bytes */] },
+    "message_hash": [/* 32 bytes */]
+  },
+  "public": {
+    "threshold_raw": 1_000_000_000,
+    "required_currency_code": 840,
+    "required_custodian_id": 77,
+    "current_epoch": 1_705_000_000,
+    "verifier_scope_id": 314159,
+    "policy_id": 2718,
+    "nullifier": "510b…0e",
+    "custodian_pubkey_hash": "12d0…b2"
+  }
+}
+```
 
 ```jsonc
 POST /zkpf/verify
@@ -97,7 +128,27 @@ POST /zkpf/verify-bundle
 }
 ```
 
-Requests are rejected if the stored policy disagrees with the decoded public inputs, if the custodian hash does not match the allow-list (for custodial rails), if the epoch drifts beyond the configured window, or if the nullifier has already been consumed for that scope/policy pair. Structural issues (missing policy, circuit version mismatch, unknown `rail_id`, malformed public inputs) return HTTP 4xx errors with `{ "error", "error_code" }` payloads, while verification outcomes return HTTP 200 with `{ valid, error, error_code }`.
+```jsonc
+POST /zkpf/attest
+{
+  "holder_id": "treasury-desk-1234",
+  "snapshot_id": "custodial-epoch-1705000000",
+  "policy_id": 2718,
+  "bundle": { /* same shape as /zkpf/verify-bundle */ }
+}
+```
+
+Requests are rejected if the stored policy disagrees with the decoded public inputs, if the custodian hash does not match the allow-list (for custodial rails), if the epoch drifts beyond the configured window, or if the nullifier has already been consumed for that scope/policy pair. Structural issues (missing policy, circuit version mismatch, unknown `rail_id`, malformed public inputs) return HTTP 4xx errors with `{ "error", "error_code" }` payloads, while verification outcomes return HTTP 200 with `{ valid, error, error_code }`. On-chain attestation outcomes from `/zkpf/attest` always return HTTP 200 with an `AttestResponse { valid, tx_hash, attestation_id, holder_id, policy_id, snapshot_id, error, error_code }` payload.
+
+#### On-chain attestation relayer configuration
+
+The `/zkpf/attest` endpoint is backed by an optional EVM relayer that talks to the `AttestationRegistry` contract. It is enabled and configured via environment variables:
+
+- `ZKPF_ATTESTATION_ENABLED` – set to `1`/`true` to enable on-chain attestation; when unset or `0` the `/zkpf/attest` endpoint returns `valid: false` with `ATTESTATION_DISABLED`.
+- `ZKPF_ATTESTATION_RPC_URL` – HTTPS RPC URL for the target chain (e.g. a Sepolia endpoint).
+- `ZKPF_ATTESTATION_CHAIN_ID` – numeric chain ID used when signing transactions.
+- `ZKPF_ATTESTATION_REGISTRY_ADDRESS` – deployed `AttestationRegistry` contract address (hex with `0x` prefix).
+- `ZKPF_ATTESTOR_PRIVATE_KEY` – hex-encoded private key for the relayer wallet that calls `AttestationRegistry.attest`.
 
 Multi-rail behavior is controlled by a **rail registry** loaded at backend startup:
 
@@ -201,7 +252,9 @@ The current Halo2 circuit and Rust crates remain focused on custodial attestatio
 
 The workspace now includes a **Zcash Orchard rail** that is wired end-to-end into the existing
 `ProofBundle` + backend + UI flow at the API level, with a **real wallet backend** and
-Orchard-specific public-input layout. The dedicated Halo2 Orchard circuit is still pending.
+Orchard-specific public-input layout. An inner Orchard PoF circuit (over Pallas/Vesta,
+using Orchard’s MerkleChip and Sinsemilla gadgets) is specified via `zkpf-orchard-inner`
+and is intended to live in the upstream Orchard stack or an adjacent crate.
 
 - **What’s implemented**
   - `zkpf-zcash-orchard-wallet`:
@@ -239,10 +292,19 @@ Orchard-specific public-input layout. The dedicated Halo2 Orchard circuit is sti
       and `PublicMetaInputs` (policy/scope/epoch/currency).
     - Extends the global `VerifierPublicInputs` struct with Orchard snapshot fields and relies on
       `zkpf_common::PublicInputLayout::V2Orchard` for its instance layout.
-    - Provides `build_verifier_public_inputs` to construct a `VerifierPublicInputs` compatible with
-      the Orchard rail, and a `prove_orchard_pof(snapshot, fvk, holder_id, threshold_zats, orchard_meta, public_meta)`
-      entrypoint that validates inputs but still returns `OrchardRailError::NotImplemented` as a
-      placeholder for the future Halo2 Orchard circuit.
+    - Provides `build_verifier_public_inputs` and `map_inner_to_verifier_public_inputs` helpers to
+      construct `VerifierPublicInputs` compatible with the Orchard rail, and a
+      `prove_orchard_pof(snapshot, fvk, holder_id, threshold_zats, orchard_meta, public_meta)`
+      entrypoint that currently wraps a simple bn256 Halo2 circuit while the recursive
+      integration with the inner Orchard PoF circuit is completed.
+  - `zkpf-orchard-inner`:
+    - Defines `OrchardInnerPublicInputs`, `OrchardPofNoteWitness`, and `OrchardPofInput` as the
+      canonical public inputs and witnesses for an inner Orchard PoF circuit.
+    - Specifies an `OrchardPofProver` trait whose implementations are expected to:
+      - Convert `OrchardPofNoteWitness` Merkle paths into `halo2_gadgets::sinsemilla::merkle::MerklePath`.
+      - Use Orchard’s MerkleChip + Sinsemilla gadgets to recompute the Merkle root via
+        `MerklePath::calculate_root` under the consensus Orchard MerkleCRH.
+      - Enforce UFVK ownership and the `Σ v_i ≥ threshold_zats` inequality inside a Pallas-based Halo2 circuit.
   - `zkpf-rails-zcash-orchard`:
     - Exposes `POST /rails/zcash-orchard/proof-of-funds`, accepting:
       - `holder_id`, `fvk` (UFVK string), `threshold_zats`, `snapshot_height`,
@@ -257,19 +319,25 @@ Orchard-specific public-input layout. The dedicated Halo2 Orchard circuit is sti
         eventually obtain a `ProofBundle` tagged for the Orchard rail once the circuit is available.
 
 - **What’s left to reach a fully working ZCASH_ORCHARD rail**
-  - **Orchard Halo2 circuit + artifacts**
-    - Design and implement a new Halo2 circuit for Orchard PoF that:
-      - Recomputes each note commitment and verifies inclusion under the provided Orchard anchor.
-      - Enforces ownership via the Orchard component of the FVK.
-      - Sums note values and enforces `Σ v_i ≥ threshold_zats`.
-      - Computes/validates a holder binding (e.g. `H(holder_id || fvk_bytes)`) and a PoF nullifier
-        compatible with the existing anti-replay semantics.
-      - Uses the V2 Orchard public-input layout (custodial prefix + Orchard snapshot fields) in a
-        new `circuit_version`.
-    - Generate proving/verifying keys and integrate them into the artifact/manifest tooling in
-      `zkpf-common` / `zkpf-test-fixtures`.
-    - Replace `OrchardRailError::NotImplemented` in `prove_orchard_pof` with real proof generation
-      and `ProofBundle` construction for the Orchard rail.
+  - **Inner Orchard Halo2 circuit + artifacts (Pallas/Vesta)**
+    - Implement the inner Orchard PoF circuit (in the Orchard repo or an adjacent crate) that:
+      - Recomputes each note commitment and verifies inclusion under the provided Orchard anchor
+        using `halo2_gadgets::sinsemilla::merkle::MerklePath::calculate_root` and `MerkleCRH`.
+      - Enforces ownership via the Orchard component of the UFVK.
+      - Sums note values and enforces `Σ v_i ≥ threshold_zats`, populating `sum_zats`.
+      - Computes/validates a holder binding compatible with the existing anti-replay semantics.
+      - Exposes its public inputs via `OrchardInnerPublicInputs`.
+    - Generate inner proving/verifying keys and document their artifact locations.
+  - **Outer bn256 recursive circuit + artifacts**
+    - Update `zkpf-zcash-orchard-circuit` to act purely as an outer recursive verifier that:
+      - Takes an inner Orchard PoF proof + `OrchardInnerPublicInputs` as witnesses.
+      - Uses a Halo2 recursion gadget over bn256 to verify the inner proof.
+      - Maps the inner public inputs into `VerifierPublicInputs` via
+        `map_inner_to_verifier_public_inputs`, enforcing consistency with the Orchard anchor,
+        height, threshold, and holder binding.
+    - Generate outer proving/verifying keys and integrate them into the artifact/manifest tooling in
+      `zkpf-common` / `zkpf-test-fixtures`, and wire the Orchard rail’s manifest entry to those
+      artifacts via `ZKPF_MULTI_RAIL_MANIFEST_PATH` / `ZKPF_ORCHARD_MANIFEST_PATH`.
 
 Until the Orchard circuit is implemented, the Orchard rail code is a **spec-backed scaffold with a
 real wallet backend**: the types, crate boundaries, HTTP surface, wallet sync, and Merkle

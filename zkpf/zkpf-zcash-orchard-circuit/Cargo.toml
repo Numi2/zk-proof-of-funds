@@ -7,8 +7,11 @@ edition = "2021"
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
+once_cell = "1.19"
+rand = "0.8"
 zkpf-common = { path = "../zkpf-common" }
 zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
+zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }
 
 # Halo2 / circuit dependencies (reuse the same stack as zkpf-circuit).
 halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }

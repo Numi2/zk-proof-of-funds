@@ -171,3 +171,51 @@ export function EpochCard({ data, isLoading, error, onRefresh }: EpochCardProps)
   );
 }
 
+interface VerifierEndpointCardProps {
+  endpoint: string;
+  connectionState: 'idle' | 'connecting' | 'connected' | 'error';
+}
+
+export function VerifierEndpointCard({ endpoint, connectionState }: VerifierEndpointCardProps) {
+  const formatEndpoint = (url: string): string => {
+    if (!url) return 'n/a';
+    try {
+      const parsed = new URL(url);
+      const host = parsed.host;
+      // Replace zkpf.vercel.app with zkpf.dev
+      return host === 'zkpf.vercel.app' ? 'zkpf.dev' : host;
+    } catch {
+      const host = url.replace(/^https?:\/\//, '');
+      return host === 'zkpf.vercel.app' ? 'zkpf.dev' : host;
+    }
+  };
+
+  const isConnected = connectionState === 'connected';
+  const isConnecting = connectionState === 'connecting';
+  const hasError = connectionState === 'error';
+  const displayDomain = formatEndpoint(endpoint);
+
+  return (
+    <div className={`card verifier-endpoint-card ${isConnected ? 'connected' : hasError ? 'error' : ''}`}>
+      <header>
+        <p className="eyebrow">Infrastructure</p>
+        <h2>Verifier endpoint</h2>
+      </header>
+      <div className="endpoint-content">
+        <div className="endpoint-domain">
+          <span className="endpoint-icon">
+            {isConnected ? '✓' : isConnecting ? '⟳' : hasError ? '⚠' : '•'}
+          </span>
+          <span className="endpoint-text">{displayDomain}</span>
+        </div>
+        <div className={`endpoint-status ${isConnected ? 'status-online' : hasError ? 'status-offline' : 'status-pending'}`}>
+          <span className="status-indicator"></span>
+          <span className="status-label">
+            {isConnected ? 'Online for counterparties' : hasError ? 'Endpoint unreachable' : 'Negotiating connection'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, ZkpfClient } from '../api/zkpf';
-import type { PolicyDefinition, ProofBundle, VerifyResponse } from '../types/zkpf';
+import type { AttestResponse, ProofBundle, VerifyResponse } from '../types/zkpf';
 import { publicInputsToBytes } from '../utils/bytes';
 import { parseProofBundle } from '../utils/parse';
 import { BundleSummary } from './BundleSummary';
@@ -25,6 +25,8 @@ type VerificationMode = 'bundle' | 'raw';
 interface Props {
   client: ZkpfClient;
   connectionState: ConnectionState;
+  prefillBundle?: string | null;
+  onPrefillConsumed?: () => void;
 }
 
 function showToast(message: string, type: 'success' | 'error' = 'success') {
@@ -70,9 +72,20 @@ const assetRailCopy: Record<
     ],
     endpointDetail: 'Proof sourced from fiat banking rails.',
   },
+  orchard: {
+    label: 'Zcash Orchard (shielded)',
+    description:
+      'Non-custodial proof-of-funds over the Zcash Orchard shielded pool. Anchors, Merkle paths, and UFVK ownership are enforced in the inner Orchard circuit.',
+    checklist: [
+      'Bundle UFVK + Orchard notes into an Orchard proof-of-funds rail (ZCASH_ORCHARD).',
+      'Snapshot height and Orchard anchor must match your wallet / lightwalletd view.',
+      'Holder binding ties the UFVK to policy/scope/epoch without exposing raw keys.',
+    ],
+    endpointDetail: 'Proof sourced from Zcash Orchard shielded funds.',
+  },
 };
 
-export function ProofWorkbench({ client, connectionState }: Props) {
+export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefillConsumed }: Props) {
   const textareaId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [rawInput, setRawInput] = useState('');
@@ -85,6 +98,11 @@ export function ProofWorkbench({ client, connectionState }: Props) {
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [assetRail, setAssetRail] = useState<AssetRail>('onchain');
+  const [holderId, setHolderId] = useState('');
+  const [snapshotId, setSnapshotId] = useState('');
+  const [attestLoading, setAttestLoading] = useState(false);
+  const [attestError, setAttestError] = useState<string | null>(null);
+  const [attestResult, setAttestResult] = useState<AttestResponse | null>(null);
 
   const policiesQuery = useQuery({
     queryKey: ['policies', client.baseUrl],
@@ -115,30 +133,69 @@ export function ProofWorkbench({ client, connectionState }: Props) {
     setVerifyError(null);
   }, [selectedPolicyId]);
 
+  const handleRawInput = useCallback(
+    (value: string) => {
+      setRawInput(value);
+      setVerifyResponse(null);
+      setVerifyError(null);
+      setAttestResult(null);
+      setAttestError(null);
+      if (!value.trim()) {
+        setBundle(null);
+        setParseError(null);
+        setHolderId('');
+        setSnapshotId('');
+        return;
+      }
+      try {
+        const parsed = parseProofBundle(value);
+        setBundle(parsed);
+        // Auto-select Orchard rail context when the bundle declares it explicitly.
+        if (parsed.rail_id === 'ZCASH_ORCHARD') {
+          setAssetRail('orchard');
+        }
+        setParseError(null);
+      } catch (err) {
+        setBundle(null);
+        setParseError((err as Error).message);
+      }
+    },
+    [setAssetRail],
+  );
+
+  useEffect(() => {
+    if (!prefillBundle) return;
+    handleRawInput(prefillBundle);
+    onPrefillConsumed?.();
+  }, [prefillBundle, handleRawInput, onPrefillConsumed]);
+
   const selectedPolicy = selectedPolicyId
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
     : null;
-  const policyWarnings =
-    bundle && selectedPolicy ? computePolicyMismatches(selectedPolicy, bundle) : [];
 
-  const handleRawInput = useCallback((value: string) => {
-    setRawInput(value);
-    setVerifyResponse(null);
-    setVerifyError(null);
-    if (!value.trim()) {
-      setBundle(null);
-      setParseError(null);
+  // Default snapshot identifier for custodial proofs derived from the bundle epoch.
+  useEffect(() => {
+    if (!bundle) {
+      setSnapshotId('');
+      setAttestResult(null);
       return;
     }
-    try {
-      const parsed = parseProofBundle(value);
-      setBundle(parsed);
-      setParseError(null);
-    } catch (err) {
-      setBundle(null);
-      setParseError((err as Error).message);
+    if (!snapshotId) {
+      const epoch = bundle.public_inputs.current_epoch;
+      setSnapshotId(`custodial-epoch-${epoch}`);
     }
-  }, []);
+  }, [bundle, snapshotId]);
+
+  // If a bundle is loaded and it declares a policy_id that exists in the currently
+  // loaded policies, auto-align the selection to that policy to reduce confusion.
+  useEffect(() => {
+    if (!bundle || !policies.length) return;
+    const bundlePolicyId = bundle.public_inputs.policy_id;
+    const exists = policies.some((p) => p.policy_id === bundlePolicyId);
+    if (exists && selectedPolicyId !== bundlePolicyId) {
+      setSelectedPolicyId(bundlePolicyId);
+    }
+  }, [bundle, policies, selectedPolicyId]);
 
   const handleLoadSample = useCallback(async () => {
     try {
@@ -203,22 +260,21 @@ export function ProofWorkbench({ client, connectionState }: Props) {
 
   const handleVerify = async () => {
     if (!bundle) return;
-    if (!selectedPolicyId) {
-      setVerifyError('Select a policy before verifying');
-      return;
-    }
+    const policyIdForVerify = bundle.public_inputs.policy_id;
     setIsVerifying(true);
     setVerifyError(null);
     setVerifyResponse(null);
+    setAttestResult(null);
+    setAttestError(null);
     try {
       const response =
         mode === 'bundle'
-          ? await client.verifyBundle(selectedPolicyId, bundle)
+          ? await client.verifyBundle(policyIdForVerify, bundle)
           : await client.verifyProof({
               circuit_version: bundle.circuit_version,
               proof: bundle.proof,
               public_inputs: publicInputsToBytes(bundle.public_inputs),
-              policy_id: selectedPolicyId,
+              policy_id: policyIdForVerify,
             });
       setVerifyResponse(response);
     } catch (err) {
@@ -234,9 +290,20 @@ export function ProofWorkbench({ client, connectionState }: Props) {
     setParseError(null);
     setVerifyResponse(null);
     setVerifyError(null);
+    setHolderId('');
+    setSnapshotId('');
+    setAttestResult(null);
+    setAttestError(null);
   };
 
   const selectedRail = assetRailCopy[assetRail];
+
+  const canAttest =
+    !!bundle &&
+    !!verifyResponse?.valid &&
+    !isVerifying &&
+    holderId.trim().length > 0 &&
+    snapshotId.trim().length > 0;
 
   const flowSteps = useMemo<FlowStep[]>(() => {
     const connectionStep: FlowStep = {
@@ -313,7 +380,7 @@ export function ProofWorkbench({ client, connectionState }: Props) {
           : isVerifying
             ? 'Verifier is running…'
             : bundle
-              ? 'Ready to submit once you pick a policy.'
+              ? 'Ready to submit.'
               : 'Waiting for bundle.',
       detail:
         verifyResponse && !verifyResponse.valid && verifyResponse.error_code
@@ -346,6 +413,34 @@ export function ProofWorkbench({ client, connectionState }: Props) {
     verifyError,
     verifyResponse,
   ]);
+
+  const handleAttest = async () => {
+    if (!bundle) return;
+    const policyIdForAttest = bundle.public_inputs.policy_id;
+    setAttestLoading(true);
+    setAttestError(null);
+    setAttestResult(null);
+    try {
+      const response = await client.attestOnChain({
+        holder_id: holderId.trim(),
+        snapshot_id: snapshotId.trim(),
+        policy_id: policyIdForAttest,
+        bundle,
+      });
+      setAttestResult(response);
+      showToast(
+        response.valid ? 'On-chain attestation submitted' : 'On-chain attestation failed',
+        response.valid ? 'success' : 'error',
+      );
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : (err as Error).message ?? 'Unknown error';
+      setAttestError(message);
+      showToast('On-chain attestation request failed', 'error');
+    } finally {
+      setAttestLoading(false);
+    }
+  };
 
   return (
     <section className="proof-workbench card">
@@ -453,6 +548,16 @@ export function ProofWorkbench({ client, connectionState }: Props) {
                 />
                 <span>Fiat proof</span>
               </label>
+              <label>
+                <input
+                  type="radio"
+                  name="asset-rail"
+                  value="orchard"
+                  checked={assetRail === 'orchard'}
+                  onChange={() => setAssetRail('orchard')}
+                />
+                <span>Zcash Orchard PoF</span>
+              </label>
             </div>
             <div className="asset-rail-body">
               <p className="asset-rail-label">{selectedRail.label}</p>
@@ -529,17 +634,12 @@ export function ProofWorkbench({ client, connectionState }: Props) {
                 <strong>No policies available.</strong> Configure the verifier first by updating the policies configuration.
               </div>
             )}
-            {policyWarnings.length > 0 && (
-              <div className="warning">
-                <strong>Policy mismatch detected:</strong> Bundle public inputs disagree with this policy for: <strong>{policyWarnings.join(', ')}</strong>.
-              </div>
-            )}
           </div>
           <div className="actions">
             <button
               type="button"
               onClick={handleVerify}
-              disabled={isVerifying || !selectedPolicyId || policiesQuery.isLoading}
+              disabled={isVerifying || policiesQuery.isLoading || !bundle}
               className="verify-button"
             >
               {isVerifying ? (
@@ -564,6 +664,67 @@ export function ProofWorkbench({ client, connectionState }: Props) {
             />
           )}
           {verifyError && <p className="error">{verifyError}</p>}
+          <div className="onchain-attestation-panel">
+            <div className="onchain-attestation-header">
+              <h3>On-chain attestation (optional)</h3>
+              <p className="muted small">
+                Publish a successful proof-of-funds verification to the configured EVM{' '}
+                <code>AttestationRegistry</code>. Identifiers are hashed to <code>bytes32</code>{' '}
+                on the backend before calling the contract.
+              </p>
+            </div>
+            <div className="onchain-attestation-grid">
+              <label className="field">
+                <span>Holder ID</span>
+                <input
+                  type="text"
+                  value={holderId}
+                  onChange={(event) => setHolderId(event.target.value)}
+                  placeholder="e.g. hashed KYC record or internal treasury account code"
+                />
+              </label>
+              <label className="field">
+                <span>Snapshot ID</span>
+                <input
+                  type="text"
+                  value={snapshotId}
+                  onChange={(event) => setSnapshotId(event.target.value)}
+                  placeholder={`custodial-epoch-${bundle.public_inputs.current_epoch}`}
+                />
+              </label>
+            </div>
+            <div className="actions">
+              <button
+                type="button"
+                onClick={handleAttest}
+                disabled={!canAttest || attestLoading}
+                className="verify-button secondary"
+              >
+                {attestLoading ? (
+                  <>
+                    <span className="spinner"></span>
+                    <span>Publishing attestation…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>↗</span>
+                    <span>Publish attestation on-chain</span>
+                  </>
+                )}
+              </button>
+            </div>
+            {attestError && (
+              <div className="error-message">
+                <span className="error-icon">⚠️</span>
+                <span>{attestError}</span>
+              </div>
+            )}
+            {attestResult && (
+              <AttestationBanner
+                response={attestResult}
+              />
+            )}
+          </div>
           <BundleSummary bundle={bundle} assetRail={assetRail} />
         </>
       )}
@@ -609,6 +770,12 @@ function VerificationBanner({
   railId?: string;
 }) {
   const intent = response.valid ? 'success' : 'error';
+  const railLabel =
+    assetRail === 'orchard'
+      ? 'Zcash Orchard rail'
+      : assetRail === 'onchain'
+        ? 'On-chain rail'
+        : 'Fiat rail';
   return (
     <div className={`verification-banner ${intent}`}>
       <div className="verification-content">
@@ -619,7 +786,7 @@ function VerificationBanner({
           <h3>{response.valid ? 'Proof accepted' : 'Proof rejected'}</h3>
           <p className="muted small">
             {endpoint === 'bundle' ? '/zkpf/verify-bundle' : '/zkpf/verify'} • Circuit version{' '}
-            {response.circuit_version} • {assetRail === 'onchain' ? 'On-chain rail' : 'Fiat rail'}
+            {response.circuit_version} • {railLabel}
             {railId && (
               <>
                 {' '}
@@ -641,16 +808,45 @@ function VerificationBanner({
   );
 }
 
-function computePolicyMismatches(policy: PolicyDefinition, bundle: ProofBundle): string[] {
-  const inputs = bundle.public_inputs;
-  const mismatches: string[] = [];
-  if (inputs.threshold_raw !== policy.threshold_raw) mismatches.push('threshold_raw');
-  if (inputs.required_currency_code !== policy.required_currency_code)
-    mismatches.push('required_currency_code');
-  if (inputs.required_custodian_id !== policy.required_custodian_id)
-    mismatches.push('required_custodian_id');
-  if (inputs.verifier_scope_id !== policy.verifier_scope_id) mismatches.push('verifier_scope_id');
-  if (inputs.policy_id !== policy.policy_id) mismatches.push('policy_id');
-  return mismatches;
+function AttestationBanner({ response }: { response: AttestResponse }) {
+  const intent = response.valid ? 'success' : 'error';
+  return (
+    <div className={`verification-banner ${intent}`}>
+      <div className="verification-content">
+        <div className="verification-icon">{response.valid ? '✓' : '✗'}</div>
+        <div>
+          <h3>{response.valid ? 'On-chain attestation recorded' : 'On-chain attestation failed'}</h3>
+          <p className="muted small">
+            Holder&nbsp;
+            <span className="mono">{response.holder_id}</span> • Policy{' '}
+            <span className="mono">{response.policy_id}</span> • Snapshot{' '}
+            <span className="mono">{response.snapshot_id}</span>
+          </p>
+        </div>
+      </div>
+      <div className="verification-error">
+        {response.tx_hash && (
+          <span className="mono">
+            Tx hash: {response.tx_hash}
+          </span>
+        )}
+        {response.attestation_id && (
+          <span className="mono">
+            Attestation ID: {response.attestation_id}
+          </span>
+        )}
+        {response.chain_id != null && (
+          <span className="mono">
+            Chain ID: {response.chain_id}
+          </span>
+        )}
+        {!response.valid && response.error && (
+          <span className="mono">
+            Error: {response.error}
+            {response.error_code && ` (code: ${response.error_code})`}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
-

@@ -1,2 +1,2 @@
-export type AssetRail = 'onchain' | 'fiat';
+export type AssetRail = 'onchain' | 'fiat' | 'orchard';
 

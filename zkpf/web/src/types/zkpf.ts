@@ -71,3 +71,61 @@ export interface VerifyRequest {
   policy_id: number;
 }
 
+export interface Secp256k1Pubkey {
+  x: ByteArray;
+  y: ByteArray;
+}
+
+export interface EcdsaSignature {
+  r: ByteArray;
+  s: ByteArray;
+}
+
+export interface AttestationWitness {
+  balance_raw: number;
+  currency_code_int: number;
+  custodian_id: number;
+  attestation_id: number;
+  issued_at: number;
+  valid_until: number;
+  account_id_hash: string;
+  custodian_pubkey: Secp256k1Pubkey;
+  signature: EcdsaSignature;
+  message_hash: ByteArray;
+}
+
+export interface CircuitPublicInputs {
+  threshold_raw: number;
+  required_currency_code: number;
+  required_custodian_id: number;
+  current_epoch: number;
+  verifier_scope_id: number;
+  policy_id: number;
+  nullifier: string;
+  custodian_pubkey_hash: string;
+}
+
+export interface CircuitInput {
+  attestation: AttestationWitness;
+  public: CircuitPublicInputs;
+}
+
+export interface AttestRequest {
+  holder_id: string;
+  snapshot_id: string;
+  policy_id: number;
+  bundle: ProofBundle;
+}
+
+export interface AttestResponse {
+  valid: boolean;
+  tx_hash: string | null;
+  attestation_id: string | null;
+  chain_id: number | null;
+  holder_id: string;
+  policy_id: number;
+  snapshot_id: string;
+  error: string | null;
+  error_code: string | null;
+}
+

@@ -14,13 +14,16 @@ use axum::{
     Json, Router,
 };
 use once_cell::sync::Lazy;
+use sha3::{Digest, Keccak256};
 use sled::Db;
 use tokio::net::TcpListener;
+use zkpf_circuit::ZkpfCircuitInput;
 use zkpf_common::{
     allowlisted_custodian_hash_bytes, deserialize_verifier_public_inputs, load_prover_artifacts,
-    load_verifier_artifacts, public_inputs_to_instances_with_layout, ProofBundle, ProverArtifacts,
-    PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
+    load_verifier_artifacts, public_inputs_to_instances_with_layout, public_to_verifier_inputs,
+    ProofBundle, ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
 };
+use zkpf_prover::prove_bundle;
 use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
 use zkpf_verifier::verify;
 
@@ -34,6 +37,11 @@ const DEFAULT_POLICY_PATH: &str = "config/policies.json";
 const NULLIFIER_DB_ENV: &str = "ZKPF_NULLIFIER_DB";
 const DEFAULT_NULLIFIER_DB_PATH: &str = "data/nullifiers.db";
 const MULTIRAIL_MANIFEST_ENV: &str = "ZKPF_MULTI_RAIL_MANIFEST_PATH";
+const ATTESTATION_ENABLED_ENV: &str = "ZKPF_ATTESTATION_ENABLED";
+const ATTESTATION_RPC_URL_ENV: &str = "ZKPF_ATTESTATION_RPC_URL";
+const ATTESTATION_CHAIN_ID_ENV: &str = "ZKPF_ATTESTATION_CHAIN_ID";
+const ATTESTATION_REGISTRY_ADDRESS_ENV: &str = "ZKPF_ATTESTATION_REGISTRY_ADDRESS";
+const ATTESTOR_PRIVATE_KEY_ENV: &str = "ZKPF_ATTESTOR_PRIVATE_KEY";
 const NULLIFIER_SPENT_ERR: &str = "nullifier already spent for this scope/policy";
 const CODE_CIRCUIT_VERSION: &str = "CIRCUIT_VERSION_MISMATCH";
 const CODE_PUBLIC_INPUTS: &str = "PUBLIC_INPUTS_INVALID";
@@ -45,11 +53,16 @@ const CODE_NULLIFIER_REPLAY: &str = "NULLIFIER_REPLAY";
 const CODE_NULLIFIER_STORE_ERROR: &str = "NULLIFIER_STORE_ERROR";
 const CODE_PROOF_INVALID: &str = "PROOF_INVALID";
 const CODE_RAIL_UNKNOWN: &str = "RAIL_UNKNOWN";
+const CODE_ATTESTATION_DISABLED: &str = "ATTESTATION_DISABLED";
+const CODE_ATTESTATION_VERIFICATION_FAILED: &str = "ATTESTATION_VERIFICATION_FAILED";
+const CODE_ATTESTATION_ONCHAIN_ERROR: &str = "ATTESTATION_ONCHAIN_ERROR";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
 static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
 static RAILS: Lazy<RailRegistry> = Lazy::new(RailRegistry::from_env);
+static ATTESTATION_SERVICE: Lazy<Option<OnchainAttestationService>> =
+    Lazy::new(OnchainAttestationService::from_env);
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct RailManifestEntry {
@@ -176,6 +189,47 @@ impl RailRegistry {
         } else {
             self.rails.get(rail_id)
         }
+    }
+}
+
+#[derive(Clone)]
+struct OnchainAttestationService;
+
+#[derive(Clone)]
+struct OnchainAttestationResult {
+    tx_hash: String,
+    attestation_id: String,
+    chain_id: u64,
+}
+
+impl OnchainAttestationService {
+    fn from_env() -> Option<Self> {
+        let enabled = env::var(ATTESTATION_ENABLED_ENV)
+            .ok()
+            .map(|v| v.to_ascii_lowercase())
+            .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+
+        if enabled {
+            eprintln!(
+                "ATTESTATION_ENABLED is set, but the lightweight binary build does not ship \
+                 the on-chain attestation client. Disable {} or build with the full feature \
+                 set to submit attestations on-chain.",
+                ATTESTATION_ENABLED_ENV
+            );
+        }
+
+        None
+    }
+
+    async fn attest(
+        &self,
+        _holder_id: [u8; 32],
+        _policy_id: u64,
+        _snapshot_id: [u8; 32],
+        _nullifier: [u8; 32],
+    ) -> Result<OnchainAttestationResult, String> {
+        Err("on-chain attestation is not available in this build".into())
     }
 }
 
@@ -307,8 +361,10 @@ pub fn app_router(state: AppState) -> Router {
         .route("/zkpf/policies", get(list_policies))
         .route("/zkpf/params", get(get_params))
         .route("/zkpf/epoch", get(get_epoch))
+        .route("/zkpf/prove-bundle", post(prove_bundle_handler))
         .route("/zkpf/verify", post(verify_handler))
         .route("/zkpf/verify-bundle", post(verify_bundle_handler))
+        .route("/zkpf/attest", post(attest_handler))
         .with_state(state)
 }
 
@@ -395,6 +451,64 @@ impl VerifyResponse {
 struct VerifyBundleRequest {
     policy_id: u64,
     bundle: ProofBundle,
+}
+
+#[derive(serde::Deserialize)]
+struct AttestRequest {
+    holder_id: String,
+    snapshot_id: String,
+    policy_id: u64,
+    bundle: ProofBundle,
+}
+
+#[derive(Clone)]
+struct AttestResponseBase {
+    holder_id: String,
+    policy_id: u64,
+    snapshot_id: String,
+}
+
+#[derive(serde::Serialize)]
+struct AttestResponse {
+    valid: bool,
+    tx_hash: Option<String>,
+    attestation_id: Option<String>,
+    chain_id: Option<u64>,
+    holder_id: String,
+    policy_id: u64,
+    snapshot_id: String,
+    error: Option<String>,
+    error_code: Option<&'static str>,
+}
+
+impl AttestResponse {
+    fn success(base: AttestResponseBase, tx_hash: String, attestation_id: String, chain_id: u64) -> Self {
+        Self {
+            valid: true,
+            tx_hash: Some(tx_hash),
+            attestation_id: Some(attestation_id),
+            chain_id: Some(chain_id),
+            holder_id: base.holder_id,
+            policy_id: base.policy_id,
+            snapshot_id: base.snapshot_id,
+            error: None,
+            error_code: None,
+        }
+    }
+
+    fn failure(base: AttestResponseBase, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            tx_hash: None,
+            attestation_id: None,
+            chain_id: None,
+            holder_id: base.holder_id,
+            policy_id: base.policy_id,
+            snapshot_id: base.snapshot_id,
+            error: Some(message.into()),
+            error_code: Some(code),
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -576,6 +690,170 @@ async fn verify_bundle_handler(
     Ok(Json(response))
 }
 
+async fn attest_handler(
+    State(state): State<AppState>,
+    Json(req): Json<AttestRequest>,
+) -> Json<AttestResponse> {
+    let base = AttestResponseBase {
+        holder_id: req.holder_id.clone(),
+        policy_id: req.policy_id,
+        snapshot_id: req.snapshot_id.clone(),
+    };
+
+    let service = match ATTESTATION_SERVICE.as_ref() {
+        Some(service) => service,
+        None => {
+            return Json(AttestResponse::failure(
+                base,
+                CODE_ATTESTATION_DISABLED,
+                format!(
+                    "on-chain attestation is not configured; set {}=1 and related environment variables",
+                    ATTESTATION_ENABLED_ENV
+                ),
+            ))
+        }
+    };
+
+    let rail = match RAILS.get(&req.bundle.rail_id) {
+        Some(rail) => rail,
+        None => {
+            return Json(AttestResponse::failure(
+                base,
+                CODE_RAIL_UNKNOWN,
+                format!(
+                    "unknown rail_id '{}'; configure it via {}",
+                    req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
+                ),
+            ))
+        }
+    };
+
+    if req.bundle.circuit_version != rail.circuit_version {
+        return Json(AttestResponse::failure(
+            base,
+            CODE_CIRCUIT_VERSION,
+            format!(
+                "circuit_version mismatch for rail {}: expected {}, got {}",
+                if req.bundle.rail_id.is_empty() {
+                    DEFAULT_RAIL_ID
+                } else {
+                    &req.bundle.rail_id
+                },
+                rail.circuit_version,
+                req.bundle.circuit_version
+            ),
+        ));
+    }
+
+    let policy = match state.policy_store().get(req.policy_id) {
+        Some(policy) => policy,
+        None => {
+            return Json(AttestResponse::failure(
+                base,
+                CODE_POLICY_NOT_FOUND,
+                format!("policy_id {} not found", req.policy_id),
+            ))
+        }
+    };
+
+    let verification = match process_verification(
+        &state,
+        rail,
+        &policy,
+        &req.bundle.public_inputs,
+        &req.bundle.proof,
+    ) {
+        Ok(response) => response,
+        Err(err) => {
+            return Json(AttestResponse::failure(base, err.code, err.message));
+        }
+    };
+
+    if !verification.valid {
+        let code = verification
+            .error_code
+            .unwrap_or(CODE_ATTESTATION_VERIFICATION_FAILED);
+        let message = verification
+            .error
+            .unwrap_or_else(|| "verification failed".to_string());
+        return Json(AttestResponse::failure(base, code, message));
+    }
+
+    // At this point the bundle has been fully verified and the nullifier recorded.
+    let holder_hash = keccak256(req.holder_id.as_bytes());
+    let snapshot_hash = keccak256(req.snapshot_id.as_bytes());
+
+    let mut holder_id_bytes = [0u8; 32];
+    holder_id_bytes.copy_from_slice(&holder_hash);
+
+    let mut snapshot_id_bytes = [0u8; 32];
+    snapshot_id_bytes.copy_from_slice(&snapshot_hash);
+
+    let nullifier = req.bundle.public_inputs.nullifier;
+
+    let attest_result = match service
+        .attest(holder_id_bytes, req.policy_id, snapshot_id_bytes, nullifier)
+        .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            return Json(AttestResponse::failure(
+                base,
+                CODE_ATTESTATION_ONCHAIN_ERROR,
+                err,
+            ))
+        }
+    };
+
+    Json(AttestResponse::success(
+        base,
+        attest_result.tx_hash,
+        attest_result.attestation_id,
+        attest_result.chain_id,
+    ))
+}
+
+async fn prove_bundle_handler(
+    State(state): State<AppState>,
+    Json(input): Json<ZkpfCircuitInput>,
+) -> Result<Json<ProofBundle>, ApiError> {
+    let verifier_inputs = public_to_verifier_inputs(&input.public);
+
+    let policy = state
+        .policy_store()
+        .get(verifier_inputs.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(verifier_inputs.policy_id))?;
+
+    if let Err(err) = policy.validate_against(&verifier_inputs) {
+        return Err(ApiError::bad_request(CODE_POLICY_MISMATCH, err));
+    }
+
+    if let Err(err) = validate_custodian_hash(&verifier_inputs) {
+        return Err(ApiError::bad_request(CODE_CUSTODIAN_MISMATCH, err));
+    }
+
+    if let Err(err) = validate_epoch(state.epoch_config(), &verifier_inputs) {
+        return Err(ApiError::bad_request(CODE_EPOCH_DRIFT, err));
+    }
+
+    let nullifier_key = NullifierKey::from_inputs(&verifier_inputs);
+    match state.nullifier_store().already_spent(&nullifier_key) {
+        Ok(true) => {
+            return Err(ApiError::bad_request(
+                CODE_NULLIFIER_REPLAY,
+                NULLIFIER_SPENT_ERR,
+            ))
+        }
+        Ok(false) => {}
+        Err(err) => return Err(ApiError::nullifier_store(err)),
+    }
+
+    let artifacts = state.artifacts();
+    let bundle = prove_bundle(&artifacts.params, &artifacts.pk, input);
+
+    Ok(Json(bundle))
+}
+
 fn process_verification(
     state: &AppState,
     rail: &RailVerifier,
@@ -738,6 +1016,15 @@ fn parse_env_u64(var: &str) -> Option<u64> {
     env::var(var)
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
+}
+
+fn keccak256(input: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(input);
+    let digest = hasher.finalize();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
 }
 
 async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {

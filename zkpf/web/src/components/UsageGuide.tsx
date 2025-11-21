@@ -1,16 +1,16 @@
 const steps = [
   {
     title: 'Sync the verifier context',
-    summary: 'Refresh the manifest + epoch cards to confirm circuit + clock alignment.',
+    summary: 'The system automatically syncs the verifier manifest and epoch to confirm circuit + clock alignment.',
     detail:
-      'Use the Artifacts and Epoch guardrail cards above to pull /zkpf/params and /zkpf/epoch. Keep these receipts for your ops runbook.',
+      'The verifier context is automatically synchronized in the background. The system pulls /zkpf/params and /zkpf/epoch to ensure proper alignment.',
     checklist: ['Confirm the manifest + circuit versions match the prover you are using.', 'Note the epoch drift window.'],
   },
   {
     title: 'Load a proof bundle',
     summary: 'Paste JSON or drag-and-drop the bundle exported by your custody system.',
     detail:
-      'Bundles never leave the browser until you click Send to verifier. Use the rail toggle to note whether the proof covers on-chain wallets or fiat settlement accounts.',
+      'Bundles never leave the browser until you click Send to verifier. Use the rail toggle to note whether the proof covers Zcash Orchard shielded funds, other on-chain wallets, or fiat settlement accounts.',
     checklist: [
       'Normalize byte arrays to the supported JSON encodings.',
       'Clear the input anytime with the ghost button.',
@@ -64,9 +64,9 @@ const valuePillars = [
     bullets: ['Deterministic bundle schema.', 'Manifest + epoch provenance.', 'Drop artifacts into existing GRC tools.'],
   },
   {
-    title: 'Dual-rail coverage',
+    title: 'Multi-rail coverage',
     body:
-      'One workflow addresses both digital asset reserves and fiat treasury balances, so finance, compliance, and crypto-ops can share the same tool.',
+      'One workflow addresses Orchard shielded balances, other digital asset reserves, and fiat treasury balances, so finance, compliance, and crypto-ops can share the same tool.',
     bullets: ['Rail toggle documents provenance.', 'Policy metadata handles ISO + custody IDs.', 'Single verifier receipt for both rails.'],
   },
 ];

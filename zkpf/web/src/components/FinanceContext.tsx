@@ -1,12 +1,10 @@
 import type { ConnectionState } from './ProofWorkbench';
-import type { EpochResponse, ParamsResponse } from '../types/zkpf';
-import { formatEpoch } from '../utils/bytes';
+import type { ParamsResponse } from '../types/zkpf';
 
 type Intent = 'ready' | 'pending' | 'blocked' | 'info';
 
 interface FinanceContextProps {
   params?: ParamsResponse;
-  epoch?: EpochResponse;
   connectionState: ConnectionState;
   verifierUrl: string;
 }
@@ -91,41 +89,7 @@ const journeyTemplate: JourneyTemplate[] = [
   },
 ];
 
-export function FinanceContext({ params, epoch, connectionState, verifierUrl }: FinanceContextProps) {
-  const metrics = [
-    {
-      id: 'circuit',
-      label: 'Circuit manifest',
-      value: params ? `v${params.circuit_version}` : 'Awaiting manifest',
-      detail: params ? `Manifest v${params.manifest_version}` : 'Call /zkpf/params to sync artifacts',
-      intent: params ? ('ready' as Intent) : ('pending' as Intent),
-    },
-    {
-      id: 'epoch',
-      label: 'Epoch guardrail',
-      value: epoch ? `${epoch.max_drift_secs}s drift window` : 'Not synced',
-      detail: epoch ? `Epoch ${formatEpoch(epoch.current_epoch)}` : 'Call /zkpf/epoch to align clocks',
-      intent: epoch ? ('ready' as Intent) : ('pending' as Intent),
-    },
-    {
-      id: 'verifier',
-      label: 'Verifier endpoint',
-      value: formatVerifierHost(verifierUrl),
-      detail:
-        connectionState === 'connected'
-          ? 'Online for counterparties'
-          : connectionState === 'error'
-            ? 'Backend unreachable'
-            : 'Negotiating connection',
-      intent:
-        connectionState === 'connected'
-          ? ('ready' as Intent)
-          : connectionState === 'error'
-            ? ('blocked' as Intent)
-            : ('pending' as Intent),
-    },
-  ];
-
+export function FinanceContext({ params, connectionState, verifierUrl }: FinanceContextProps) {
   const journeySteps: JourneyStep[] = journeyTemplate.map((step) => {
     switch (step.id) {
       case 'aggregate':
@@ -198,15 +162,6 @@ export function FinanceContext({ params, epoch, connectionState, verifierUrl }: 
           Capital markets use proof-of-funds to unlock credit lines, satisfy exchange listings, and close OTC deals.
           This console keeps the verifier, custody policies, and audit artifacts aligned.
         </p>
-        <div className="finance-metrics">
-          {metrics.map((metric) => (
-            <div key={metric.id} className={`metric-card ${metric.intent}`}>
-              <p className="metric-label">{metric.label}</p>
-              <p className="metric-value">{metric.value}</p>
-              <p className="metric-detail">{metric.detail}</p>
-            </div>
-          ))}
-        </div>
       </div>
       <div className="finance-use-case-grid">
         {financeUseCases.map((useCase) => (
