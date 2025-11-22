@@ -250,6 +250,16 @@ When deploying the Rust backend to Fly.io (for example at `https://zkpf-backend.
 
 This is the only wiring needed: the backend remains a plain Axum service on Fly.io, and the web UI (locally or on Vercel) discovers it via `VITE_ZKPF_API_URL`.
 
+### Fly.io memory sizing & artifacts
+
+For production verifier-only deployments on Fly.io:
+
+- Use at least a 2 GB VM (`[[vm]] memory = "2gb"`) so the KZG params + verifying key fit comfortably in memory without OOM kills.
+- Keep `ZKPF_ENABLE_PROVER=0` so the backend never loads the proving key into memory on the verifier instances; run any heavy proving on separate infrastructure.
+- When the prover is disabled, `/zkpf/params` returns manifest metadata and BLAKE3 hashes plus streaming artifact URLs under `/zkpf/artifacts/{params,vk,pk}` that operators or CI can download on demand.
+
+If you increase circuit size or add additional rails, bump VM memory accordingly and re-run `/zkpf/params` to confirm the process stays well below the new limit.
+
 ### On-chain wallet proof-of-funds (design)
 
 The `docs/onchain-proof-of-funds.md` document and `contracts/` directory introduce an **on-chain rail** for zk proof-of-funds:

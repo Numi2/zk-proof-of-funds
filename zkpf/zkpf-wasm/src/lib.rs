@@ -13,9 +13,9 @@ use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use zkpf_circuit::ZkpfCircuitInput;
 use zkpf_common::{
-    deserialize_params, deserialize_proving_key, deserialize_verifier_public_inputs,
-    deserialize_verifying_key, public_inputs_to_instances, serialize_verifier_public_inputs,
-    custodian_pubkey_hash, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
+    custodian_pubkey_hash, deserialize_params, deserialize_proving_key,
+    deserialize_verifier_public_inputs, deserialize_verifying_key, public_inputs_to_instances,
+    serialize_verifier_public_inputs, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
 };
 use zkpf_prover::{prove, prove_bundle, prove_with_public_inputs};
 use zkpf_verifier::verify;
@@ -327,10 +327,7 @@ pub fn compute_nullifier(
 }
 
 #[wasm_bindgen(js_name = computeCustodianPubkeyHash)]
-pub fn compute_custodian_pubkey_hash(
-    pubkey_x: &[u8],
-    pubkey_y: &[u8],
-) -> Result<Vec<u8>, JsValue> {
+pub fn compute_custodian_pubkey_hash(pubkey_x: &[u8], pubkey_y: &[u8]) -> Result<Vec<u8>, JsValue> {
     if pubkey_x.len() != 32 || pubkey_y.len() != 32 {
         return Err(js_error("custodian pubkey coordinates must be 32 bytes"));
     }

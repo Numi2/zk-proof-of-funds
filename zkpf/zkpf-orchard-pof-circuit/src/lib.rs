@@ -124,9 +124,9 @@ impl OrchardPofCircuitProver {
             height: snapshot.height,
             ufvk_commitment: [0u8; 32], // to be computed by the concrete circuit implementation
             threshold_zats: params.threshold_zats,
-            sum_zats: 0,                // populated by the circuit in the real prover
-            nullifiers: Vec::new(),     // populated by the circuit in the real prover
-            binding: None,              // populated by the circuit in the real prover
+            sum_zats: 0,            // populated by the circuit in the real prover
+            nullifiers: Vec::new(), // populated by the circuit in the real prover
+            binding: None,          // populated by the circuit in the real prover
         };
 
         let notes: Vec<OrchardPofNoteWitness> = snapshot
@@ -178,5 +178,3 @@ pub enum OrchardPofCircuitError {
     #[error("Orchard PoF circuit configuration error: {0}")]
     Config(String),
 }
-
-

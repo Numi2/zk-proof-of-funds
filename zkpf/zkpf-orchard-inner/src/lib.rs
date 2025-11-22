@@ -140,5 +140,3 @@ pub trait OrchardPofProver {
         input: &OrchardPofInput,
     ) -> Result<(Vec<u8>, OrchardInnerPublicInputs), OrchardPofError>;
 }
-
-

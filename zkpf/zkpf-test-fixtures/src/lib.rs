@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, ensure, Context, Result};
 use halo2curves_axiom::{
@@ -22,10 +22,10 @@ use zkpf_common::{
     serialize_verifier_public_inputs, serialize_verifying_key, ArtifactFile, ArtifactManifest,
     ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
+use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
 use zkpf_zcash_orchard_circuit::{
     OrchardPofCircuitInput, OrchardPublicMeta, PublicMetaInputs, RAIL_ID_ZCASH_ORCHARD,
 };
-use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
 
 const TEST_K: u32 = 19;
 const CREATED_AT_UNIX: u64 = 1_700_000_000;
@@ -124,18 +124,16 @@ fn build_fixtures() -> Result<TestFixtures> {
         pk: ArtifactFile::from_bytes("pk.bin", &pk_bytes),
     };
 
-    let artifacts = ProverArtifacts {
-        manifest,
-        params_bytes: params_bytes.clone(),
-        vk_bytes: vk_bytes.clone(),
-        pk_bytes: pk_bytes.clone(),
-        params,
-        vk,
-        pk,
-    };
+    let artifacts = ProverArtifacts::from_parts(manifest, PathBuf::from("."), params, vk, Some(pk));
 
-    let (proof, verifier_inputs) =
-        prove_with_public_inputs(&artifacts.params, &artifacts.pk, prepared.input.clone());
+    let (proof, verifier_inputs) = prove_with_public_inputs(
+        &artifacts.params,
+        artifacts
+            .proving_key()
+            .expect("test fixtures should have prover enabled")
+            .as_ref(),
+        prepared.input.clone(),
+    );
 
     let public_inputs_bytes =
         serialize_verifier_public_inputs(&verifier_inputs).context("serialize public inputs")?;

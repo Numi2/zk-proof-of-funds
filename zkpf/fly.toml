@@ -8,6 +8,9 @@ primary_region = 'arn'
 
 [build]
 
+[env]
+  ZKPF_ENABLE_PROVER = "0"
+
 [http_service]
   internal_port = 3000
   force_https = true
@@ -17,7 +20,7 @@ primary_region = 'arn'
   processes = ['app']
 
 [[vm]]
-  memory = '1gb'
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
 

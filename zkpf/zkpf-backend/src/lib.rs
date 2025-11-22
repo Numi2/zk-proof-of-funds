@@ -7,26 +7,29 @@ use std::{
 };
 
 use axum::{
-    extract::State,
-    http::StatusCode,
+    body::Body,
+    extract::{Path as AxumPath, State},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
-use tower_http::cors::{Any, CorsLayer};
-use once_cell::sync::Lazy;
 use blake3;
+use once_cell::sync::Lazy;
 use sled::Db;
-use tokio::net::TcpListener;
+use tokio::{fs::File, net::TcpListener};
+use tokio_util::io::ReaderStream;
+use tower_http::cors::{Any, CorsLayer};
 use zkpf_circuit::ZkpfCircuitInput;
 use zkpf_common::{
     allowlisted_custodian_hash_bytes, deserialize_verifier_public_inputs, load_prover_artifacts,
-    load_verifier_artifacts, public_inputs_to_instances_with_layout, public_to_verifier_inputs,
-    ProofBundle, ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
+    load_prover_artifacts_without_pk, load_verifier_artifacts,
+    public_inputs_to_instances_with_layout, public_to_verifier_inputs, ProofBundle,
+    ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
 };
 use zkpf_prover::prove_bundle;
-use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
 use zkpf_verifier::verify;
+use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
 const MANIFEST_ENV: &str = "ZKPF_MANIFEST_PATH";
@@ -43,6 +46,7 @@ const ATTESTATION_RPC_URL_ENV: &str = "ZKPF_ATTESTATION_RPC_URL";
 const ATTESTATION_CHAIN_ID_ENV: &str = "ZKPF_ATTESTATION_CHAIN_ID";
 const ATTESTATION_REGISTRY_ADDRESS_ENV: &str = "ZKPF_ATTESTATION_REGISTRY_ADDRESS";
 const ATTESTOR_PRIVATE_KEY_ENV: &str = "ZKPF_ATTESTOR_PRIVATE_KEY";
+const ENABLE_PROVER_ENV: &str = "ZKPF_ENABLE_PROVER";
 const NULLIFIER_SPENT_ERR: &str = "nullifier already spent for this scope/policy";
 const CODE_CIRCUIT_VERSION: &str = "CIRCUIT_VERSION_MISMATCH";
 const CODE_PUBLIC_INPUTS: &str = "PUBLIC_INPUTS_INVALID";
@@ -57,6 +61,8 @@ const CODE_RAIL_UNKNOWN: &str = "RAIL_UNKNOWN";
 const CODE_ATTESTATION_DISABLED: &str = "ATTESTATION_DISABLED";
 const CODE_ATTESTATION_VERIFICATION_FAILED: &str = "ATTESTATION_VERIFICATION_FAILED";
 const CODE_ATTESTATION_ONCHAIN_ERROR: &str = "ATTESTATION_ONCHAIN_ERROR";
+const CODE_INTERNAL: &str = "INTERNAL_SERVER_ERROR";
+const CODE_PROVER_DISABLED: &str = "PROVER_DISABLED";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
@@ -118,17 +124,11 @@ impl RailRegistry {
 
         if let Ok(path) = env::var(MULTIRAIL_MANIFEST_ENV) {
             let bytes = fs::read(&path).unwrap_or_else(|err| {
-                panic!(
-                    "failed to read multi-rail manifest from {}: {}",
-                    path, err
-                )
+                panic!("failed to read multi-rail manifest from {}: {}", path, err)
             });
             let manifest: MultiRailManifest =
                 serde_json::from_slice(&bytes).unwrap_or_else(|err| {
-                    panic!(
-                        "failed to parse multi-rail manifest from {}: {}",
-                        path, err
-                    )
+                    panic!("failed to parse multi-rail manifest from {}: {}", path, err)
                 });
 
             for rail in manifest.rails {
@@ -161,9 +161,7 @@ impl RailRegistry {
                 if artifacts.manifest.circuit_version != rail.circuit_version {
                     panic!(
                         "circuit_version mismatch for rail {}: manifest {} vs config {}",
-                        rail.rail_id,
-                        artifacts.manifest.circuit_version,
-                        rail.circuit_version
+                        rail.rail_id, artifacts.manifest.circuit_version, rail.circuit_version
                     );
                 }
 
@@ -331,6 +329,14 @@ impl ApiError {
             err,
         )
     }
+
+    fn internal(err: impl Into<String>) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, CODE_INTERNAL, err)
+    }
+
+    fn prover_disabled(err: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, CODE_PROVER_DISABLED, err)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -363,29 +369,102 @@ pub async fn serve() {
 }
 
 pub fn app_router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/zkpf/policies", get(list_policies))
         .route("/zkpf/params", get(get_params))
+        .route("/zkpf/artifacts/:kind", get(get_artifact))
         .route("/zkpf/epoch", get(get_epoch))
-        .route("/zkpf/prove-bundle", post(prove_bundle_handler))
         .route("/zkpf/verify", post(verify_handler))
         .route("/zkpf/verify-bundle", post(verify_bundle_handler))
-        .route("/zkpf/attest", post(attest_handler))
-        .with_state(state)
+        .route("/zkpf/attest", post(attest_handler));
+
+    let router = if state.artifacts().prover_enabled() {
+        router.route("/zkpf/prove-bundle", post(prove_bundle_handler))
+    } else {
+        router
+    };
+
+    router.with_state(state)
 }
 
-async fn get_params(State(state): State<AppState>) -> Json<ParamsResponse> {
-    let manifest = &state.artifacts().manifest;
-    Json(ParamsResponse {
+async fn get_artifact(
+    State(state): State<AppState>,
+    AxumPath(kind): AxumPath<String>,
+) -> Result<Response, ApiError> {
+    let artifacts = state.artifacts();
+    let path = match kind.as_str() {
+        "params" => artifacts.params_path(),
+        "vk" => artifacts.vk_path(),
+        "pk" => artifacts.pk_path(),
+        other => {
+            return Err(ApiError::bad_request(
+                CODE_INTERNAL,
+                format!("unknown artifact kind '{}'", other),
+            ))
+        }
+    };
+
+    let file = File::open(&path)
+        .await
+        .map_err(|err| ApiError::internal(format!("failed to open artifact at {}: {err}", path.display())))?;
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+
+    Ok(response)
+}
+
+async fn get_params(State(state): State<AppState>) -> Result<Json<ParamsResponse>, ApiError> {
+    let artifacts = state.artifacts();
+    let manifest = &artifacts.manifest;
+    // When the prover is disabled for this deployment we avoid loading large
+    // blobs into memory for the params endpoint and instead expose streaming
+    // artifact URLs. The frontend hydrates these lazily via /zkpf/artifacts/*.
+    if !artifacts.prover_enabled() {
+        return Ok(Json(ParamsResponse {
+            circuit_version: manifest.circuit_version,
+            manifest_version: manifest.manifest_version,
+            params_hash: manifest.params.blake3.clone(),
+            vk_hash: manifest.vk.blake3.clone(),
+            pk_hash: manifest.pk.blake3.clone(),
+            params: None,
+            vk: None,
+            pk: None,
+            artifact_urls: Some(ArtifactUrls {
+                params: "/zkpf/artifacts/params".to_string(),
+                vk: "/zkpf/artifacts/vk".to_string(),
+                pk: "/zkpf/artifacts/pk".to_string(),
+            }),
+        }));
+    }
+
+    let params = artifacts
+        .params_blob()
+        .map_err(|err| ApiError::internal(format!("failed to load params blob: {err}")))?;
+    let vk = artifacts
+        .vk_blob()
+        .map_err(|err| ApiError::internal(format!("failed to load vk blob: {err}")))?;
+    let pk = artifacts
+        .pk_blob()
+        .map_err(|err| ApiError::internal(format!("failed to load pk blob: {err}")))?;
+
+    Ok(Json(ParamsResponse {
         circuit_version: manifest.circuit_version,
         manifest_version: manifest.manifest_version,
         params_hash: manifest.params.blake3.clone(),
         vk_hash: manifest.vk.blake3.clone(),
         pk_hash: manifest.pk.blake3.clone(),
-        params: state.artifacts().params_bytes.clone(),
-        vk: state.artifacts().vk_bytes.clone(),
-        pk: state.artifacts().pk_bytes.clone(),
-    })
+        params: Some(params),
+        vk: Some(vk),
+        pk: Some(pk),
+        artifact_urls: None,
+    }))
 }
 
 async fn list_policies(State(state): State<AppState>) -> Json<PoliciesResponse> {
@@ -395,15 +474,27 @@ async fn list_policies(State(state): State<AppState>) -> Json<PoliciesResponse> 
 }
 
 #[derive(serde::Serialize)]
+struct ArtifactUrls {
+    params: String,
+    vk: String,
+    pk: String,
+}
+
+#[derive(serde::Serialize)]
 struct ParamsResponse {
     circuit_version: u32,
     manifest_version: u32,
     params_hash: String,
     vk_hash: String,
     pk_hash: String,
-    params: Vec<u8>,
-    vk: Vec<u8>,
-    pk: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vk: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pk: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifact_urls: Option<ArtifactUrls>,
 }
 
 #[derive(serde::Serialize)]
@@ -488,7 +579,12 @@ struct AttestResponse {
 }
 
 impl AttestResponse {
-    fn success(base: AttestResponseBase, tx_hash: String, attestation_id: String, chain_id: u64) -> Self {
+    fn success(
+        base: AttestResponseBase,
+        tx_hash: String,
+        attestation_id: String,
+        chain_id: u64,
+    ) -> Self {
         Self {
             valid: true,
             tx_hash: Some(tx_hash),
@@ -653,17 +749,15 @@ async fn verify_bundle_handler(
     State(state): State<AppState>,
     Json(req): Json<VerifyBundleRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    let rail = RAILS
-        .get(&req.bundle.rail_id)
-        .ok_or_else(|| {
-            ApiError::bad_request(
-                CODE_RAIL_UNKNOWN,
-                format!(
-                    "unknown rail_id '{}'; configure it via {}",
-                    req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
-                ),
-            )
-        })?;
+    let rail = RAILS.get(&req.bundle.rail_id).ok_or_else(|| {
+        ApiError::bad_request(
+            CODE_RAIL_UNKNOWN,
+            format!(
+                "unknown rail_id '{}'; configure it via {}",
+                req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
+            ),
+        )
+    })?;
 
     if req.bundle.circuit_version != rail.circuit_version {
         return Err(ApiError::bad_request(
@@ -859,7 +953,10 @@ async fn prove_bundle_handler(
     }
 
     let artifacts = state.artifacts();
-    let bundle = prove_bundle(&artifacts.params, &artifacts.pk, input);
+    let pk = artifacts
+        .proving_key()
+        .map_err(|err| ApiError::prover_disabled(err.to_string()))?;
+    let bundle = prove_bundle(&artifacts.params, pk.as_ref(), input);
 
     Ok(Json(bundle))
 }
@@ -943,8 +1040,32 @@ fn process_verification(
 
 fn load_artifacts() -> ProverArtifacts {
     let path = env::var(MANIFEST_ENV).unwrap_or_else(|_| DEFAULT_MANIFEST_PATH.to_string());
-    load_prover_artifacts(&path)
-        .unwrap_or_else(|err| panic!("failed to load artifacts from {path}: {err}"))
+    let prover_enabled = prover_enabled_from_env();
+    eprintln!(
+        "zkpf-backend: loading artifacts from {} ({}={} => prover_enabled={})",
+        path,
+        ENABLE_PROVER_ENV,
+        env::var(ENABLE_PROVER_ENV).unwrap_or_else(|_| "<unset>".to_string()),
+        prover_enabled
+    );
+    let loader = if prover_enabled {
+        load_prover_artifacts
+    } else {
+        load_prover_artifacts_without_pk
+    };
+
+    loader(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to load artifacts from {path} (prover_enabled={}): {err}",
+            prover_enabled
+        )
+    })
+}
+
+fn prover_enabled_from_env() -> bool {
+    env::var(ENABLE_PROVER_ENV)
+        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(true)
 }
 
 fn validate_custodian_hash(inputs: &zkpf_common::VerifierPublicInputs) -> Result<(), String> {

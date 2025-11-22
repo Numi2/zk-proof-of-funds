@@ -35,16 +35,18 @@ export class ZkpfClient {
   }
 
   async getParams(): Promise<ParamsResponse> {
-    const payload = await this.request<ParamsResponse & {
-      params?: ByteArray;
-      vk?: ByteArray;
-      pk?: ByteArray;
-      artifact_urls?: {
-        params: string;
-        vk: string;
-        pk: string;
-      };
-    }>('/zkpf/params');
+    const payload = await this.request<
+      ParamsResponse & {
+        params?: ByteArray;
+        vk?: ByteArray;
+        pk?: ByteArray;
+        artifact_urls?: {
+          params: string;
+          vk: string;
+          pk: string;
+        };
+      }
+    >('/zkpf/params');
 
     if (payload.params && payload.vk && payload.pk) {
       return payload;
@@ -66,9 +68,9 @@ export class ZkpfClient {
     }
 
     const [paramsBytes, vkBytes, pkBytes] = await Promise.all([
-      downloadArtifact(payload.artifact_urls.params),
-      downloadArtifact(payload.artifact_urls.vk),
-      downloadArtifact(payload.artifact_urls.pk),
+      this.downloadArtifact(payload.artifact_urls.params),
+      this.downloadArtifact(payload.artifact_urls.vk),
+      this.downloadArtifact(payload.artifact_urls.pk),
     ]);
 
     const hydrated = {
@@ -83,6 +85,19 @@ export class ZkpfClient {
       pk: pkBytes,
     });
     return hydrated;
+  }
+
+  private async downloadArtifact(pathOrUrl: string): Promise<ByteArray> {
+    const url =
+      pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')
+        ? pathOrUrl
+        : `${this.base}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
+    }
+    const buffer = await response.arrayBuffer();
+    return Array.from(new Uint8Array(buffer));
   }
 
   async getEpoch(): Promise<EpochResponse> {
@@ -175,13 +190,3 @@ export function sanitizeBaseUrl(url: string): string {
   }
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
 }
-
-async function downloadArtifact(url: string): Promise<ByteArray> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
-  }
-  const buffer = await response.arrayBuffer();
-  return Array.from(new Uint8Array(buffer));
-}
-

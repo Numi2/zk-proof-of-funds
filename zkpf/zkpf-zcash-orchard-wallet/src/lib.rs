@@ -44,9 +44,7 @@ impl OrchardWalletConfig {
     pub fn from_env() -> Result<Self, WalletError> {
         fn get_env(name: &str) -> Result<String, WalletError> {
             std::env::var(name).map_err(|_| {
-                WalletError::Backend(format!(
-                    "missing required environment variable {name}"
-                ))
+                WalletError::Backend(format!("missing required environment variable {name}"))
             })
         }
 
@@ -168,24 +166,29 @@ pub fn snapshot_to_pof_snapshot(
             .siblings
             .iter()
             .map(|sib| {
-                MerkleHashOrchard::from_bytes(sib).into_option().ok_or_else(|| {
-                    WalletError::Backend("invalid Orchard Merkle path element".into())
-                })
+                MerkleHashOrchard::from_bytes(sib)
+                    .into_option()
+                    .ok_or_else(|| {
+                        WalletError::Backend("invalid Orchard Merkle path element".into())
+                    })
             })
             .collect::<Result<_, _>>()?;
 
-        let auth_path: [MerkleHashOrchard; 32] = auth_path.into_iter().collect::<Vec<_>>().try_into().map_err(
-            |_| WalletError::Backend("expected 32 siblings in Orchard Merkle path".into()),
-        )?;
+        let auth_path: [MerkleHashOrchard; 32] = auth_path
+            .into_iter()
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| {
+                WalletError::Backend("expected 32 siblings in Orchard Merkle path".into())
+            })?;
 
-        let merkle_path = MerklePath::from_parts(
-            note_witness
-                .merkle_path
-                .position
-                .try_into()
-                .map_err(|_| WalletError::Backend("invalid Orchard Merkle path position".into()))?,
-            auth_path,
-        );
+        let merkle_path =
+            MerklePath::from_parts(
+                note_witness.merkle_path.position.try_into().map_err(|_| {
+                    WalletError::Backend("invalid Orchard Merkle path position".into())
+                })?,
+                auth_path,
+            );
 
         notes.push(zkpf_orchard_pof_circuit::OrchardPofNoteSnapshot {
             note: None,
@@ -206,5 +209,3 @@ pub fn snapshot_to_pof_snapshot(
         notes,
     })
 }
-
-

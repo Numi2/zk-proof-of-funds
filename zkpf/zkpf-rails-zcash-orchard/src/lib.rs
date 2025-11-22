@@ -128,5 +128,3 @@ async fn proof_of_funds_handler(
 
     Ok(Json(bundle))
 }
-
-

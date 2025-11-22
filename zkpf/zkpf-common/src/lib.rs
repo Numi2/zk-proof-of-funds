@@ -2,6 +2,7 @@ use std::{
     fs,
     io::Cursor,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::{anyhow, ensure, Context, Result};
@@ -14,6 +15,7 @@ use halo2curves_axiom::{
     bn256::{Bn256, Fr, G1Affine},
     ff::{Field, PrimeField},
 };
+use once_cell::sync::OnceCell;
 use poseidon_primitives::poseidon::primitives::{ConstantLength, Hash as PoseidonHash, Spec};
 use serde::{Deserialize, Serialize};
 use zkpf_circuit::{
@@ -127,12 +129,114 @@ pub struct VerifierArtifacts {
 #[derive(Clone, Debug)]
 pub struct ProverArtifacts {
     pub manifest: ArtifactManifest,
-    pub params_bytes: Vec<u8>,
-    pub vk_bytes: Vec<u8>,
-    pub pk_bytes: Vec<u8>,
+    pub artifact_dir: PathBuf,
     pub params: ParamsKZG<Bn256>,
     pub vk: plonk::VerifyingKey<G1Affine>,
-    pub pk: plonk::ProvingKey<G1Affine>,
+    pk: OnceCell<Arc<plonk::ProvingKey<G1Affine>>>,
+    prover_enabled: bool,
+}
+
+impl ProverArtifacts {
+    pub fn from_parts(
+        manifest: ArtifactManifest,
+        artifact_dir: PathBuf,
+        params: ParamsKZG<Bn256>,
+        vk: plonk::VerifyingKey<G1Affine>,
+        pk: Option<plonk::ProvingKey<G1Affine>>,
+    ) -> Self {
+        let pk_cell = OnceCell::new();
+        let prover_enabled = if let Some(pk) = pk {
+            pk_cell
+                .set(Arc::new(pk))
+                .expect("pk OnceCell should be empty on initialization");
+            true
+        } else {
+            false
+        };
+
+        Self {
+            manifest,
+            artifact_dir,
+            params,
+            vk,
+            pk: pk_cell,
+            prover_enabled,
+        }
+    }
+
+    pub fn params_blob(&self) -> Result<Vec<u8>> {
+        match read_artifact_file(&self.artifact_dir, &self.manifest.params, "params") {
+            Ok(bytes) => Ok(bytes),
+            Err(err) => {
+                // In test environments or ephemeral setups the params blob may
+                // not be present on disk. Fall back to serializing the in-memory
+                // KZG params so callers can still obtain a canonical blob.
+                serialize_params(&self.params)
+                    .with_context(|| format!("failed to load params blob: {err}"))
+            }
+        }
+    }
+
+    pub fn vk_blob(&self) -> Result<Vec<u8>> {
+        match read_artifact_file(&self.artifact_dir, &self.manifest.vk, "verifying key") {
+            Ok(bytes) => Ok(bytes),
+            Err(err) => {
+                // Mirror the params fallback: if the verifying key blob is not
+                // available on disk, serialize it from the in-memory structure.
+                serialize_verifying_key(&self.vk)
+                    .with_context(|| format!("failed to load verifying key blob: {err}"))
+            }
+        }
+    }
+
+    pub fn pk_blob(&self) -> Result<Vec<u8>> {
+        match read_artifact_file(&self.artifact_dir, &self.manifest.pk, "proving key") {
+            Ok(bytes) => Ok(bytes),
+            Err(err) => {
+                // When the prover is enabled but the proving key blob is not
+                // available on disk, serialize it from the in-memory proving
+                // key (if present). This keeps tests and ephemeral setups from
+                // depending on an on-disk pk.bin.
+                let pk = self
+                    .proving_key()
+                    .with_context(|| format!("failed to recover proving key after disk read error: {err}"))?;
+                serialize_proving_key(pk.as_ref())
+                    .with_context(|| format!("failed to serialize proving key after disk read error: {err}"))
+            }
+        }
+    }
+
+    pub fn prover_enabled(&self) -> bool {
+        self.prover_enabled
+    }
+
+    pub fn proving_key(&self) -> Result<Arc<plonk::ProvingKey<G1Affine>>> {
+        if !self.prover_enabled {
+            anyhow::bail!("prover support is disabled for this deployment");
+        }
+
+        self.pk
+            .get_or_try_init(|| {
+                let bytes = self.pk_blob()?;
+                deserialize_proving_key(&bytes).map(Arc::new)
+            })
+            .map(Arc::clone)
+    }
+
+    /// On-disk path to the params blob.
+    pub fn params_path(&self) -> PathBuf {
+        self.manifest.params.resolve_path(&self.artifact_dir)
+    }
+
+    /// On-disk path to the verifying key blob.
+    pub fn vk_path(&self) -> PathBuf {
+        self.manifest.vk.resolve_path(&self.artifact_dir)
+    }
+
+    /// On-disk path to the proving key blob.
+    pub fn pk_path(&self) -> PathBuf {
+        self.manifest.pk.resolve_path(&self.artifact_dir)
+    }
 }
 
 pub fn serialize_params(params: &ParamsKZG<Bn256>) -> Result<Vec<u8>> {
@@ -328,22 +432,49 @@ pub fn load_verifier_artifacts(path: impl AsRef<Path>) -> Result<VerifierArtifac
 }
 
 pub fn load_prover_artifacts(path: impl AsRef<Path>) -> Result<ProverArtifacts> {
+    load_prover_artifacts_with_mode(path, true)
+}
+
+pub fn load_prover_artifacts_without_pk(path: impl AsRef<Path>) -> Result<ProverArtifacts> {
+    load_prover_artifacts_with_mode(path, false)
+}
+
+fn load_prover_artifacts_with_mode(
+    path: impl AsRef<Path>,
+    load_pk: bool,
+) -> Result<ProverArtifacts> {
     let manifest_path = path.as_ref();
-    let (manifest, params_bytes, vk_bytes, pk_bytes) = load_artifact_bytes(manifest_path)?;
+    let manifest = read_manifest(manifest_path)?;
+    ensure_manifest_compat(&manifest)?;
+    let artifact_dir = manifest_dir(manifest_path);
+
+    let params_bytes = read_artifact_file(&artifact_dir, &manifest.params, "params")?;
+    let vk_bytes = read_artifact_file(&artifact_dir, &manifest.vk, "verifying key")?;
+    let pk_bytes = if load_pk {
+        Some(read_artifact_file(
+            &artifact_dir,
+            &manifest.pk,
+            "proving key",
+        )?)
+    } else {
+        None
+    };
 
     let params = deserialize_params(&params_bytes)?;
     let vk = deserialize_verifying_key(&vk_bytes)?;
-    let pk = deserialize_proving_key(&pk_bytes)?;
+    let pk = if let Some(bytes) = pk_bytes {
+        Some(deserialize_proving_key(&bytes)?)
+    } else {
+        None
+    };
 
-    Ok(ProverArtifacts {
+    Ok(ProverArtifacts::from_parts(
         manifest,
-        params_bytes,
-        vk_bytes,
-        pk_bytes,
+        artifact_dir,
         params,
         vk,
         pk,
-    })
+    ))
 }
 
 pub fn serialize_proving_key(pk: &plonk::ProvingKey<G1Affine>) -> Result<Vec<u8>> {

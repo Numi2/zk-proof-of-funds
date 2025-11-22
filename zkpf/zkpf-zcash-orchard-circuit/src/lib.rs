@@ -23,15 +23,9 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{ensure, Result};
 use anyhow::Context as _;
+use anyhow::{ensure, Result};
 use blake3::Hasher;
-use rand::rngs::OsRng;
-use halo2_proofs_axiom::{
-    circuit::{Layouter, SimpleFloorPlanner},
-    plonk::{self, Circuit, ConstraintSystem, Error},
-    SerdeFormat,
-};
 use halo2_base::{
     gates::{
         circuit::builder::BaseCircuitBuilder,
@@ -41,17 +35,22 @@ use halo2_base::{
     },
     AssignedValue, Context as Halo2Context,
 };
-use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
 use halo2_proofs_axiom::transcript::TranscriptWriterBuffer;
+use halo2_proofs_axiom::{
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{self, Circuit, ConstraintSystem, Error},
+    SerdeFormat,
+};
+use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
 use once_cell::sync::Lazy;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zkpf_circuit::gadgets::compare;
 use zkpf_common::{
-    deserialize_params, hash_bytes_hex, public_inputs_to_instances_with_layout,
-    reduce_be_bytes_to_fr, read_manifest, ArtifactFile, ArtifactManifest, ProofBundle,
-    ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION,
-    MANIFEST_VERSION,
+    deserialize_params, hash_bytes_hex, public_inputs_to_instances_with_layout, read_manifest,
+    reduce_be_bytes_to_fr, ArtifactFile, ArtifactManifest, ProofBundle, ProverArtifacts,
+    PublicInputLayout, VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
 use zkpf_orchard_inner::OrchardInnerPublicInputs;
 use zkpf_zcash_orchard_wallet::{OrchardFvk, OrchardSnapshot};
@@ -238,10 +237,10 @@ fn build_orchard_constraints(
 
     // Nullifier and custodian_pubkey_hash are treated as opaque scalars; the rail
     // ensures their encoding via off-circuit hashing.
-    let nullifier_fr = zkpf_common::fr_from_bytes(&pub_in.nullifier)
-        .map_err(|_| Error::Synthesis)?;
-    let custodian_hash_fr = zkpf_common::fr_from_bytes(&pub_in.custodian_pubkey_hash)
-        .map_err(|_| Error::Synthesis)?;
+    let nullifier_fr =
+        zkpf_common::fr_from_bytes(&pub_in.nullifier).map_err(|_| Error::Synthesis)?;
+    let custodian_hash_fr =
+        zkpf_common::fr_from_bytes(&pub_in.custodian_pubkey_hash).map_err(|_| Error::Synthesis)?;
     let public_nullifier = ctx.load_witness(nullifier_fr);
     let public_custodian_hash = ctx.load_witness(custodian_hash_fr);
 
@@ -252,9 +251,7 @@ fn build_orchard_constraints(
     let snapshot_anchor_bytes = pub_in
         .snapshot_anchor_orchard
         .ok_or_else(|| Error::Synthesis)?;
-    let holder_binding_bytes = pub_in
-        .holder_binding
-        .ok_or_else(|| Error::Synthesis)?;
+    let holder_binding_bytes = pub_in.holder_binding.ok_or_else(|| Error::Synthesis)?;
 
     let snapshot_height_cell = assign_u64(&mut ctx, &range, snapshot_height);
     let anchor_fr = reduce_be_bytes_to_fr(&snapshot_anchor_bytes);
@@ -425,11 +422,7 @@ pub fn prove_orchard_pof(
     }
 
     // Enforce Σ v_i ≥ threshold_zats based on the snapshot notes.
-    let total_zats: u64 = snapshot
-        .notes
-        .iter()
-        .map(|n| n.value_zats)
-        .sum();
+    let total_zats: u64 = snapshot.notes.iter().map(|n| n.value_zats).sum();
     if total_zats < threshold_zats {
         return Err(OrchardRailError::InvalidInput(format!(
             "insufficient Orchard funds: total_zats {} < threshold_zats {}",
@@ -588,28 +581,25 @@ fn orchard_manifest_path() -> PathBuf {
 
 fn load_orchard_prover_artifacts() -> Result<ProverArtifacts> {
     let manifest_path = orchard_manifest_path();
-    let (manifest, params_bytes, vk_bytes, pk_bytes) =
-        load_orchard_artifact_bytes(&manifest_path)?;
-
+    let (manifest, params_bytes, vk_bytes, pk_bytes) = load_orchard_artifact_bytes(&manifest_path)?;
     let params = deserialize_params(&params_bytes)?;
     let vk = deserialize_orchard_verifying_key(&vk_bytes)?;
     let pk = deserialize_orchard_proving_key(&pk_bytes)?;
 
-    Ok(ProverArtifacts {
+    Ok(ProverArtifacts::from_parts(
         manifest,
-        params_bytes,
-        vk_bytes,
-        pk_bytes,
+        orchard_manifest_dir(&manifest_path),
         params,
         vk,
-        pk,
-    })
+        Some(pk),
+    ))
 }
 
 pub fn load_orchard_verifier_artifacts(
     manifest_path: impl AsRef<Path>,
 ) -> Result<VerifierArtifacts> {
-    let (manifest, params_bytes, vk_bytes, _) = load_orchard_artifact_bytes(manifest_path.as_ref())?;
+    let (manifest, params_bytes, vk_bytes, _) =
+        load_orchard_artifact_bytes(manifest_path.as_ref())?;
 
     let params = deserialize_params(&params_bytes)?;
     let vk = deserialize_orchard_verifying_key(&vk_bytes)?;
@@ -729,7 +719,10 @@ fn create_orchard_proof_with_public_inputs(
         _,
     >(
         &artifacts.params,
-        &artifacts.pk,
+        artifacts
+            .proving_key()
+            .map_err(|err| OrchardRailError::InvalidInput(err.to_string()))?
+            .as_ref(),
         &[circuit],
         &[instance_refs.as_slice()],
         OsRng,
@@ -740,5 +733,3 @@ fn create_orchard_proof_with_public_inputs(
     let proof = transcript.finalize();
     Ok((proof, public_inputs))
 }
-
-

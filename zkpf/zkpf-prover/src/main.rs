@@ -40,7 +40,10 @@ fn main() -> Result<()> {
 
     let artifacts = load_prover_artifacts(&args.manifest)
         .with_context(|| format!("failed to load manifest {}", args.manifest.display()))?;
-    let (proof, public_inputs) = prove_with_public_inputs(&artifacts.params, &artifacts.pk, input);
+    let pk = artifacts
+        .proving_key()
+        .context("prover artifacts missing proving key")?;
+    let (proof, public_inputs) = prove_with_public_inputs(&artifacts.params, pk.as_ref(), input);
 
     fs::write(&args.output_proof, &proof)
         .with_context(|| format!("failed to write {}", args.output_proof.display()))?;

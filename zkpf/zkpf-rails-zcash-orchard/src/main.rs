@@ -2,15 +2,15 @@ use std::time::Duration;
 
 use tokio::time::sleep;
 use zkpf_rails_zcash_orchard::router;
-use zkpf_zcash_orchard_wallet::{init_global_wallet, OrchardWalletConfig, sync_once};
+use zkpf_zcash_orchard_wallet::{init_global_wallet, sync_once, OrchardWalletConfig};
 
 #[tokio::main]
 async fn main() {
     // Initialize the global Orchard wallet backend from environment variables
     // before binding the HTTP listener. If this fails, we abort startup so that
     // misconfigurations are detected early.
-    let wallet_cfg = OrchardWalletConfig::from_env()
-        .expect("load Orchard wallet config from environment");
+    let wallet_cfg =
+        OrchardWalletConfig::from_env().expect("load Orchard wallet config from environment");
     init_global_wallet(wallet_cfg).expect("initialize global Orchard wallet backend");
 
     // Spawn a background sync loop that periodically refreshes the wallet's view
@@ -34,5 +34,3 @@ async fn main() {
         .await
         .expect("serve Orchard rail API");
 }
-
-
