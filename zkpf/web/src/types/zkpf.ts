@@ -35,9 +35,11 @@ export interface ParamsResponse {
   params_hash: string;
   vk_hash: string;
   pk_hash: string;
-  params: ByteArray;
-  vk: ByteArray;
-  pk: ByteArray;
+  // For large artifacts (especially pk), callers may expose these as either
+  // plain number arrays or Uint8Array views to avoid excessive JS heap usage.
+  params: ByteArray | Uint8Array;
+  vk: ByteArray | Uint8Array;
+  pk: ByteArray | Uint8Array;
   artifact_urls?: {
     params: string;
     vk: string;

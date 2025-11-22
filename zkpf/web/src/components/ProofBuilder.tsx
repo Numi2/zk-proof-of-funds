@@ -6,6 +6,7 @@ import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
 import { prepareProverArtifacts, generateBundle } from '../wasm/prover';
+import { toUint8Array } from '../utils/bytes';
 
 interface Props {
   client: ZkpfClient;
@@ -54,8 +55,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       return null;
     }
     return {
-      paramsBytes: Uint8Array.from(paramsQuery.data.params),
-      pkBytes: Uint8Array.from(paramsQuery.data.pk),
+      paramsBytes: toUint8Array(paramsQuery.data.params),
+      pkBytes: toUint8Array(paramsQuery.data.pk),
       key: `${paramsQuery.data.params_hash}:${paramsQuery.data.pk_hash}`,
       manifestVersion: paramsQuery.data.manifest_version,
       circuitVersion: paramsQuery.data.circuit_version,

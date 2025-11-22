@@ -26,7 +26,7 @@ export function bytesToBase64(bytes: ByteArray | Uint8Array): string {
   return btoa(binary);
 }
 
-export function downloadBytes(bytes: ByteArray, filename: string) {
+export function downloadBytes(bytes: ByteArray | Uint8Array, filename: string) {
   const arr = toUint8Array(bytes);
   const buffer = new ArrayBuffer(arr.byteLength);
   new Uint8Array(buffer).set(arr);

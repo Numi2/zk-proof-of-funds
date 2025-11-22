@@ -93,7 +93,7 @@ function ArtifactButton({
   label,
   fileName,
 }: {
-  bytes: number[];
+  bytes: number[] | Uint8Array;
   label: string;
   fileName: string;
 }) {

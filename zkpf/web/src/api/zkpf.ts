@@ -87,7 +87,7 @@ export class ZkpfClient {
     return hydrated;
   }
 
-  private async downloadArtifact(pathOrUrl: string): Promise<ByteArray> {
+  private async downloadArtifact(pathOrUrl: string): Promise<Uint8Array> {
     const url =
       pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')
         ? pathOrUrl
@@ -97,7 +97,11 @@ export class ZkpfClient {
       throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
     }
     const buffer = await response.arrayBuffer();
-    return Array.from(new Uint8Array(buffer));
+    // Return a Uint8Array view directly instead of materializing a gigantic
+    // `number[]`. The proving key is hundreds of MB; converting it to a JS
+    // array would blow the heap and is unnecessary for callers that only need
+    // a byte view to feed into WASM or download helpers.
+    return new Uint8Array(buffer);
   }
 
   async getEpoch(): Promise<EpochResponse> {
