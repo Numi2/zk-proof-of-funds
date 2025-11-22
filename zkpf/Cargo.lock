@@ -3763,6 +3763,7 @@ name = "zkpf-backend"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "blake3",
  "halo2-axiom",
  "halo2curves-axiom",
  "hyper 0.14.32",
@@ -3821,6 +3822,16 @@ dependencies = [
  "orchard",
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "zkpf-orchard-pof-circuit"
+version = "0.1.0"
+dependencies = [
+ "orchard",
+ "serde",
+ "thiserror 1.0.69",
+ "zkpf-orchard-inner",
 ]
 
 [[package]]
@@ -3941,6 +3952,8 @@ name = "zkpf-zcash-orchard-wallet"
 version = "0.1.0"
 dependencies = [
  "once_cell",
+ "orchard",
  "serde",
  "thiserror 1.0.69",
+ "zkpf-orchard-pof-circuit",
 ]

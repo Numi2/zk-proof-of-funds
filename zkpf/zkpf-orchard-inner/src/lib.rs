@@ -16,11 +16,32 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Maximum number of Orchard notes that a single proof-of-funds statement is
+/// expected to handle.
+///
+/// Circuit implementations should treat this as a hard upper bound and either:
+/// - pad to `ORCHARD_POF_MAX_NOTES` with dummy zero-value notes, or
+/// - reject witnesses with more than `ORCHARD_POF_MAX_NOTES` notes.
+pub const ORCHARD_POF_MAX_NOTES: usize = 32;
+
 /// Public inputs exposed by the **inner** Orchard PoF circuit.
 ///
 /// These are deliberately minimal and consensus-oriented; they should be
 /// derivable directly from `zcashd` / `lightwalletd` view of the chain and the
 /// holder's UFVK.
+///
+/// The in-circuit statement they correspond to is, informally:
+///
+/// - There exists a set of Orchard notes `{n_i}` such that:
+///   - Each note's commitment `cmx_i` is a leaf of the canonical Orchard note
+///     commitment tree at `anchor_orchard` (MerkleCRH^Orchard, depth 32).
+///   - The values `v_i` used inside the circuit are exactly the values
+///     committed in those notes.
+///   - The sum of values satisfies `Σ v_i ≥ threshold_zats`, and `sum_zats`
+///     reflects this sum.
+///   - Each note is consistent with the same Orchard UFVK / FVK (ownership).
+///   - The circuit computes the corresponding Orchard nullifiers `nf_i`, which
+///     are exposed as public outputs in `nullifiers`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OrchardInnerPublicInputs {
     /// Orchard anchor (Merkle root) at `height`.
@@ -36,8 +57,20 @@ pub struct OrchardInnerPublicInputs {
     pub threshold_zats: u64,
     /// Sum of the included Orchard note values, in zatoshi.
     pub sum_zats: u64,
+    /// Orchard nullifiers derived in-circuit for each included note.
+    ///
+    /// Verifiers must check that each nullifier is not present in the on-chain
+    /// nullifier set up to (and including) `height`.
+    pub nullifiers: Vec<[u8; 32]>,
     /// Optional binding that mixes UFVK with additional domain separators,
-    /// e.g. `(policy_id, scope_id, epoch)`.
+    /// e.g. `(policy_id, scope_id, epoch)` and/or a holder identifier.
+    ///
+    /// The intended construction is a Poseidon hash over:
+    /// `binding = Poseidon( holder_id_bytes || ufvk_bytes || domain_bytes )`,
+    /// where `ufvk_bytes` is a canonical encoding of the holder's UFVK and
+    /// `domain_bytes` captures policy- or application-specific context.
+    /// The exact encoding is left to the circuit implementation, but it must
+    /// be deterministic and documented so backends can recompute it.
     pub binding: Option<[u8; 32]>,
 }
 

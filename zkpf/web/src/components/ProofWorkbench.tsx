@@ -667,7 +667,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
               <p className="muted small">
                 Publish a successful proof-of-funds verification to the configured EVM{' '}
                 <code>AttestationRegistry</code>. Identifiers are hashed to <code>bytes32</code>{' '}
-                on the backend before calling the contract.
+                using BLAKE3 on the backend before calling the contract.
               </p>
             </div>
             <div className="onchain-attestation-grid">

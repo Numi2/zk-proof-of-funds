@@ -1,3 +1,22 @@
+const fs = require('fs');
+const path = require('path');
+
+const FIXTURES_DIR = path.join(__dirname, '..', '..', 'zkpf-test-fixtures', 'fixtures');
+const MANIFEST_PATH = path.join(FIXTURES_DIR, 'manifest.json');
+
+function readManifest() {
+  const raw = fs.readFileSync(MANIFEST_PATH, 'utf8');
+  return JSON.parse(raw);
+}
+
+function readFixtureBytes(relPath) {
+  const full = path.join(FIXTURES_DIR, relPath);
+  const buf = fs.readFileSync(full);
+  return Array.from(buf);
+}
+
+const MANIFEST = readManifest();
+
 const MOCK_POLICY = {
   policy_id: 271828,
   verifier_scope_id: 31415,
@@ -18,20 +37,22 @@ const MOCK_PUBLIC_INPUTS = {
 };
 
 const MOCK_BUNDLE = {
-  circuit_version: 3,
+  circuit_version: MANIFEST.circuit_version,
   proof: makeByteArray('mock-proof-payload', 48),
   public_inputs: MOCK_PUBLIC_INPUTS,
 };
 
 const MOCK_PARAMS_RESPONSE = {
-  circuit_version: 3,
-  manifest_version: 1,
-  params_hash: 'mock-params-hash',
-  vk_hash: 'mock-vk-hash',
-  pk_hash: 'mock-pk-hash',
-  params: makeByteArray('mock-params-bytes', 64),
-  vk: makeByteArray('mock-vk-bytes', 48),
-  pk: makeByteArray('mock-pk-bytes', 96),
+  circuit_version: MANIFEST.circuit_version,
+  manifest_version: MANIFEST.manifest_version,
+  params_hash: MANIFEST.params.blake3,
+  vk_hash: MANIFEST.vk.blake3,
+  pk_hash: MANIFEST.pk.blake3,
+  // Real Halo2 artifacts produced by `zkpf-test-fixtures`, exposed as byte arrays
+  // so `zkpf_wasm` can deserialize them in the browser.
+  params: readFixtureBytes(MANIFEST.params.path),
+  vk: readFixtureBytes(MANIFEST.vk.path),
+  pk: readFixtureBytes(MANIFEST.pk.path),
 };
 
 const MOCK_EPOCH_RESPONSE = {

@@ -1,16 +1,20 @@
 //! zkpf-zcash-orchard-circuit
 //!
 //! This crate defines the public API for the ZCASH_ORCHARD rail in the zkpf stack
-//! and a minimal Halo2 circuit used to prove Orchard-style proof-of-funds statements.
+//! and a minimal **bn256 wrapper circuit** used to prove Orchard-style
+//! proof-of-funds statements.
 //!
 //! The current circuit focuses on:
 //! - enforcing that the sum of private Orchard note values is >= the public threshold,
 //! - exposing Orchard snapshot metadata (height, anchor, holder binding) as public inputs,
 //! - wiring into the shared `ProofBundle` / artifact tooling used by the backend.
 //!
-//! It does **not yet** reimplement the full Orchard protocol inside the bn256 circuit
-//! (note commitment hash, Orchard Merkle tree, UFVK ownership); those remain future,
-//! protocol-level upgrades, but the pipeline (artifacts, prover, verifier) is complete.
+//! It does **not** reimplement the full Orchard protocol inside bn256 (note
+//! commitment hash, Orchard Merkle tree, UFVK ownership). The canonical
+//! Orchard PoF semantics live in a separate Pasta-field circuit that uses the
+//! official Orchard gadgets; this crate is intended to act as a wrapper around
+//! that inner circuit (via recursion) for environments that require bn256/EVM
+//! compatibility.
 
 use std::{
     fs,

@@ -10,7 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
     "@tanstack/react-query": "^5.90.10",
+    "poseidon-lite": "^0.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.1.12"

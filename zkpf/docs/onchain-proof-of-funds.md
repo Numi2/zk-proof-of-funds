@@ -6,7 +6,13 @@ This document specifies how to extend the zkpf stack so a crypto holder can:
 - Present that proof as a bundle to a bank / exchange / lender.
 - Have the receiver verify it through the existing zkpf verifier service + web console.
 
-The design deliberately keeps the existing circuit (v3) and artifacts stable. A future circuit version can implement the Merkle logic described here while reusing the same high-level APIs.
+The design deliberately keeps the existing custodial circuit (v3) and artifacts
+stable. The non-custodial Zcash Orchard rail is modelled as a **separate inner
+Pasta-field circuit** (implemented in `zkpf-orchard-pof-circuit` using the
+official Orchard gadgets) plus an optional outer bn256 wrapper
+(`zkpf-zcash-orchard-circuit`) for EVM compatibility. A future circuit version
+can implement the Merkle logic described here for on-chain wallets while
+reusing the same high-level APIs.
 
 ---
 

@@ -248,75 +248,126 @@ The current Halo2 circuit and Rust crates remain focused on custodial attestatio
 2. Use an off-chain prover to aggregate balances at a snapshot into a zk proof bundle.
 3. Present that bundle to a bank or exchange, which verifies it through the existing `/zkpf/verify` or `/zkpf/verify-bundle` endpoints and, if desired, records an on-chain attestation.
 
-### Zcash Orchard rail (ZCASH_ORCHARD) – current status
+### Zcash Orchard rail (ZCASH_ORCHARD) – architecture snapshot
 
-The workspace now includes a **Zcash Orchard rail** that is wired end-to-end into the existing
-`ProofBundle` + backend + UI flow at the API level, with a **real wallet backend** and
-Orchard-specific public-input layout. An inner Orchard PoF circuit (over Pallas/Vesta,
-using Orchard’s MerkleChip and Sinsemilla gadgets) is specified via `zkpf-orchard-inner`
-and is intended to live in the upstream Orchard stack or an adjacent crate.
+The workspace now includes a **Zcash Orchard rail** that is wired into the existing
+`ProofBundle` + backend + UI flow, with a clear split between:
 
-- **What’s implemented**
-  - `zkpf-zcash-orchard-wallet`:
-    - Defines `OrchardFvk`, `OrchardNoteWitness`, `OrchardMerklePath`, and `OrchardSnapshot`.
-    - Owns a global `WalletDb` + `BlockDb` (via `zcash_client_sqlite`) behind a `OnceCell<RwLock<WalletHandle>>`.
-    - Loads configuration from env via `OrchardWalletConfig::from_env`:
-      - `ZKPF_ORCHARD_NETWORK` – `mainnet` or `testnet`.
-      - `ZKPF_ORCHARD_DATA_DB_PATH` – path to the wallet data DB.
-      - `ZKPF_ORCHARD_CACHE_DB_PATH` – path to the cache DB.
-      - `ZKPF_ORCHARD_LIGHTWALLETD_ENDPOINT` – gRPC endpoint for `lightwalletd`.
-    - On initialization (`init_global_wallet`) opens the sqlite data/cache DBs, runs `init_wallet_db`,
-      and caches the current chain tip.
-    - Exposes an async `sync_once()` that:
-      - Connects to `lightwalletd` using the configured endpoint.
-      - Uses `zcash_client_backend::sync::run` with an in-memory `BlockCache` to:
-        - Refresh Sapling + Orchard subtree roots and chain tip metadata.
-        - Download and cache compact blocks for suggested scan ranges.
-        - Call `scan_cached_blocks` to advance `WalletDb`, maintain note commitment trees,
-          and keep Orchard witnesses up to date.
-      - Updates the cached `wallet_tip_height` after each successful sync step.
-    - Implements `build_snapshot_for_fvk(fvk, height) -> OrchardSnapshot` that:
-      - Decodes `fvk.encoded` as a UFVK (`UnifiedFullViewingKey`), requiring an Orchard component.
-      - Looks up a pre-imported account for that UFVK via `WalletRead::get_account_for_ufvk`.
-      - Enforces that the wallet tip height is ≥ `height` (otherwise returns `WalletError::UnknownAnchor(height)`).
-      - Fetches all Orchard notes via `WalletTest::get_notes(ShieldedProtocol::Orchard)`, filters to the account + `mined_height ≤ height`.
-      - Uses `WalletCommitmentTrees::with_orchard_tree_mut` and the underlying `ShardTree` APIs
-        (`root_at_checkpoint_id`, `witness_at_checkpoint_id_caching`) to:
-        - Compute the Orchard anchor (Merkle root) at the requested height.
-        - Compute a Merkle witness for each included note, populating `OrchardMerklePath.siblings`
-          and `position`.
-      - Returns `OrchardSnapshot { height, anchor, notes }` where `anchor` is the Orchard root at
-        `height` and `notes` contains fully-populated witnesses.
-  - `zkpf-zcash-orchard-circuit`:
-    - Introduces `RAIL_ID_ZCASH_ORCHARD`, `OrchardPublicMeta` (chain/pool IDs, anchor, holder binding),
-      and `PublicMetaInputs` (policy/scope/epoch/currency).
-    - Extends the global `VerifierPublicInputs` struct with Orchard snapshot fields and relies on
-      `zkpf_common::PublicInputLayout::V2Orchard` for its instance layout.
-    - Provides `build_verifier_public_inputs` and `map_inner_to_verifier_public_inputs` helpers to
-      construct `VerifierPublicInputs` compatible with the Orchard rail, and a
-      `prove_orchard_pof(snapshot, fvk, holder_id, threshold_zats, orchard_meta, public_meta)`
-      entrypoint that currently wraps a simple bn256 Halo2 circuit while the recursive
-      integration with the inner Orchard PoF circuit is completed.
-  - `zkpf-orchard-inner`:
-    - Defines `OrchardInnerPublicInputs`, `OrchardPofNoteWitness`, and `OrchardPofInput` as the
-      canonical public inputs and witnesses for an inner Orchard PoF circuit.
-    - Specifies an `OrchardPofProver` trait whose implementations are expected to:
-      - Convert `OrchardPofNoteWitness` Merkle paths into `halo2_gadgets::sinsemilla::merkle::MerklePath`.
-      - Use Orchard’s MerkleChip + Sinsemilla gadgets to recompute the Merkle root via
-        `MerklePath::calculate_root` under the consensus Orchard MerkleCRH.
-      - Enforce UFVK ownership and the `Σ v_i ≥ threshold_zats` inequality inside a Pallas-based Halo2 circuit.
-  - `zkpf-rails-zcash-orchard`:
-    - Exposes `POST /rails/zcash-orchard/proof-of-funds`, accepting:
-      - `holder_id`, `fvk` (UFVK string), `threshold_zats`, `snapshot_height`,
-      - `policy_id`, `scope_id`, `epoch`, `currency_code_zec`.
-    - At startup, loads `OrchardWalletConfig` from env, calls `init_global_wallet`, and spawns a
-      background Tokio task that repeatedly calls `sync_once()` to keep the wallet in sync.
-    - For each request:
-      - Wraps the FVK string in `OrchardFvk`.
-      - Calls `build_snapshot_for_fvk` to obtain an `OrchardSnapshot` or a precise wallet error
-        (e.g. invalid FVK, unknown anchor).
-      - Builds `OrchardPublicMeta` + `PublicMetaInputs`, and delegates to `prove_orchard_pof` to
-        eventually obtain a `ProofBundle` tagged for the Orchard rail once the circuit is available.
+- a **canonical inner Orchard PoF circuit** over Pasta (Pallas/Vesta) that reuses the official
+  Orchard Halo2 gadgets, and
+- an optional **bn256 wrapper circuit** for environments (like EVM) that require bn254-style curves.
+
+At a high level, the Orchard rail proves:
+
+1. There exists a set of Orchard notes `{n_i}` whose commitments `cmx_i` are leaves of the **canonical
+   Orchard note commitment tree** at some anchor `rt` (depth 32, `MerkleCRH^Orchard`).
+2. The values `v_i` used in the proof are exactly the values committed in those notes.
+3. The sum satisfies `Σ v_i ≥ threshold_zats`.
+4. All notes are consistent with a single Orchard viewing key (UFVK/FVK).
+5. The circuit outputs the real Orchard nullifiers of these notes so verifiers can check unspentness.
+6. Optionally, the notes are bound to a holder identifier + UFVK via an in-circuit binding hash.
+
+**Inner data model and circuit interface**
+
+- `zkpf-orchard-inner` defines the **inner circuit’s public inputs and witnesses**:
+  - `OrchardInnerPublicInputs`:
+    - `anchor_orchard: [u8; 32]` – Orchard anchor (Merkle root) at `height`.
+    - `height: u32` – snapshot chain height.
+    - `ufvk_commitment: [u8; 32]` – commitment to the holder’s UFVK / Orchard FVK.
+    - `threshold_zats: u64` – PoF threshold in zatoshi.
+    - `sum_zats: u64` – sum of all included note values (driven by the circuit).
+    - `nullifiers: Vec<[u8; 32]>` – Orchard nullifiers for each included note.
+    - `binding: Option<[u8; 32]>` – optional holder/UFVK/policy binding, e.g.
+      `Poseidon(holder_id_bytes || ufvk_bytes || domain_bytes)`.
+  - `OrchardPofNoteWitness`:
+    - `value_zats: u64` – Orchard note value.
+    - `cmx: [u8; 32]` – extracted note commitment.
+    - `merkle_siblings: Vec<[u8; 32]>` – Merkle siblings (encoded `MerkleHashOrchard` values).
+    - `position: u64` – leaf position in the global note commitment tree.
+  - `OrchardPofInput`:
+    - `public: OrchardInnerPublicInputs`.
+    - `notes: Vec<OrchardPofNoteWitness>`.
+    - `ufvk_bytes: Vec<u8>` – UFVK / Orchard viewing key material for ownership checks.
+  - `ORCHARD_POF_MAX_NOTES: usize = 32` – a hard upper bound on the number of notes per proof; inner
+    circuits are expected to pad up to this bound or reject larger witnesses.
+  - `OrchardPofProver` trait:
+    - `fn prove_orchard_pof_statement(&self, input: &OrchardPofInput) -> Result<(Vec<u8>, OrchardInnerPublicInputs), OrchardPofError>;`
+    - Implementations are expected to:
+      - Convert `merkle_siblings` into `halo2_gadgets::sinsemilla::merkle::MerklePath`.
+      - Use Orchard’s `MerkleChip` + Sinsemilla gadgets to recompute the Orchard root with
+        `MerklePath::calculate_root` under the canonical `MerkleCRH^Orchard` domain.
+      - Recompute note commitments from note fields and enforce membership under `anchor_orchard`.
+      - Enforce UFVK ownership and `Σ v_i ≥ threshold_zats` inside a Pasta-field Halo2 circuit.
+      - Compute Orchard nullifiers in-circuit and expose them in `nullifiers`.
+
+**Inner circuit crate and wallet snapshots**
+
+- `zkpf-orchard-pof-circuit`:
+  - Defines Orchard-typed snapshots that mirror wallet semantics:
+    - `OrchardPofNoteSnapshot`:
+      - `note: Option<orchard::Note>` – full Orchard note (optional for early integrations).
+      - `value_zats: orchard::value::NoteValue` – note value as a Zcash `NoteValue`.
+      - `cmx: orchard::note::ExtractedNoteCommitment`.
+      - `position: u64`.
+      - `merkle_path: orchard::tree::MerklePath`.
+    - `OrchardPofSnapshot`:
+      - `height: u32`.
+      - `anchor: orchard::tree::Anchor`.
+      - `notes: Vec<OrchardPofNoteSnapshot>`.
+  - Exposes `OrchardPofParams` (threshold, UFVK bytes, optional holder ID) and a helper:
+    - `snapshot_to_inner_input(snapshot, params) -> OrchardPofInput` which:
+      - Enforces `notes.len() ≤ ORCHARD_POF_MAX_NOTES`.
+      - Converts `anchor` and `MerklePath` into the inner witness format.
+      - Leaves `sum_zats`, `nullifiers`, and `binding` to be populated by the circuit.
+  - Introduces `OrchardPofCircuitArtifacts { params_bytes, vk_bytes, pk_bytes }` and
+    `OrchardPofCircuitProver { artifacts }`, a thin wrapper that implements
+    `OrchardPofProver` and is ready to be backed by a concrete Halo2 Pasta circuit.
+
+- `zkpf-zcash-orchard-wallet`:
+  - Provides a rail-facing snapshot format:
+    - `OrchardFvk { encoded: String }` – UFVK wrapper.
+    - `OrchardMerklePath { siblings: Vec<[u8; 32]>, position: u64 }`.
+    - `OrchardNoteWitness { value_zats: u64, commitment: [u8; 32], merkle_path: OrchardMerklePath }`.
+    - `OrchardSnapshot { height: u32, anchor: [u8; 32], notes: Vec<OrchardNoteWitness> }`.
+  - Adds `snapshot_to_pof_snapshot(snapshot: &OrchardSnapshot)` which:
+    - Parses `anchor` via `orchard::tree::Anchor::from_bytes`.
+    - Converts `OrchardMerklePath.siblings` into `[MerkleHashOrchard; 32]`, enforcing exactly 32 siblings.
+    - Builds a canonical `orchard::tree::MerklePath` using `MerklePath::from_parts(position, auth_path)`.
+    - Constructs `OrchardPofNoteSnapshot` values using `NoteValue::from_raw(value_zats)` and
+      `ExtractedNoteCommitment::from_bytes(commitment)`.
+    - Returns a fully-typed `OrchardPofSnapshot` suitable for `snapshot_to_inner_input`.
+
+**bn256 / EVM wrapper and backend integration**
+
+- `zkpf-zcash-orchard-circuit` is documented as a **bn256 wrapper circuit**:
+  - It owns `RAIL_ID_ZCASH_ORCHARD`, `OrchardPublicMeta` (chain/pool IDs, anchor, holder binding),
+    and `PublicMetaInputs` (policy/scope/epoch/currency).
+  - It relies on `zkpf_common::PublicInputLayout::V2Orchard` to map Orchard snapshot metadata into
+    `VerifierPublicInputs`, and provides helpers:
+    - `build_verifier_public_inputs(threshold_zats, orchard_meta, meta, nullifier, custodian_pubkey_hash)`.
+    - `map_inner_to_verifier_public_inputs(inner: &OrchardInnerPublicInputs, meta, nullifier, custodian_pubkey_hash, holder_binding)`.
+  - Its long-term role is to:
+    - Take an **inner Orchard PoF proof + `OrchardInnerPublicInputs`** as witnesses.
+    - Use a bn256 recursion gadget to verify the inner (Pasta) proof.
+    - Map the inner public inputs into a single `VerifierPublicInputs` struct for the zkpf backend.
+
+- `zkpf-rails-zcash-orchard`:
+  - Exposes `POST /rails/zcash-orchard/proof-of-funds` to:
+    - Build `OrchardSnapshot` via `build_snapshot_for_fvk` (once the wallet backend is fully wired).
+    - Convert the snapshot into `OrchardPofSnapshot` / `OrchardPofInput`.
+    - Call into an `OrchardPofProver` implementation to obtain:
+      - A Pasta-field Orchard PoF proof + `OrchardInnerPublicInputs`.
+      - Eventually a bn256 wrapper proof for `RAIL_ID_ZCASH_ORCHARD`, produced by
+        `zkpf-zcash-orchard-circuit`.
+
+With these pieces in place, the Orchard rail is now modeled as:
+
+- **Canonical semantics**: an inner Orchard PoF circuit over Pasta using Orchard’s own gadgets and
+  real Orchard trees/notes/nullifiers (`zkpf-orchard-inner`, `zkpf-orchard-pof-circuit`,
+  `zkpf-zcash-orchard-wallet`).
+- **Optional bn256/EVM wrapper**: a recursive bn256 circuit that only attests “the inner Orchard PoF
+  verified” and maps its public inputs into the shared `VerifierPublicInputs` layout
+  (`zkpf-zcash-orchard-circuit`).
 
 - **What’s left to reach a fully working ZCASH_ORCHARD rail**
   - **Inner Orchard Halo2 circuit + artifacts (Pallas/Vesta)**

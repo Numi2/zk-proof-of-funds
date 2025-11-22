@@ -6,6 +6,7 @@
 //! placeholder functions so that the workspace builds cleanly.
 
 use once_cell::sync::OnceCell;
+use orchard::tree::{Anchor, MerkleHashOrchard, MerklePath};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -143,4 +144,67 @@ pub fn build_snapshot_for_fvk(
 ) -> Result<OrchardSnapshot, WalletError> {
     Err(WalletError::NotImplemented)
 }
+
+/// Convert a high-level `OrchardSnapshot` (using byte encodings) into the
+/// canonical Orchard PoF snapshot representation used by the inner circuit.
+///
+/// This helper assumes that:
+/// - `anchor` is a valid Orchard anchor encoding, and
+/// - each `OrchardMerklePath.siblings` vector encodes a full Orchard Merkle
+///   authentication path for the corresponding note commitment.
+pub fn snapshot_to_pof_snapshot(
+    snapshot: &OrchardSnapshot,
+) -> Result<zkpf_orchard_pof_circuit::OrchardPofSnapshot, WalletError> {
+    let anchor = Anchor::from_bytes(snapshot.anchor)
+        .into_option()
+        .ok_or_else(|| WalletError::Backend("invalid Orchard anchor bytes".into()))?;
+
+    let mut notes = Vec::with_capacity(snapshot.notes.len());
+
+    for note_witness in snapshot.notes.iter() {
+        // Convert the Merkle path into Orchard's canonical type.
+        let auth_path: Vec<MerkleHashOrchard> = note_witness
+            .merkle_path
+            .siblings
+            .iter()
+            .map(|sib| {
+                MerkleHashOrchard::from_bytes(sib).into_option().ok_or_else(|| {
+                    WalletError::Backend("invalid Orchard Merkle path element".into())
+                })
+            })
+            .collect::<Result<_, _>>()?;
+
+        let auth_path: [MerkleHashOrchard; 32] = auth_path.into_iter().collect::<Vec<_>>().try_into().map_err(
+            |_| WalletError::Backend("expected 32 siblings in Orchard Merkle path".into()),
+        )?;
+
+        let merkle_path = MerklePath::from_parts(
+            note_witness
+                .merkle_path
+                .position
+                .try_into()
+                .map_err(|_| WalletError::Backend("invalid Orchard Merkle path position".into()))?,
+            auth_path,
+        );
+
+        notes.push(zkpf_orchard_pof_circuit::OrchardPofNoteSnapshot {
+            note: None,
+            value_zats: orchard::value::NoteValue::from_raw(note_witness.value_zats),
+            cmx: orchard::note::ExtractedNoteCommitment::from_bytes(&note_witness.commitment)
+                .into_option()
+                .ok_or_else(|| {
+                    WalletError::Backend("invalid Orchard extracted note commitment".into())
+                })?,
+            position: note_witness.merkle_path.position,
+            merkle_path,
+        });
+    }
+
+    Ok(zkpf_orchard_pof_circuit::OrchardPofSnapshot {
+        height: snapshot.height,
+        anchor,
+        notes,
+    })
+}
+
 
