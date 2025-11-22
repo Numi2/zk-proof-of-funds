@@ -1,5 +1,7 @@
-const { MOCK_BUNDLE } = require('./mock-data');
 const { handleCors, readJsonBody, sendJson } = require('./helpers');
+
+const BACKEND_BASE =
+  process.env.ZKPF_BACKEND_URL || process.env.ZKPF_BACKEND || 'http://localhost:3000';
 
 module.exports = async function handler(req, res) {
   if (handleCors(req, res)) {
@@ -13,14 +15,20 @@ module.exports = async function handler(req, res) {
 
   try {
     const payload = await readJsonBody(req);
-    if (!payload) {
-      return sendJson(res, 400, { error: 'Invalid JSON body' });
-    }
+    const response = await fetch(`${BACKEND_BASE}/zkpf/prove-bundle`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload ?? {}),
+    });
+    const body = await response.json();
+    return sendJson(res, response.status, body);
   } catch (err) {
-    return sendJson(res, 400, { error: `Invalid JSON body: ${err.message}` });
+    return sendJson(res, 500, {
+      error: `Failed to proxy /zkpf/prove-bundle to backend: ${err.message || 'unknown error'}`,
+    });
   }
-
-  return sendJson(res, 200, MOCK_BUNDLE);
 };
 
 

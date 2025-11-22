@@ -1,5 +1,7 @@
-const { MOCK_POLICIES, makeVerifySuccess, makeVerifyFailure } = require('./mock-data');
 const { sendJson, readJsonBody, handleCors } = require('./helpers');
+
+const BACKEND_BASE =
+  process.env.ZKPF_BACKEND_URL || process.env.ZKPF_BACKEND || 'http://localhost:3000';
 
 module.exports = async function handler(req, res) {
   if (handleCors(req, res)) {
@@ -17,24 +19,20 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 400, { error: `Invalid JSON body: ${err.message}` });
   }
 
-  if (!payload || typeof payload.policy_id !== 'number') {
-    return sendJson(res, 400, { error: 'Expected numeric policy_id' });
+  try {
+    const response = await fetch(`${BACKEND_BASE}/zkpf/verify`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload ?? {}),
+    });
+    const body = await response.json();
+    sendJson(res, response.status, body);
+  } catch (err) {
+    sendJson(res, 500, {
+      error: `Failed to proxy /zkpf/verify to backend: ${err.message || 'unknown error'}`,
+    });
   }
-
-  const found = MOCK_POLICIES.some((policy) => policy.policy_id === payload.policy_id);
-  if (!found) {
-    return sendJson(res, 200, makeVerifyFailure(`policy_id ${payload.policy_id} not allowed`));
-  }
-
-  const simulateError = typeof payload.simulate_error === 'string';
-  if (simulateError) {
-    return sendJson(
-      res,
-      200,
-      makeVerifyFailure('Simulated failure via request payload', 'SIMULATED_FAILURE'),
-    );
-  }
-
-  return sendJson(res, 200, makeVerifySuccess());
 };
 

@@ -1,4 +1,7 @@
 import wasmInit, {
+  computeAttestationMessageHash,
+  computeCustodianPubkeyHash,
+  computeNullifier,
   generateProofBundleCached,
   initProverArtifacts,
   resetCachedArtifacts,
@@ -67,6 +70,29 @@ export async function generateBundle(attestationJson: string): Promise<ProofBund
 export function resetProverArtifactsCache() {
   cachedArtifactsKey = null;
   resetCachedArtifacts();
+}
+
+export async function wasmComputeAttestationMessageHash(attestationJson: string): Promise<Uint8Array> {
+  await ensureWasmLoaded();
+  return computeAttestationMessageHash(attestationJson);
+}
+
+export async function wasmComputeNullifier(
+  accountIdHash: Uint8Array,
+  verifierScopeId: bigint,
+  policyId: bigint,
+  currentEpoch: bigint,
+): Promise<Uint8Array> {
+  await ensureWasmLoaded();
+  return computeNullifier(accountIdHash, verifierScopeId, policyId, currentEpoch);
+}
+
+export async function wasmComputeCustodianPubkeyHash(
+  pubkeyX: Uint8Array,
+  pubkeyY: Uint8Array,
+): Promise<Uint8Array> {
+  await ensureWasmLoaded();
+  return computeCustodianPubkeyHash(pubkeyX, pubkeyY);
 }
 
 function normalizeForJson(value: unknown): unknown {

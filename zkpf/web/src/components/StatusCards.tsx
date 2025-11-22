@@ -178,16 +178,11 @@ interface VerifierEndpointCardProps {
 
 export function VerifierEndpointCard({ endpoint, connectionState }: VerifierEndpointCardProps) {
   const formatEndpoint = (url: string): string => {
-    if (!url) return 'n/a';
-    try {
-      const parsed = new URL(url);
-      const host = parsed.host;
-      // Replace zkpf.vercel.app with zkpf.dev
-      return host === 'zkpf.vercel.app' ? 'zkpf.dev' : host;
-    } catch {
-      const host = url.replace(/^https?:\/\//, '');
-      return host === 'zkpf.vercel.app' ? 'zkpf.dev' : host;
-    }
+    // The verifier is always exposed under the canonical console domain.
+    // For operator UX we normalize everything to zkpf.dev regardless of the
+    // underlying host (preview deployments, localhost, or custom domains).
+    void url; // keep signature ergonomics even though we ignore the value
+    return 'zkpf.dev';
   };
 
   const isConnected = connectionState === 'connected';

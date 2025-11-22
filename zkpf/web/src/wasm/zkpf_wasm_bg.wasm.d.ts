@@ -33,6 +33,9 @@ export const generateProofBundle: (a: number, b: number, c: number, d: number, e
 export const generateProofBundleWithCache: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const generateProofCached: (a: number, b: number) => [number, number, number, number];
 export const generateProofBundleCached: (a: number, b: number) => [number, number, number];
+export const computeAttestationMessageHash: (a: number, b: number) => [number, number, number, number];
+export const computeNullifier: (a: number, b: number, c: bigint, d: bigint, e: bigint) => [number, number, number, number];
+export const computeCustodianPubkeyHash: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const verify_proof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];
 export const verifyProofWithCache: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
 export const verifyProofBytes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];

@@ -13,6 +13,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use tower_http::cors::{Any, CorsLayer};
 use once_cell::sync::Lazy;
 use blake3;
 use sled::Db;
@@ -349,7 +350,12 @@ impl IntoResponse for ApiError {
 }
 
 pub async fn serve() {
-    let app = app_router(AppState::global());
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let app = app_router(AppState::global()).layer(cors);
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app.into_make_service())
         .await

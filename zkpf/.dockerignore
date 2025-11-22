@@ -1,0 +1,41 @@
+# flyctl launch added from .gitignore
+target
+artifacts
+
+**/.vercel
+
+# flyctl launch added from web/.gitignore
+# Logs
+web/**/logs
+web/**/*.log
+web/**/npm-debug.log*
+web/**/yarn-debug.log*
+web/**/yarn-error.log*
+web/**/pnpm-debug.log*
+web/**/lerna-debug.log*
+
+web/**/node_modules
+web/**/dist
+web/**/dist-ssr
+web/**/*.local
+
+# Editor directories and files
+web/**/.vscode/*
+!web/**/.vscode/extensions.json
+web/**/.idea
+web/**/.DS_Store
+web/**/*.suo
+web/**/*.ntvs*
+web/**/*.njsproj
+web/**/*.sln
+web/**/*.sw?
+
+# flyctl launch added from zkpf-test-fixtures/.gitignore
+zkpf-test-fixtures/target
+
+# Large binary files (exceed GitHub file size limits)
+# NOTE: These fixtures are required in the Docker image for zkpf-backend to start,
+# so we intentionally keep them in the build context. They are still ignored by Git.
+# zkpf-test-fixtures/**/fixtures/params.bin
+# zkpf-test-fixtures/**/fixtures/pk.bin
+fly.toml

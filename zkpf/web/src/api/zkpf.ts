@@ -8,6 +8,7 @@ import type {
   ProofBundle,
   VerifyRequest,
   VerifyResponse,
+  ByteArray,
 } from '../types/zkpf';
 
 const LOCAL_FALLBACK_BASE = 'http://localhost:3000';
@@ -23,6 +24,7 @@ export class ApiError extends Error {
 
 export class ZkpfClient {
   private readonly base: string;
+  private readonly artifactCache = new Map<string, { params: ByteArray; vk: ByteArray; pk: ByteArray }>();
 
   constructor(baseUrl: string) {
     this.base = sanitizeBaseUrl(baseUrl);
@@ -33,7 +35,54 @@ export class ZkpfClient {
   }
 
   async getParams(): Promise<ParamsResponse> {
-    return this.request<ParamsResponse>('/zkpf/params');
+    const payload = await this.request<ParamsResponse & {
+      params?: ByteArray;
+      vk?: ByteArray;
+      pk?: ByteArray;
+      artifact_urls?: {
+        params: string;
+        vk: string;
+        pk: string;
+      };
+    }>('/zkpf/params');
+
+    if (payload.params && payload.vk && payload.pk) {
+      return payload;
+    }
+
+    if (!payload.artifact_urls) {
+      throw new Error('Params response missing artifact URLs and inline bytes.');
+    }
+
+    const cacheKey = `${payload.params_hash}:${payload.pk_hash}:${payload.vk_hash}`;
+    if (this.artifactCache.has(cacheKey)) {
+      const cached = this.artifactCache.get(cacheKey)!;
+      return {
+        ...payload,
+        params: cached.params,
+        vk: cached.vk,
+        pk: cached.pk,
+      };
+    }
+
+    const [paramsBytes, vkBytes, pkBytes] = await Promise.all([
+      downloadArtifact(payload.artifact_urls.params),
+      downloadArtifact(payload.artifact_urls.vk),
+      downloadArtifact(payload.artifact_urls.pk),
+    ]);
+
+    const hydrated = {
+      ...payload,
+      params: paramsBytes,
+      vk: vkBytes,
+      pk: pkBytes,
+    };
+    this.artifactCache.set(cacheKey, {
+      params: paramsBytes,
+      vk: vkBytes,
+      pk: pkBytes,
+    });
+    return hydrated;
   }
 
   async getEpoch(): Promise<EpochResponse> {
@@ -125,5 +174,14 @@ export function sanitizeBaseUrl(url: string): string {
     return LOCAL_FALLBACK_BASE;
   }
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+}
+
+async function downloadArtifact(url: string): Promise<ByteArray> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
+  }
+  const buffer = await response.arrayBuffer();
+  return Array.from(new Uint8Array(buffer));
 }
 

@@ -7,8 +7,8 @@ edition = "2021"
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
-once_cell = "1.19"
 rand = "0.8"
+once_cell = "1.19"
 zkpf-common = { path = "../zkpf-common" }
 zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
 zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }

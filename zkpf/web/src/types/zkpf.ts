@@ -38,6 +38,11 @@ export interface ParamsResponse {
   params: ByteArray;
   vk: ByteArray;
   pk: ByteArray;
+  artifact_urls?: {
+    params: string;
+    vk: string;
+    pk: string;
+  };
 }
 
 export interface EpochResponse {

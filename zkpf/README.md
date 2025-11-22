@@ -234,6 +234,22 @@ npm run dev
 
 Override the API base via `VITE_ZKPF_API_URL` (otherwise it falls back to the window origin or `http://localhost:3000`).
 
+When deploying the Rust backend to Fly.io (for example at `https://zkpf-backend.fly.dev`), and the web console to Vercel:
+
+- Set the frontend environment variable to point at the Fly app:
+
+  ```bash
+  # Vercel / .env.local
+  VITE_ZKPF_API_URL=https://zkpf-backend.fly.dev
+  ```
+
+- After redeploying the frontend, the browser will call:
+  - `GET https://zkpf-backend.fly.dev/zkpf/policies`
+  - `GET https://zkpf-backend.fly.dev/zkpf/epoch`
+  - `POST https://zkpf-backend.fly.dev/zkpf/verify-bundle` / `/zkpf/verify` / `/zkpf/attest`
+
+This is the only wiring needed: the backend remains a plain Axum service on Fly.io, and the web UI (locally or on Vercel) discovers it via `VITE_ZKPF_API_URL`.
+
 ### On-chain wallet proof-of-funds (design)
 
 The `docs/onchain-proof-of-funds.md` document and `contracts/` directory introduce an **on-chain rail** for zk proof-of-funds:

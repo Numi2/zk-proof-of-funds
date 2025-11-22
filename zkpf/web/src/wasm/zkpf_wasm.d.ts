@@ -9,6 +9,9 @@ export function generateProofBundle(attestation_json: string, params_bytes: Uint
 export function generateProofBundleWithCache(attestation_json: string, params: ParamsWasm, pk: ProvingKeyWasm): any;
 export function generateProofCached(attestation_json: string): Uint8Array;
 export function generateProofBundleCached(attestation_json: string): any;
+export function computeAttestationMessageHash(attestation_json: string): Uint8Array;
+export function computeNullifier(account_id_hash_bytes: Uint8Array, verifier_scope_id: bigint, policy_id: bigint, current_epoch: bigint): Uint8Array;
+export function computeCustodianPubkeyHash(pubkey_x: Uint8Array, pubkey_y: Uint8Array): Uint8Array;
 export function verify_proof(proof_bytes: Uint8Array, public_inputs_json: string, vk_bytes: Uint8Array, params_bytes: Uint8Array): boolean;
 export function verifyProofWithCache(proof_bytes: Uint8Array, public_inputs: PublicInputsWasm, vk: VerifyingKeyWasm, params: ParamsWasm): boolean;
 export function verifyProofBytes(proof_bytes: Uint8Array, public_inputs_bytes: Uint8Array, vk_bytes: Uint8Array, params_bytes: Uint8Array): boolean;
@@ -90,6 +93,9 @@ export interface InitOutput {
   readonly generateProofBundleWithCache: (a: number, b: number, c: number, d: number) => [number, number, number];
   readonly generateProofCached: (a: number, b: number) => [number, number, number, number];
   readonly generateProofBundleCached: (a: number, b: number) => [number, number, number];
+  readonly computeAttestationMessageHash: (a: number, b: number) => [number, number, number, number];
+  readonly computeNullifier: (a: number, b: number, c: bigint, d: bigint, e: bigint) => [number, number, number, number];
+  readonly computeCustodianPubkeyHash: (a: number, b: number, c: number, d: number) => [number, number, number, number];
   readonly verify_proof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];
   readonly verifyProofWithCache: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly verifyProofBytes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number];

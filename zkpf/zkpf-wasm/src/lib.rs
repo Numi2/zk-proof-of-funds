@@ -4,17 +4,26 @@
 use std::cell::RefCell;
 
 use halo2_proofs_axiom::{plonk, poly::kzg::commitment::ParamsKZG};
-use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
+use halo2curves_axiom::{
+    bn256::{Bn256, Fr, G1Affine},
+    ff::{Field, PrimeField},
+};
+use poseidon_primitives::poseidon::primitives::{ConstantLength, Hash, Spec};
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
 use zkpf_circuit::ZkpfCircuitInput;
 use zkpf_common::{
     deserialize_params, deserialize_proving_key, deserialize_verifier_public_inputs,
     deserialize_verifying_key, public_inputs_to_instances, serialize_verifier_public_inputs,
-    ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
+    custodian_pubkey_hash, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
 };
 use zkpf_prover::{prove, prove_bundle, prove_with_public_inputs};
 use zkpf_verifier::verify;
+
+const POSEIDON_T: usize = 6;
+const POSEIDON_RATE: usize = 5;
+const POSEIDON_FULL_ROUNDS: usize = 8;
+const POSEIDON_PARTIAL_ROUNDS: usize = 57;
 
 #[wasm_bindgen]
 pub struct VerifyingKeyWasm {
@@ -284,6 +293,56 @@ pub fn generate_proof_bundle_cached(attestation_json: &str) -> Result<JsValue, J
     })
 }
 
+#[wasm_bindgen(js_name = computeAttestationMessageHash)]
+pub fn compute_attestation_message_hash(attestation_json: &str) -> Result<Vec<u8>, JsValue> {
+    let input: ZkpfCircuitInput = serde_json::from_str(attestation_json).map_err(js_error)?;
+    let att = input.attestation;
+    let digest = poseidon_hash([
+        Fr::from(att.balance_raw),
+        Fr::from(att.attestation_id),
+        Fr::from(att.currency_code_int as u64),
+        Fr::from(att.custodian_id as u64),
+        Fr::from(att.issued_at),
+        Fr::from(att.valid_until),
+        att.account_id_hash,
+    ]);
+    Ok(fr_to_be_bytes(&digest).to_vec())
+}
+
+#[wasm_bindgen(js_name = computeNullifier)]
+pub fn compute_nullifier(
+    account_id_hash_bytes: &[u8],
+    verifier_scope_id: u64,
+    policy_id: u64,
+    current_epoch: u64,
+) -> Result<Vec<u8>, JsValue> {
+    let account_id_hash = fr_from_le_bytes(account_id_hash_bytes)?;
+    let digest = poseidon_hash([
+        account_id_hash,
+        Fr::from(verifier_scope_id),
+        Fr::from(policy_id),
+        Fr::from(current_epoch),
+    ]);
+    Ok(fr_to_le_bytes(&digest).to_vec())
+}
+
+#[wasm_bindgen(js_name = computeCustodianPubkeyHash)]
+pub fn compute_custodian_pubkey_hash(
+    pubkey_x: &[u8],
+    pubkey_y: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+    if pubkey_x.len() != 32 || pubkey_y.len() != 32 {
+        return Err(js_error("custodian pubkey coordinates must be 32 bytes"));
+    }
+    let mut x = [0u8; 32];
+    x.copy_from_slice(pubkey_x);
+    let mut y = [0u8; 32];
+    y.copy_from_slice(pubkey_y);
+    let pubkey = zkpf_circuit::gadgets::attestation::Secp256k1Pubkey { x, y };
+    let hash = custodian_pubkey_hash(&pubkey);
+    Ok(fr_to_le_bytes(&hash).to_vec())
+}
+
 #[wasm_bindgen]
 pub fn verify_proof(
     proof_bytes: &[u8],
@@ -518,4 +577,53 @@ fn into_field_bytes(label: &str, bytes: &[u8]) -> Result<[u8; 32], JsValue> {
     let mut arr = [0u8; 32];
     arr.copy_from_slice(bytes);
     Ok(arr)
+}
+
+fn poseidon_hash<const L: usize>(values: [Fr; L]) -> Fr {
+    Hash::<Fr, PoseidonSpecImpl, ConstantLength<L>, POSEIDON_T, POSEIDON_RATE>::init().hash(values)
+}
+
+fn fr_to_be_bytes(value: &Fr) -> [u8; 32] {
+    let mut le = fr_to_le_bytes(value);
+    le.reverse();
+    le
+}
+
+fn fr_to_le_bytes(value: &Fr) -> [u8; 32] {
+    let repr = value.to_repr();
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(repr.as_ref());
+    bytes
+}
+
+fn fr_from_le_bytes(bytes: &[u8]) -> Result<Fr, JsValue> {
+    if bytes.len() != 32 {
+        return Err(js_error("field elements must be 32 bytes"));
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(bytes);
+    Fr::from_bytes(&arr)
+        .into_option()
+        .ok_or_else(|| js_error("invalid field element encoding"))
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PoseidonSpecImpl;
+
+impl Spec<Fr, POSEIDON_T, POSEIDON_RATE> for PoseidonSpecImpl {
+    fn full_rounds() -> usize {
+        POSEIDON_FULL_ROUNDS
+    }
+
+    fn partial_rounds() -> usize {
+        POSEIDON_PARTIAL_ROUNDS
+    }
+
+    fn sbox(val: Fr) -> Fr {
+        val.pow_vartime([5])
+    }
+
+    fn secure_mds() -> usize {
+        0
+    }
 }

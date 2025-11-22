@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import './App.css';
 import { ZkpfClient, detectDefaultBase } from './api/zkpf';
 import { VerifierEndpointCard } from './components/StatusCards';
@@ -28,6 +30,7 @@ const HERO_HIGHLIGHTS = [
 function App() {
   const client = useMemo(() => new ZkpfClient(DEFAULT_BASE), []);
   const [prefillBundle, setPrefillBundle] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -53,6 +56,11 @@ function App() {
       : isConnected
         ? 'connected'
         : 'idle';
+
+  const handleBundleReady = (bundle: ProofBundle) => {
+    setPrefillBundle(JSON.stringify(bundle, null, 2));
+    navigate('/workbench');
+  };
 
   return (
     <div className="app-shell">
@@ -86,42 +94,86 @@ function App() {
             </div>
           ))}
         </div>
+
+        <nav className="main-nav">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+          >
+            Overview
+          </NavLink>
+          <NavLink
+            to="/build"
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+          >
+            Build proof
+          </NavLink>
+          <NavLink
+            to="/workbench"
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+          >
+            Proof console
+          </NavLink>
+        </nav>
       </header>
 
-      <FinanceContext
-        params={paramsQuery.data}
-        connectionState={connectionState}
-        verifierUrl={client.baseUrl}
-      />
+      <Routes>
+        <Route
+          path="/"
+          element={(
+            <>
+              <FinanceContext
+                params={paramsQuery.data}
+                connectionState={connectionState}
+                verifierUrl={client.baseUrl}
+              />
 
-      <section className="info-grid">
-        <VerifierEndpointCard
-          endpoint={client.baseUrl}
-          connectionState={connectionState}
+              <section className="info-grid">
+                <VerifierEndpointCard
+                  endpoint={client.baseUrl}
+                  connectionState={connectionState}
+                />
+              </section>
+
+              <UsageGuide />
+            </>
+          )}
         />
-      </section>
 
-      <UsageGuide />
+        <Route
+          path="/build"
+          element={(
+            <ProofBuilder
+              client={client}
+              connectionState={connectionState}
+              onBundleReady={handleBundleReady}
+            />
+          )}
+        />
 
-      <ProofBuilder
-        client={client}
-        connectionState={connectionState}
-        onBundleReady={(bundle: ProofBundle) =>
-          setPrefillBundle(JSON.stringify(bundle, null, 2))}
-      />
+        <Route
+          path="/workbench"
+          element={(
+            <ProofWorkbench
+              client={client}
+              connectionState={connectionState}
+              prefillBundle={prefillBundle}
+              onPrefillConsumed={() => setPrefillBundle(null)}
+            />
+          )}
+        />
 
-      <ProofWorkbench
-        client={client}
-        connectionState={connectionState}
-        prefillBundle={prefillBundle}
-        onPrefillConsumed={() => setPrefillBundle(null)}
-      />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       <footer>
         <p>
           Made by Numan Thabit
         </p>
       </footer>
+
+      <Analytics />
     </div>
   );
 }

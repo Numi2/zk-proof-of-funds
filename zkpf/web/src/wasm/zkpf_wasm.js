@@ -344,6 +344,60 @@ export function generateProofBundleCached(attestation_json) {
 }
 
 /**
+ * @param {string} attestation_json
+ * @returns {Uint8Array}
+ */
+export function computeAttestationMessageHash(attestation_json) {
+    const ptr0 = passStringToWasm0(attestation_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.computeAttestationMessageHash(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * @param {Uint8Array} account_id_hash_bytes
+ * @param {bigint} verifier_scope_id
+ * @param {bigint} policy_id
+ * @param {bigint} current_epoch
+ * @returns {Uint8Array}
+ */
+export function computeNullifier(account_id_hash_bytes, verifier_scope_id, policy_id, current_epoch) {
+    const ptr0 = passArray8ToWasm0(account_id_hash_bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.computeNullifier(ptr0, len0, verifier_scope_id, policy_id, current_epoch);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * @param {Uint8Array} pubkey_x
+ * @param {Uint8Array} pubkey_y
+ * @returns {Uint8Array}
+ */
+export function computeCustodianPubkeyHash(pubkey_x, pubkey_y) {
+    const ptr0 = passArray8ToWasm0(pubkey_x, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArray8ToWasm0(pubkey_y, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.computeCustodianPubkeyHash(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
+}
+
+/**
  * @param {Uint8Array} proof_bytes
  * @param {string} public_inputs_json
  * @param {Uint8Array} vk_bytes

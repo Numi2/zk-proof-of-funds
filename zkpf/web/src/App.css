@@ -11,6 +11,41 @@
   text-align: left;
 }
 
+.main-nav {
+  margin-top: 1.75rem;
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.nav-link {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #cbd5f5;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.nav-link:hover {
+  background: rgba(30, 64, 175, 0.85);
+  border-color: rgba(129, 140, 248, 0.6);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
+
+.nav-link-active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(129, 140, 248, 0.28));
+  color: #e5e7eb;
+  border-color: rgba(129, 140, 248, 0.8);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.6), 0 14px 35px rgba(15, 23, 42, 0.9);
+}
+
 .brand {
   display: flex;
   align-items: center;

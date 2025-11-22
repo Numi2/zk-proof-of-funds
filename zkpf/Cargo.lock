@@ -3916,6 +3916,7 @@ dependencies = [
  "getrandom 0.2.16",
  "halo2-axiom",
  "halo2curves-axiom",
+ "poseidon-primitives",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
