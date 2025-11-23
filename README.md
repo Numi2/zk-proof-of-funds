@@ -47,16 +47,16 @@ zkpf/
 
 ## Key Components
 
-### 🎯 Core Circuit (`zkpf-circuit/`)
+### Core Circuit (`zkpf-circuit/`)
 The Halo2 zero-knowledge circuit that:
 - Verifies ECDSA signatures from allow-listed custodians
 - Enforces balance thresholds and policy requirements
 - Generates nullifiers for replay protection
 - Supports multiple proof "rails" (custodial, Orchard, provider-backed)
 
-**📖 Learn more:** [`zkpf/README.md`](zkpf/README.md#repository-layout)
+**Learn more:** [`zkpf/README.md`](zkpf/README.md#repository-layout)
 
-### 🌐 Backend API (`zkpf-backend/`)
+### Backend API (`zkpf-backend/`)
 REST API server providing:
 - `/zkpf/verify` - Verify proof bundles
 - `/zkpf/prove-bundle` - Generate proofs (when enabled)
@@ -64,24 +64,24 @@ REST API server providing:
 - `/zkpf/epoch` - Epoch/time window management
 - `/zkpf/attest` - On-chain attestation recording
 
-**📖 Learn more:** [`zkpf/README.md`](zkpf/README.md#backend-verification-api)
+**Learn more:** [`zkpf/README.md`](zkpf/README.md#backend-verification-api)
 
-### 💻 Web Dashboard (`web/`)
+### Web Dashboard (`web/`)
 React-based UI for:
 - Inspecting verifier parameters and policies
 - Uploading and verifying proof bundles
 - Monitoring epoch drift and system status
 - Provider session workflows (e.g., Zashi integration)
 
-**📖 Learn more:** [`zkpf/web/README.md`](zkpf/web/README.md)
+**Learn more:** [`zkpf/web/README.md`](zkpf/web/README.md)
 
-### 🔗 Smart Contracts (`contracts/`)
+### Smart Contracts (`contracts/`)
 Solidity contracts for on-chain functionality:
 - `AttestationRegistry.sol` - Record verified attestations
 - `WalletCommitmentRegistry.sol` - Register wallet commitments
 - `BalanceSnapshotPublisher.sol` - Publish balance snapshots
 
-**📖 Learn more:** [`zkpf/docs/onchain-proof-of-funds.md`](zkpf/docs/onchain-proof-of-funds.md)
+**Learn more:** [`zkpf/docs/onchain-proof-of-funds.md`](zkpf/docs/onchain-proof-of-funds.md)
 
 ## Proof Rails
 
@@ -106,7 +106,7 @@ The system supports multiple "rails" for different use cases:
    - Merkle-based proofs from on-chain snapshots
    - See design doc for details
 
-**📖 Learn more:** [`zkpf/README.md`](zkpf/README.md#zcash-orchard-rail-zcash_orchard--architecture-snapshot)
+**Learn more:** [`zkpf/README.md`](zkpf/README.md#zcash-orchard-rail-zcash_orchard--architecture-snapshot)
 
 ## Documentation
 
