@@ -6,6 +6,7 @@ import type { AttestResponse, ProofBundle, VerifyResponse } from '../types/zkpf'
 import { publicInputsToBytes } from '../utils/bytes';
 import { parseProofBundle } from '../utils/parse';
 import { BundleSummary } from './BundleSummary';
+import { PolicyComposer } from './PolicyComposer';
 import type { AssetRail } from '../types/ui';
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
@@ -631,6 +632,13 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
                 <strong>No policies available.</strong> Configure the verifier first by updating the policies configuration.
               </div>
             )}
+            <PolicyComposer
+              client={client}
+              onComposed={(policyId) => {
+                void policiesQuery.refetch();
+                setSelectedPolicyId(policyId);
+              }}
+            />
           </div>
           <div className="actions">
             <button

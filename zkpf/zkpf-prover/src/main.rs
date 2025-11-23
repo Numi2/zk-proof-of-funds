@@ -60,6 +60,8 @@ fn main() -> Result<()> {
         write_bundle_json(
             path,
             ProofBundle {
+                // Legacy CLI prover is custodial-only; treat as pre-rail-aware bundle.
+                rail_id: String::new(),
                 circuit_version: artifacts.manifest.circuit_version,
                 proof: proof.clone(),
                 public_inputs: public_inputs.clone(),

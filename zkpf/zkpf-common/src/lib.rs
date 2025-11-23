@@ -197,11 +197,12 @@ impl ProverArtifacts {
                 // available on disk, serialize it from the in-memory proving
                 // key (if present). This keeps tests and ephemeral setups from
                 // depending on an on-disk pk.bin.
-                let pk = self
-                    .proving_key()
-                    .with_context(|| format!("failed to recover proving key after disk read error: {err}"))?;
-                serialize_proving_key(pk.as_ref())
-                    .with_context(|| format!("failed to serialize proving key after disk read error: {err}"))
+                let pk = self.proving_key().with_context(|| {
+                    format!("failed to recover proving key after disk read error: {err}")
+                })?;
+                serialize_proving_key(pk.as_ref()).with_context(|| {
+                    format!("failed to serialize proving key after disk read error: {err}")
+                })
             }
         }
     }

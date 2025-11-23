@@ -23,9 +23,6 @@ use zkpf_common::{
     ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
 use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
-use zkpf_zcash_orchard_circuit::{
-    OrchardPofCircuitInput, OrchardPublicMeta, PublicMetaInputs, RAIL_ID_ZCASH_ORCHARD,
-};
 
 const TEST_K: u32 = 19;
 const CREATED_AT_UNIX: u64 = 1_700_000_000;
@@ -159,7 +156,7 @@ fn build_fixtures() -> Result<TestFixtures> {
 /// sample `ProofBundle` for local experimentation. This does not run in CI by default.
 #[cfg(test)]
 mod orchard_fixtures {
-    use super::*;
+
     use zkpf_common::{serialize_params, serialize_proving_key, serialize_verifying_key};
 
     #[test]

@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { CircuitInput, ProofBundle } from '../types/zkpf';
+import type { CircuitInput, ProofBundle, PolicyDefinition } from '../types/zkpf';
 import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
@@ -42,6 +42,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [bundle, setBundle] = useState<ProofBundle | null>(null);
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
   const [wasmError, setWasmError] = useState<string | null>(null);
+  const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -49,6 +50,29 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
+
+  const policiesQuery = useQuery({
+    queryKey: ['policies', client.baseUrl],
+    queryFn: () => client.getPolicies(),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  const policies = useMemo<PolicyDefinition[]>(() => policiesQuery.data ?? [], [policiesQuery.data]);
+
+  useEffect(() => {
+    if (!policies.length) {
+      setSelectedPolicyId(null);
+      return;
+    }
+    if (!selectedPolicyId || !policies.some((policy) => policy.policy_id === selectedPolicyId)) {
+      setSelectedPolicyId(policies[0].policy_id);
+      return;
+    }
+  }, [policies, selectedPolicyId]);
+
+  const selectedPolicy = selectedPolicyId
+    ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
+    : null;
 
   const proverArtifacts = useMemo(() => {
     if (!paramsQuery.data) {
@@ -111,6 +135,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     let normalizedJson: string;
     try {
       const parsed = JSON.parse(rawInput) as CircuitInput;
+      if (selectedPolicyId != null) {
+        // Ensure the prover input is bound to a concrete, server-owned policy_id so the
+        // resulting bundle's public_inputs.policy_id matches an entry in /zkpf/policies.
+        parsed.public.policy_id = selectedPolicyId;
+      }
       normalizedJson = JSON.stringify(parsed);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
@@ -135,7 +164,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     } finally {
       setIsGenerating(false);
     }
-  }, [ensureArtifacts, rawInput]);
+  }, [ensureArtifacts, rawInput, selectedPolicyId]);
 
   const handlePrefillWorkbench = useCallback(() => {
     if (bundle && onBundleReady) {
@@ -272,7 +301,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           </p>
           <ul>
             <li>Witness data never leaves the browser—the proving key stays client-side.</li>
-            <li>Use policies from the verifier to populate threshold, currency, and scope fields.</li>
+            <li>Use policies from the verifier to populate threshold, currency, scope, and policy_id fields.</li>
             <li>Nullifier + custodian hash must already be normalized to 32-byte values.</li>
           </ul>
           <div className="builder-sidepanel-actions">
@@ -284,6 +313,58 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             </button>
           </div>
         </aside>
+      </div>
+
+      <div className="builder-policy-panel">
+        <label className="field">
+          <span>Bind to verifier policy</span>
+          {policiesQuery.isLoading ? (
+            <div className="policy-loading">
+              <span className="spinner small"></span>
+              <span>Loading policies…</span>
+            </div>
+          ) : (
+            <select
+              value={selectedPolicyId ?? ''}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelectedPolicyId(value ? Number(value) : null);
+              }}
+              disabled={!policies.length}
+            >
+              {!policies.length ? (
+                <option value="">No policies available</option>
+              ) : (
+                policies.map((policy) => (
+                  <option key={policy.policy_id} value={policy.policy_id}>
+                    Policy #{policy.policy_id} • Scope {policy.verifier_scope_id} • Threshold{' '}
+                    {policy.threshold_raw.toLocaleString()}
+                  </option>
+                ))
+              )}
+            </select>
+          )}
+        </label>
+        {selectedPolicy && (
+          <dl className="policy-details">
+            <div>
+              <dt>Threshold</dt>
+              <dd>{selectedPolicy.threshold_raw.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Currency Code</dt>
+              <dd>{selectedPolicy.required_currency_code}</dd>
+            </div>
+            <div>
+              <dt>Custodian ID</dt>
+              <dd>{selectedPolicy.required_custodian_id}</dd>
+            </div>
+            <div>
+              <dt>Scope ID</dt>
+              <dd>{selectedPolicy.verifier_scope_id}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       <div className="builder-actions">

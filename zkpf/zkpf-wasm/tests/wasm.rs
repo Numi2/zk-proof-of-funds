@@ -8,8 +8,6 @@ use zkpf_wasm::{
     verify_proof_bundle_cached,
 };
 
-wasm_bindgen_test_configure!(run_in_browser = false);
-
 #[wasm_bindgen_test]
 fn wasm_round_trip_proof_generation() {
     let fixtures = fixtures();

@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     env, fs,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -30,6 +30,7 @@ use zkpf_common::{
 use zkpf_prover::prove_bundle;
 use zkpf_verifier::verify;
 use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
+use serde_json::Value as JsonValue;
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
 const MANIFEST_ENV: &str = "ZKPF_MANIFEST_PATH";
@@ -63,6 +64,7 @@ const CODE_ATTESTATION_VERIFICATION_FAILED: &str = "ATTESTATION_VERIFICATION_FAI
 const CODE_ATTESTATION_ONCHAIN_ERROR: &str = "ATTESTATION_ONCHAIN_ERROR";
 const CODE_INTERNAL: &str = "INTERNAL_SERVER_ERROR";
 const CODE_PROVER_DISABLED: &str = "PROVER_DISABLED";
+const CODE_POLICY_COMPOSE_INVALID: &str = "POLICY_COMPOSE_INVALID";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
@@ -189,6 +191,10 @@ impl RailRegistry {
             self.rails.get(rail_id)
         }
     }
+}
+
+fn policy_config_path() -> String {
+    env::var(POLICY_PATH_ENV).unwrap_or_else(|_| DEFAULT_POLICY_PATH.to_string())
 }
 
 #[derive(Clone)]
@@ -371,6 +377,7 @@ pub async fn serve() {
 pub fn app_router(state: AppState) -> Router {
     let router = Router::new()
         .route("/zkpf/policies", get(list_policies))
+        .route("/zkpf/policies/compose", post(compose_policy_handler))
         .route("/zkpf/params", get(get_params))
         .route("/zkpf/artifacts/:kind", get(get_artifact))
         .route("/zkpf/epoch", get(get_epoch))
@@ -404,9 +411,12 @@ async fn get_artifact(
         }
     };
 
-    let file = File::open(&path)
-        .await
-        .map_err(|err| ApiError::internal(format!("failed to open artifact at {}: {err}", path.display())))?;
+    let file = File::open(&path).await.map_err(|err| {
+        ApiError::internal(format!(
+            "failed to open artifact at {}: {err}",
+            path.display()
+        ))
+    })?;
 
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
@@ -473,6 +483,154 @@ async fn list_policies(State(state): State<AppState>) -> Json<PoliciesResponse> 
     })
 }
 
+async fn compose_policy_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PolicyComposeRequest>,
+) -> Result<Json<PolicyComposeResponse>, ApiError> {
+    let path = policy_config_path();
+    let path_ref = Path::new(&path);
+
+    let mut entries: Vec<JsonValue> = if path_ref.exists() {
+        let bytes = fs::read(path_ref).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to read policy configuration from {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?;
+        serde_json::from_slice(&bytes).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to parse policy configuration from {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?
+    } else {
+        Vec::new()
+    };
+
+    let key_category = req.category.to_ascii_uppercase();
+    let key_rail = req.rail_id.clone();
+    let key_threshold = req.threshold_raw;
+    let key_currency = req.required_currency_code as u64;
+    let key_custodian = req.required_custodian_id as u64;
+    let key_scope = req.verifier_scope_id;
+
+    let mut max_policy_id: u64 = 0;
+    let mut existing: Option<JsonValue> = None;
+
+    for entry in &entries {
+        let policy_id = entry
+            .get("policy_id")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        if policy_id > max_policy_id {
+            max_policy_id = policy_id;
+        }
+
+        let category = entry
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        let rail = entry
+            .get("rail_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let threshold = entry
+            .get("threshold_raw")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let currency = entry
+            .get("required_currency_code")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let custodian = entry
+            .get("required_custodian_id")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let scope = entry
+            .get("verifier_scope_id")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        if category == key_category
+            && rail == key_rail
+            && threshold == key_threshold
+            && currency == key_currency
+            && custodian == key_custodian
+            && scope == key_scope
+        {
+            existing = Some(entry.clone());
+            break;
+        }
+    }
+
+    let (policy_value, created, policy_id) = if let Some(value) = existing {
+        let policy_id = value
+            .get("policy_id")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| {
+                ApiError::internal("existing policy entry missing policy_id field".to_string())
+            })?;
+        (value, false, policy_id)
+    } else {
+        let new_policy_id = max_policy_id.saturating_add(1);
+
+        let entry = serde_json::json!({
+            "category": req.category,
+            "label": req.label,
+            "rail_id": req.rail_id,
+            "options": req.options,
+            "threshold_raw": req.threshold_raw,
+            "required_currency_code": req.required_currency_code,
+            "required_custodian_id": req.required_custodian_id,
+            "verifier_scope_id": req.verifier_scope_id,
+            "policy_id": new_policy_id,
+        });
+
+        entries.push(entry.clone());
+
+        let json_bytes = serde_json::to_vec_pretty(&entries).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to serialize policy configuration to {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?;
+
+        fs::write(path_ref, json_bytes).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to write policy configuration to {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?;
+
+        (entry, true, new_policy_id)
+    };
+
+    let expectations = PolicyExpectations {
+        threshold_raw: req.threshold_raw,
+        required_currency_code: req.required_currency_code,
+        required_custodian_id: req.required_custodian_id,
+        verifier_scope_id: req.verifier_scope_id,
+        policy_id,
+    };
+    // Ensure the in-memory policy store is aware of this policy for subsequent verify calls.
+    if state.policy_store().get(policy_id).is_none() {
+        state.policy_store().insert(expectations);
+    }
+
+    let summary = req.label;
+
+    Ok(Json(PolicyComposeResponse {
+        policy: policy_value,
+        summary,
+        created,
+    }))
+}
+
 #[derive(serde::Serialize)]
 struct ArtifactUrls {
     params: String,
@@ -506,6 +664,26 @@ struct EpochResponse {
 #[derive(serde::Serialize)]
 struct PoliciesResponse {
     policies: Vec<PolicyExpectations>,
+}
+
+#[derive(serde::Deserialize)]
+struct PolicyComposeRequest {
+    category: String,
+    rail_id: String,
+    label: String,
+    #[serde(default)]
+    options: JsonValue,
+    threshold_raw: u64,
+    required_currency_code: u32,
+    required_custodian_id: u32,
+    verifier_scope_id: u64,
+}
+
+#[derive(serde::Serialize)]
+struct PolicyComposeResponse {
+    policy: JsonValue,
+    summary: String,
+    created: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -665,7 +843,7 @@ pub struct PolicyStore {
 
 impl PolicyStore {
     fn from_env() -> Self {
-        let path = env::var(POLICY_PATH_ENV).unwrap_or_else(|_| DEFAULT_POLICY_PATH.to_string());
+        let path = policy_config_path();
         Self::from_path(path)
     }
 
@@ -698,16 +876,33 @@ impl PolicyStore {
             }
         }
         Self {
-            policies: Arc::new(map),
+            policies: Arc::new(RwLock::new(map)),
         }
     }
 
     pub fn get(&self, policy_id: u64) -> Option<PolicyExpectations> {
-        self.policies.get(&policy_id).cloned()
+        self.policies
+            .read()
+            .expect("policy store poisoned")
+            .get(&policy_id)
+            .cloned()
     }
 
     pub fn all(&self) -> Vec<PolicyExpectations> {
-        self.policies.values().cloned().collect()
+        self.policies
+            .read()
+            .expect("policy store poisoned")
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub fn insert(&self, policy: PolicyExpectations) {
+        let mut guard = self.policies.write().expect("policy store poisoned");
+        let id = policy.policy_id;
+        if guard.insert(id, policy).is_some() {
+            panic!("duplicate policy_id {} in policy store insert", id);
+        }
     }
 }
 

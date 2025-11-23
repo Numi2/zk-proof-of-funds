@@ -64,6 +64,25 @@ export interface PoliciesResponse {
   policies: PolicyDefinition[];
 }
 
+export type PolicyCategory = 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD';
+
+export interface PolicyComposeRequest {
+  category: PolicyCategory;
+  rail_id: string;
+  label: string;
+  options?: unknown;
+  threshold_raw: number;
+  required_currency_code: number;
+  required_custodian_id: number;
+  verifier_scope_id: number;
+}
+
+export interface PolicyComposeResponse {
+  policy: unknown;
+  summary: string;
+  created: boolean;
+}
+
 export interface VerifyResponse {
   valid: boolean;
   circuit_version: number;

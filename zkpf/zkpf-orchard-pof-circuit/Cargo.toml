@@ -6,7 +6,10 @@ edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
-orchard = "0.11"
+orchard = { version = "0.11", default-features = false, features = ["circuit", "std"] }
 zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+orchard = { version = "0.11", default-features = false, features = ["circuit", "multicore", "std"] }
 
 

@@ -14,7 +14,7 @@ use zkpf_common::ProofBundle;
 use zkpf_zcash_orchard_circuit::{
     prove_orchard_pof, OrchardPublicMeta, OrchardRailError, PublicMetaInputs, RAIL_ID_ZCASH_ORCHARD,
 };
-use zkpf_zcash_orchard_wallet::{build_snapshot_for_fvk, OrchardFvk};
+use zkpf_zcash_orchard_wallet::{build_snapshot_for_fvk, OrchardFvk, WalletError};
 
 /// Request body for the Orchard rail proof-of-funds API.
 #[derive(Debug, Deserialize)]
@@ -51,6 +51,23 @@ impl From<OrchardRailError> for RailApiError {
             }
             OrchardRailError::NotImplemented => {
                 RailApiError::Internal("Orchard rail circuit not implemented".into())
+            }
+        }
+    }
+}
+
+impl RailApiError {
+    /// Map low-level Orchard wallet errors into API-visible errors.
+    pub fn from_wallet_error(err: WalletError) -> Self {
+        match err {
+            WalletError::UnknownAnchor(h) => {
+                RailApiError::BadRequest(format!("no Orchard anchor available at height {h}"))
+            }
+            WalletError::InvalidFvk(msg) | WalletError::Backend(msg) => {
+                RailApiError::BadRequest(msg)
+            }
+            WalletError::NotImplemented => {
+                RailApiError::Internal("Orchard wallet backend not implemented".into())
             }
         }
     }
@@ -97,7 +114,8 @@ async fn proof_of_funds_handler(
         encoded: req.fvk.clone(),
     };
 
-    let snapshot = build_snapshot_for_fvk(&fvk, req.snapshot_height)?;
+    let snapshot = build_snapshot_for_fvk(&fvk, req.snapshot_height)
+        .map_err(RailApiError::from_wallet_error)?;
 
     let orchard_meta = OrchardPublicMeta {
         chain_id: "ZEC".to_string(),

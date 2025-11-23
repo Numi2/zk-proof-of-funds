@@ -49,11 +49,15 @@ use thiserror::Error;
 use zkpf_circuit::gadgets::compare;
 use zkpf_common::{
     deserialize_params, hash_bytes_hex, public_inputs_to_instances_with_layout, read_manifest,
-    reduce_be_bytes_to_fr, ArtifactFile, ArtifactManifest, ProofBundle, ProverArtifacts,
-    PublicInputLayout, VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
+    reduce_be_bytes_to_fr, ArtifactFile, ArtifactManifest, ProverArtifacts, PublicInputLayout,
+    VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
 use zkpf_orchard_inner::OrchardInnerPublicInputs;
 use zkpf_zcash_orchard_wallet::{OrchardFvk, OrchardSnapshot};
+
+// Re-export the shared `ProofBundle` type so downstream crates (e.g. WASM
+// wrappers) can depend only on this crate for Orchard PoF bundles.
+pub use zkpf_common::ProofBundle;
 
 /// Constant rail identifier for the Orchard rail.
 pub const RAIL_ID_ZCASH_ORCHARD: &str = "ZCASH_ORCHARD";
@@ -732,4 +736,149 @@ fn create_orchard_proof_with_public_inputs(
 
     let proof = transcript.finalize();
     Ok((proof, public_inputs))
+}
+
+// === WASM-friendly proving helpers ==============================================================
+
+/// In-browser Orchard proving artifacts (params, verifying key, proving key) as
+/// raw byte blobs.
+///
+/// These are deserialized on-demand under `wasm32` targets without touching the
+/// filesystem or reading environment variables.
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Debug)]
+pub struct OrchardWasmArtifacts {
+    pub params_bytes: Vec<u8>,
+    pub vk_bytes: Vec<u8>,
+    pub pk_bytes: Vec<u8>,
+}
+
+/// Create a Orchard PoF proof using in-memory artifacts, suitable for WASM.
+#[cfg(target_arch = "wasm32")]
+pub fn create_orchard_proof_with_public_inputs_from_bytes(
+    artifacts: &OrchardWasmArtifacts,
+    input: &OrchardPofCircuitInput,
+) -> Result<(Vec<u8>, VerifierPublicInputs), OrchardRailError> {
+    let params = deserialize_params(&artifacts.params_bytes)
+        .map_err(|e| OrchardRailError::InvalidInput(e.to_string()))?;
+    // We do not currently need the verifying key for proof creation; it is
+    // included in `vk_bytes` for completeness and potential future use.
+    let pk = deserialize_orchard_proving_key(&artifacts.pk_bytes)
+        .map_err(|e| OrchardRailError::InvalidInput(e.to_string()))?;
+
+    let public_inputs = input.public_inputs.clone();
+
+    let instances =
+        public_inputs_to_instances_with_layout(PublicInputLayout::V2Orchard, &public_inputs)
+            .map_err(|e| OrchardRailError::InvalidInput(format!("{e}")))?;
+
+    let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
+    let circuit = OrchardPofCircuit::new(Some(input.clone()));
+
+    let mut transcript =
+        halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);
+
+    halo2_proofs_axiom::plonk::create_proof::<
+        halo2_proofs_axiom::poly::kzg::commitment::KZGCommitmentScheme<Bn256>,
+        halo2_proofs_axiom::poly::kzg::multiopen::ProverGWC<'_, Bn256>,
+        _,
+        _,
+        _,
+        _,
+    >(
+        &params,
+        &pk,
+        &[circuit],
+        &[instance_refs.as_slice()],
+        OsRng,
+        &mut transcript,
+    )
+    .map_err(|e| OrchardRailError::InvalidInput(format!("proof generation failed: {e}")))?;
+
+    let proof = transcript.finalize();
+    Ok((proof, public_inputs))
+}
+
+/// WASM-specific variant of `prove_orchard_pof` that uses in-memory artifacts
+/// instead of loading them from disk.
+#[cfg(target_arch = "wasm32")]
+pub fn prove_orchard_pof_wasm(
+    snapshot: &OrchardSnapshot,
+    fvk: &OrchardFvk,
+    holder_id: &HolderId,
+    threshold_zats: u64,
+    orchard_meta: &OrchardPublicMeta,
+    meta: &PublicMetaInputs,
+    artifacts: &OrchardWasmArtifacts,
+) -> Result<ProofBundle, OrchardRailError> {
+    if snapshot.notes.is_empty() {
+        return Err(OrchardRailError::InvalidInput(
+            "no Orchard notes discovered for this FVK at the requested height".into(),
+        ));
+    }
+
+    if threshold_zats == 0 {
+        return Err(OrchardRailError::InvalidInput(
+            "threshold_zats must be > 0".into(),
+        ));
+    }
+
+    if snapshot.notes.len() > ORCHARD_MAX_NOTES {
+        return Err(OrchardRailError::InvalidInput(format!(
+            "too many Orchard notes in snapshot: got {}, max supported is {}",
+            snapshot.notes.len(),
+            ORCHARD_MAX_NOTES
+        )));
+    }
+
+    // Enforce Σ v_i ≥ threshold_zats based on the snapshot notes.
+    let total_zats: u64 = snapshot.notes.iter().map(|n| n.value_zats).sum();
+    if total_zats < threshold_zats {
+        return Err(OrchardRailError::InvalidInput(format!(
+            "insufficient Orchard funds: total_zats {} < threshold_zats {}",
+            total_zats, threshold_zats
+        )));
+    }
+
+    // Compute a simple holder binding H(holder_id || fvk_bytes) using BLAKE3.
+    let holder_binding = compute_holder_binding(holder_id, &fvk.encoded);
+
+    // Derive a PoF nullifier that mixes the binding with the policy/scope/epoch tuple.
+    let nullifier = compute_pof_nullifier(
+        &holder_binding,
+        meta.verifier_scope_id,
+        meta.policy_id,
+        meta.current_epoch,
+    );
+
+    // Orchard is non-custodial; this field is still required by the shared
+    // `VerifierPublicInputs` struct but is not enforced for V2_ORCHARD rails.
+    let custodian_pubkey_hash = [0u8; 32];
+
+    let mut orchard_meta_with_binding = orchard_meta.clone();
+    orchard_meta_with_binding.holder_binding = holder_binding;
+
+    let public_inputs = build_verifier_public_inputs(
+        threshold_zats,
+        &orchard_meta_with_binding,
+        meta,
+        nullifier,
+        custodian_pubkey_hash,
+    );
+
+    let circuit_input = OrchardPofCircuitInput {
+        public_inputs: public_inputs.clone(),
+        note_values: snapshot.notes.iter().map(|n| n.value_zats).collect(),
+    };
+
+    let (proof, _) = create_orchard_proof_with_public_inputs_from_bytes(artifacts, &circuit_input)?;
+
+    let bundle = ProofBundle {
+        rail_id: RAIL_ID_ZCASH_ORCHARD.to_string(),
+        circuit_version: CIRCUIT_VERSION,
+        proof,
+        public_inputs,
+    };
+
+    Ok(bundle)
 }

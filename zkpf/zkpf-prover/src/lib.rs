@@ -13,7 +13,7 @@ use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
 use rand::rngs::OsRng;
 
 use zkpf_circuit::{ZkpfCircuit, ZkpfCircuitInput};
-use zkpf_common::{public_to_verifier_inputs, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
+use zkpf_common::{public_to_verifier_inputs, ProofBundle, VerifierPublicInputs};
 
 pub struct ProverParams {
     pub params: ParamsKZG<Bn256>,

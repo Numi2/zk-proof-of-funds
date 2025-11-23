@@ -5,6 +5,8 @@ import type {
   ParamsResponse,
   PoliciesResponse,
   PolicyDefinition,
+  PolicyComposeRequest,
+  PolicyComposeResponse,
   ProofBundle,
   VerifyRequest,
   VerifyResponse,
@@ -24,7 +26,10 @@ export class ApiError extends Error {
 
 export class ZkpfClient {
   private readonly base: string;
-  private readonly artifactCache = new Map<string, { params: ByteArray; vk: ByteArray; pk: ByteArray }>();
+  private readonly artifactCache = new Map<
+    string,
+    { params: ByteArray | Uint8Array; vk: ByteArray | Uint8Array; pk: ByteArray | Uint8Array }
+  >();
 
   constructor(baseUrl: string) {
     this.base = sanitizeBaseUrl(baseUrl);
@@ -37,9 +42,9 @@ export class ZkpfClient {
   async getParams(): Promise<ParamsResponse> {
     const payload = await this.request<
       ParamsResponse & {
-        params?: ByteArray;
-        vk?: ByteArray;
-        pk?: ByteArray;
+        params?: ByteArray | Uint8Array;
+        vk?: ByteArray | Uint8Array;
+        pk?: ByteArray | Uint8Array;
         artifact_urls?: {
           params: string;
           vk: string;
@@ -111,6 +116,13 @@ export class ZkpfClient {
   async getPolicies(): Promise<PolicyDefinition[]> {
     const response = await this.request<PoliciesResponse>('/zkpf/policies');
     return response.policies;
+  }
+
+  async composePolicy(payload: PolicyComposeRequest): Promise<PolicyComposeResponse> {
+    return this.request<PolicyComposeResponse>('/zkpf/policies/compose', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   async verifyProof(payload: VerifyRequest): Promise<VerifyResponse> {
