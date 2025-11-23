@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tower::util::ServiceExt;
 use zkpf_backend::{
     app_router, AppState, EpochConfig, NullifierStore, PolicyExpectations, PolicyStore,
+    ProviderSessionStore,
 };
 use zkpf_common::{ArtifactManifest, ProofBundle};
 use zkpf_test_fixtures::{fixtures, TestFixtures};
@@ -23,6 +24,7 @@ fn test_app() -> (axum::Router, ArtifactManifest) {
         EpochConfig::fixed(epoch),
         NullifierStore::in_memory(),
         policy_store,
+        ProviderSessionStore::default(),
     );
     (app_router(state), manifest)
 }
@@ -88,6 +90,7 @@ async fn verify_endpoint_accepts_fixture_proof() {
         EpochConfig::fixed(epoch),
         NullifierStore::in_memory(),
         fixture_policy_store(fixtures),
+        ProviderSessionStore::default(),
     );
     let app = app_router(state);
     let policy_id = fixtures.public_inputs().policy_id;
@@ -130,6 +133,7 @@ async fn verify_endpoint_rejects_replayed_nullifier() {
         EpochConfig::fixed(epoch),
         NullifierStore::in_memory(),
         fixture_policy_store(fixtures),
+        ProviderSessionStore::default(),
     );
     let app = app_router(state);
     let policy_id = fixtures.public_inputs().policy_id;
@@ -195,6 +199,7 @@ async fn verify_bundle_endpoint_accepts_fixture_bundle() {
         EpochConfig::fixed(epoch),
         NullifierStore::in_memory(),
         fixture_policy_store(fixtures),
+        ProviderSessionStore::default(),
     );
     let app = app_router(state);
     let policy_id = fixtures.public_inputs().policy_id;

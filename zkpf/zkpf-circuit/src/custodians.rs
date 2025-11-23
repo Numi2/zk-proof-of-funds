@@ -7,13 +7,15 @@
 
 use crate::gadgets::attestation::Secp256k1Pubkey;
 
+pub const CUSTODIAN_ID_ZASHI: u32 = 8001;
+
 #[derive(Clone, Copy, Debug)]
 pub struct CustodianEntry {
     pub id: u32,
     pub pubkey: Secp256k1Pubkey,
 }
 
-const ENTRIES: [CustodianEntry; 3] = [
+const ENTRIES: [CustodianEntry; 4] = [
     CustodianEntry {
         id: 42,
         pubkey: Secp256k1Pubkey {
@@ -59,9 +61,24 @@ const ENTRIES: [CustodianEntry; 3] = [
             ],
         },
     },
+    CustodianEntry {
+        id: CUSTODIAN_ID_ZASHI,
+        pubkey: Secp256k1Pubkey {
+            x: [
+                0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87,
+                0x0b, 0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b,
+                0x16, 0xf8, 0x17, 0x98,
+            ],
+            y: [
+                0x48, 0x3a, 0xda, 0x77, 0x26, 0xa3, 0xc4, 0x65, 0x5d, 0xa4, 0xfb, 0xfc, 0x0e, 0x11,
+                0x08, 0xa8, 0xfd, 0x17, 0xb4, 0x48, 0xa6, 0x85, 0x54, 0x19, 0x9c, 0x47, 0xd0, 0x8f,
+                0xfb, 0x10, 0xd4, 0xb8,
+            ],
+        },
+    },
 ];
 
-const ALLOWED_IDS: [u32; 3] = [42, 77, 1337];
+const ALLOWED_IDS: [u32; 4] = [42, 77, 1337, CUSTODIAN_ID_ZASHI];
 
 pub fn lookup_custodian(id: u32) -> Option<&'static CustodianEntry> {
     ENTRIES.iter().find(|entry| entry.id == id)
@@ -119,8 +136,15 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x01, 0x23,
         ];
+        const SK_ZASHI: [u8; 32] =
+            hex_literal::hex!("0000000000000000000000000000000000000000000000000000000000000001");
 
-        let fixtures: &[(u32, &[u8; 32])] = &[(42, &SK_42), (77, &SK_77), (1337, &SK_1337)];
+        let fixtures: &[(u32, &[u8; 32])] = &[
+            (42, &SK_42),
+            (77, &SK_77),
+            (1337, &SK_1337),
+            (CUSTODIAN_ID_ZASHI, &SK_ZASHI),
+        ];
 
         for &(custodian_id, sk_bytes) in fixtures {
             let entry = lookup_custodian(custodian_id)

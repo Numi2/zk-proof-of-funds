@@ -9,6 +9,7 @@ This workspace hosts an end-to-end proving stack for custodial proof-of-funds at
 - **Shared fixtures crate**: `zkpf-test-fixtures` produces prover artifacts, serialized public inputs, and JSON blobs with deterministic values so that integration tests across crates consume the same data.
 - **Server-owned policy enforcement**: The backend now loads allow-listed policies from `config/policies.json` (override with `ZKPF_POLICY_PATH`). Clients reference policies by `policy_id`, and the service enforces the stored expectations for threshold, currency, custodian, scope, and policy identifiers.
 - **Durable nullifier replay protection**: A persistent sled-backed store (`ZKPF_NULLIFIER_DB`, default `data/nullifiers.db`) keeps `(scope_id, policy_id, nullifier)` tuples so duplicate proofs remain rejected across process restarts.
+- **Provider-backed Zashi sessions & canonical attestations**: The custodial circuit now includes a dedicated Zashi custodian ID + key, `zkpf-common` exposes a reusable `Attestation` model + Poseidon message-hash helper, and the backend/front-end add `/zkpf/zashi/session/*` APIs plus a “Zashi provider session” workflow that fetches a signed bundle straight from the Zashi app.
 
 ### Repository Layout
 | Crate | Purpose |
@@ -60,6 +61,7 @@ The backend exposes:
 
 - `GET /zkpf/policies` – returns the configured policy catalog so operators can pick a `policy_id`.
 - `POST /zkpf/prove-bundle` – runs the custodial prover over a `ZkpfCircuitInput` (attestation + public inputs) and returns a normalized `ProofBundle` JSON.
+- `POST /zkpf/provider/prove-balance` – lets a **provider** submit a signed balance attestation for an opaque account tag and obtain a `ProofBundle` for the `PROVIDER_BALANCE_V2` rail using the existing custodial circuit (threshold, currency, provider key hash, nullifier, and epoch semantics).
 - `POST /zkpf/verify` – verifies raw proof bytes + serialized public inputs for a specific policy using the **default custodial rail**.
 - `POST /zkpf/verify-bundle` – verifies a pre-serialized `ProofBundle` for a specific policy across **multiple rails**.
 - `POST /zkpf/attest` – re-verifies a `ProofBundle` and, when EVM attestation is configured, records an attestation in the on-chain `AttestationRegistry`.
@@ -137,6 +139,47 @@ POST /zkpf/attest
   "bundle": { /* same shape as /zkpf/verify-bundle */ }
 }
 ```
+
+### Zashi provider sessions
+
+Zashi integrates via server-side policy enforcement without requiring UFVK
+exports or on-chain movement:
+
+1. `POST /zkpf/zashi/session/start`
+   - Body: `{ "policy_id": 900001 }` plus an optional `"deep_link_scheme"`.
+   - Response: `{ session_id, policy, expires_at, deep_link }`, where the deep
+     link defaults to `zashi://zkpf-proof?...`.
+2. Zashi confirms the user meets the selected policy, builds the canonical
+   attestation, and calls `POST /zkpf/zashi/session/submit`:
+
+```jsonc
+{
+  "session_id": "f38bc92e-a54d-4fb6-827f-5afca0edb6a9",
+  "attestation": {
+    "balance_raw": "15000000000",
+    "currency_code_int": 5915971,
+    "custodian_id": 8001,
+    "attestation_id": 4242,
+    "issued_at": 1705000000,
+    "valid_until": 1705086400,
+    "account_id_hash": "0xd2029649000000000000000000000000000000000000000000000000000000",
+    "custodian_pubkey": { "x": "0x…", "y": "0x…" },
+    "signature": { "r": "0x…", "s": "0x…" },
+    "message_hash": "0x…"
+  }
+}
+```
+
+3. The backend parses the attestation (`zkpf_common::Attestation`), recomputes
+   the Poseidon digest, derives the nullifier/current epoch, and runs the
+   custodial prover using the allow-listed Zashi key.
+4. `GET /zkpf/zashi/session/{session_id}` polls until the session is `READY`,
+   `INVALID`, or `EXPIRED`. READY responses embed the `ProofBundle`, already
+   normalized for `/zkpf/verify-bundle`.
+
+Policies `900001` (`Zashi ≥ 10 ZEC`) and `900002` (`Zashi ≥ 100 ZEC`) ship in
+`config/policies.json` with `custodian_id = 8001`, so Zashi can offer a one-tap
+“Proof of funds” action backed by the existing custodial rail.
 
 Requests are rejected if the stored policy disagrees with the decoded public inputs, if the custodian hash does not match the allow-list (for custodial rails), if the epoch drifts beyond the configured window, or if the nullifier has already been consumed for that scope/policy pair. Structural issues (missing policy, circuit version mismatch, unknown `rail_id`, malformed public inputs) return HTTP 4xx errors with `{ "error", "error_code" }` payloads, while verification outcomes return HTTP 200 with `{ valid, error, error_code }`. On-chain attestation outcomes from `/zkpf/attest` always return HTTP 200 with an `AttestResponse { valid, tx_hash, attestation_id, holder_id, policy_id, snapshot_id, error, error_code }` payload.
 
@@ -223,6 +266,7 @@ The `web/` directory hosts a Vite/React dashboard that talks to the backend veri
 - Inspect the active proving parameters (hashes + binary blobs).
 - Monitor the verifier epoch window and drift allowance.
 - Upload proof bundles, validate them locally, and invoke `/zkpf/verify` or `/zkpf/verify-bundle`.
+- Launch a **Zashi provider session** from the Proof Builder (“Zashi provider session (custodial)” rail). The UI starts `/zkpf/zashi/session/start`, surfaces the deep link / QR, polls status, and drops the resulting bundle directly into the prover + Verify console once Zashi submits it.
 
 Run it alongside the backend:
 
@@ -420,6 +464,170 @@ Until the Orchard circuit is implemented, the Orchard rail code is a **spec-back
 real wallet backend**: the types, crate boundaries, HTTP surface, wallet sync, and Merkle
 witness/anchor plumbing are in place so that Zcash-specific work can focus on circuit design and
 artifact production without further surgery to the surrounding zkpf stack.
+
+### Provider-balance rail (PROVIDER_BALANCE_V2) – generic provider-attested proofs
+
+In addition to the custodial and Orchard rails, the backend exposes a **provider-balance rail**
+that reuses the existing custodial circuit to prove statements of the form:
+
+- *“A trusted provider attests that this opaque account has balance ≥ X units under policy P,
+  and the provider’s key and policy metadata match the verifier’s expectations.”*
+
+This rail is intentionally wallet-agnostic:
+
+- Any upstream wallet or custody system that can compute a balance and a stable 32-byte
+  `account_tag` can integrate by:
+  - Sending a **provider-signed attestation** to `/zkpf/provider/prove-balance`, and
+  - Receiving a `ProofBundle` with `rail_id: "PROVIDER_BALANCE_V2"` that verifiers check
+    via the usual `/zkpf/verify-bundle` endpoint.
+
+#### Roles and flow
+
+- **Provider** – entity that:
+  - Owns a secp256k1 signing key that is allow-listed in the zkpf custodial circuit
+    (via `custodians.rs` and the policy’s `required_custodian_id`).
+  - Holds or derives view-only data from one or more wallets (e.g. Zcash UFVK, CSV exports,
+    internal ledgers) in order to compute a conservative `balance_raw`.
+  - Constructs a private balance attestation per account, signs it, and calls zkpf to obtain
+    a reusable `ProofBundle`.
+- **Verifier** – any counterparty (exchange, DApp, desk, person) that:
+  - Configures a policy with:
+    - `rail_id: "PROVIDER_BALANCE_V2"`,
+    - Threshold and currency, and
+    - An allow-listed provider ID whose pubkey hash is baked into the circuit artifacts.
+  - Consumes `ProofBundle`s via `/zkpf/verify-bundle` and never sees the underlying attestation
+    or exact balance.
+
+High-level flow:
+
+1. Provider computes `balance_raw` for some logical account from view-only wallet data.
+2. Provider chooses an **opaque** 32-byte `account_tag` (e.g. `H("pof:acct:" || H(account_source))`)
+   that is:
+   - Stable per logical account, and
+   - Never revealed to verifiers except via the one-way nullifier.
+3. Provider builds a private attestation:
+   - `balance_raw`, `currency_code_int`, `attestation_id`, `issued_at`, `valid_until`,
+   - `account_tag` (hex-encoded 32-byte string),
+   - Provider secp256k1 public key + ECDSA signature over a 32-byte `message_hash`.
+4. Provider calls:
+
+   ```jsonc
+   POST /zkpf/provider/prove-balance
+   {
+     "policy_id": 900001,
+     "attestation": {
+       "balance_raw": 1_500_000_000,
+       "currency_code_int": 123456,
+       "attestation_id": 42,
+       "issued_at": 1_705_000_000,
+       "valid_until": 1_705_086_400,
+       "account_tag": "0x…32-byte-hex…",
+       "custodian_pubkey": { "x": [/* 32 bytes */], "y": [/* 32 bytes */] },
+       "signature": { "r": [/* 32 bytes */], "s": [/* 32 bytes */] },
+       "message_hash": [/* 32-byte array */]
+     }
+   }
+   ```
+
+5. The backend:
+   - Looks up the policy by `policy_id` to obtain:
+     - `threshold_raw`, `required_currency_code`, `required_custodian_id`,
+       `verifier_scope_id`, and `policy_id`.
+   - Normalizes `account_tag` into a bn256 field element:
+
+     ```rust
+     let account_tag_bytes = parse_hex_32(&att.account_tag)?;
+     let account_id_hash = reduce_be_bytes_to_fr(&account_tag_bytes);
+     ```
+
+   - Computes the canonical nullifier in the field, mirroring the in-circuit gadget:
+
+     ```rust
+     let nullifier = nullifier_fr(
+         account_id_hash,
+         policy.verifier_scope_id,
+         policy.policy_id,
+         current_epoch,
+     );
+     ```
+
+   - Hashes the provider’s secp256k1 pubkey into the shared `custodian_pubkey_hash` field:
+
+     ```rust
+     let pubkey_hash = custodian_pubkey_hash(&att.custodian_pubkey);
+     ```
+
+   - Constructs the circuit `PublicInputs` and `AttestationWitness`:
+
+     ```rust
+     let public = PublicInputs {
+         threshold_raw: policy.threshold_raw,
+         required_currency_code: policy.required_currency_code,
+         required_custodian_id: policy.required_custodian_id,
+         current_epoch,
+         verifier_scope_id: policy.verifier_scope_id,
+         policy_id: policy.policy_id,
+         nullifier,
+         custodian_pubkey_hash: pubkey_hash,
+     };
+     let witness = AttestationWitness {
+         balance_raw: att.balance_raw,
+         currency_code_int: att.currency_code_int,
+         custodian_id: policy.required_custodian_id,
+         attestation_id: att.attestation_id,
+         issued_at: att.issued_at,
+         valid_until: att.valid_until,
+         account_id_hash,
+         custodian_pubkey: att.custodian_pubkey,
+         signature: att.signature,
+         message_hash: att.message_hash,
+     };
+     ```
+
+   - Enforces **policy**, **provider allowlist**, **epoch drift**, and **nullifier replay**
+     against the derived `VerifierPublicInputs`.
+   - Runs the existing custodial Halo2 circuit to produce a `ProofBundle` and tags it:
+
+     ```rust
+     bundle.rail_id = "PROVIDER_BALANCE_V2".to_string();
+     ```
+
+6. The provider receives a `ProofBundle` that they can return to the wallet or holder.
+
+#### Verifier semantics for PROVIDER_BALANCE_V2
+
+From the verifier’s perspective, a `ProofBundle` with `rail_id: "PROVIDER_BALANCE_V2"` has:
+
+- Public fields:
+  - `threshold_raw` – policy’s minimum balance in raw units.
+  - `required_currency_code` – asset code (e.g. ZEC) as configured in the policy.
+  - `required_custodian_id` – an identifier for the allow-listed provider key baked into
+    the circuit artifacts and policies.
+  - `current_epoch`, `verifier_scope_id`, `policy_id` – same semantics as the custodial rail.
+  - `nullifier` – Poseidon hash over
+    `(account_id_hash, verifier_scope_id, policy_id, current_epoch)` where `account_id_hash`
+    is derived from the opaque `account_tag`.
+  - `custodian_pubkey_hash` – Poseidon hash over the provider’s secp256k1 pubkey coordinates.
+
+The verifier:
+
+1. Checks the **rail** and **circuit version** via `/zkpf/verify-bundle`.
+2. Checks that the decoded public inputs match the stored policy:
+   - `threshold_raw`, `required_currency_code`, `required_custodian_id`,
+     `verifier_scope_id`, `policy_id`.
+3. Relies on the circuit and backend to have enforced:
+   - ECDSA signature validity for the provider key over the 32-byte `message_hash`.
+   - `balance_raw ≥ threshold_raw` inside the circuit (balance itself is never revealed).
+   - Time window `issued_at ≤ current_epoch ≤ valid_until`.
+   - Consistency between `custodian_pubkey_hash` and the allow-listed provider key.
+   - Nullifier replay protection for `(scope, policy, nullifier)` via the sled-backed
+     `NullifierStore`.
+
+Critically, verifiers **never** see:
+
+- Viewing keys or raw wallet addresses.
+- The underlying attestation body (including exact `balance_raw`).
+- The `account_tag` itself—only the derived nullifier.
 
 ### Project TODO / roadmap (high level)
 

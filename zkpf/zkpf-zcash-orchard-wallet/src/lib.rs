@@ -5,10 +5,15 @@
 //! data structures that the rest of the stack depends on plus lightweight
 //! placeholder functions so that the workspace builds cleanly.
 
+use blake3::Hasher;
 use once_cell::sync::OnceCell;
 use orchard::tree::{Anchor, MerkleHashOrchard, MerklePath};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use thiserror::Error;
+
+const SNAPSHOT_DIR_ENV: &str = "ZKPF_ORCHARD_SNAPSHOT_DIR";
 
 /// Placeholder network selector; kept for API compatibility with the eventual
 /// production implementation.
@@ -134,13 +139,85 @@ pub enum WalletError {
     NotImplemented,
 }
 
-/// Reference implementation placeholder: returns `NotImplemented` so upstream
-/// callers can gracefully detect the missing functionality.
 pub fn build_snapshot_for_fvk(
-    _fvk: &OrchardFvk,
-    _height: u32,
+    fvk: &OrchardFvk,
+    height: u32,
 ) -> Result<OrchardSnapshot, WalletError> {
-    Err(WalletError::NotImplemented)
+    // Ensure the global config was initialised so we can derive a default
+    // snapshot directory and respect the configured network.
+    let cfg = GLOBAL_CONFIG.get().ok_or_else(|| {
+        WalletError::Backend(
+            "Orchard wallet not initialized; call init_global_wallet() first".into(),
+        )
+    })?;
+
+    // Resolve the base directory for snapshot JSON files:
+    // - Prefer ZKPF_ORCHARD_SNAPSHOT_DIR when set.
+    // - Otherwise fall back to the configured data_db_path, which operators can
+    //   point at a directory of exported snapshots.
+    let base_dir: PathBuf = std::env::var(SNAPSHOT_DIR_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| cfg.data_db_path.clone());
+
+    // Derive a stable, privacy-preserving filename from the FVK and height.
+    let fvk_hash = {
+        let mut hasher = Hasher::new();
+        hasher.update(fvk.encoded.as_bytes());
+        let hash = hasher.finalize();
+        // Keep filenames reasonably short while remaining collision-resistant
+        // for practical purposes by truncating to 16 hex chars.
+        hash.to_hex()[0..16].to_string()
+    };
+
+    let network_tag = match cfg.network {
+        NetworkKind::Mainnet => "main",
+        NetworkKind::Testnet => "test",
+    };
+
+    let file_name = format!("orchard-snapshot-{network_tag}-{fvk_hash}-{height}.json");
+    let path = base_dir.join(file_name);
+
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // Upstream callers interpret this as "no anchor available at this
+            // height", which matches the semantics of a missing snapshot file.
+            return Err(WalletError::UnknownAnchor(height));
+        }
+        Err(err) => {
+            return Err(WalletError::Backend(format!(
+                "failed to read Orchard snapshot from {}: {err}",
+                path.display()
+            )));
+        }
+    };
+
+    let snapshot: OrchardSnapshot = serde_json::from_slice(&bytes).map_err(|err| {
+        WalletError::Backend(format!(
+            "failed to parse Orchard snapshot JSON from {}: {err}",
+            path.display()
+        ))
+    })?;
+
+    // Basic sanity checks so obviously mismatched snapshots are rejected early.
+    if snapshot.height != height {
+        return Err(WalletError::Backend(format!(
+            "snapshot height mismatch: expected {}, got {} (file {})",
+            height,
+            snapshot.height,
+            path.display()
+        )));
+    }
+
+    if snapshot.notes.is_empty() {
+        return Err(WalletError::Backend(format!(
+            "Orchard snapshot at height {} contains no notes (file {})",
+            height,
+            path.display()
+        )));
+    }
+
+    Ok(snapshot)
 }
 
 /// Convert a high-level `OrchardSnapshot` (using byte encodings) into the

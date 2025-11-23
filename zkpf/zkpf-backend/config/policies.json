@@ -2,9 +2,109 @@
   {
     "policy_id": 271828,
     "verifier_scope_id": 31415,
-    "threshold_raw": 1000000,
+    "threshold_raw": 2500000,
     "required_currency_code": 840,
     "required_custodian_id": 42
+  },
+  {
+    "policy_id": 900001,
+    "verifier_scope_id": 314159265,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 5915971,
+    "required_custodian_id": 8001,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Zashi ≥ 10 ZEC",
+    "category": "ZASHI"
+  },
+  {
+    "policy_id": 900002,
+    "verifier_scope_id": 314159265,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 5915971,
+    "required_custodian_id": 8001,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Zashi ≥ 100 ZEC",
+    "category": "ZASHI"
+  },
+  {
+    "policy_id": 100001,
+    "verifier_scope_id": 100,
+    "threshold_raw": 1000000,
+    "required_currency_code": 840,
+    "required_custodian_id": 42,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Fiat ≥ 10,000 USD (Custodian 42)",
+    "category": "FIAT"
+  },
+  {
+    "policy_id": 100002,
+    "verifier_scope_id": 101,
+    "threshold_raw": 25000000,
+    "required_currency_code": 840,
+    "required_custodian_id": 42,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Fiat ≥ 250,000 USD (Custodian 42)",
+    "category": "FIAT"
+  },
+  {
+    "policy_id": 100003,
+    "verifier_scope_id": 102,
+    "threshold_raw": 500000000,
+    "required_currency_code": 840,
+    "required_custodian_id": 42,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Fiat ≥ 5,000,000 USD (Custodian 42)",
+    "category": "FIAT"
+  },
+  {
+    "policy_id": 100010,
+    "verifier_scope_id": 110,
+    "threshold_raw": 100000000,
+    "required_currency_code": 978,
+    "required_custodian_id": 77,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Fiat ≥ 1,000,000 EUR (Custodian 77)",
+    "category": "FIAT"
+  },
+  {
+    "policy_id": 100100,
+    "verifier_scope_id": 200,
+    "threshold_raw": 10000000,
+    "required_currency_code": 840,
+    "required_custodian_id": 1000,
+    "rail_id": "ONCHAIN_WALLET",
+    "label": "On-chain ≥ 100,000 USD (multi-wallet)",
+    "category": "ONCHAIN"
+  },
+  {
+    "policy_id": 100200,
+    "verifier_scope_id": 300,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 999001,
+    "required_custodian_id": 0,
+    "rail_id": "ZCASH_ORCHARD",
+    "label": "Orchard ≥ 10 ZEC shielded",
+    "category": "ZCASH_ORCHARD"
+  },
+  {
+    "policy_id": 100201,
+    "verifier_scope_id": 301,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 999001,
+    "required_custodian_id": 0,
+    "rail_id": "ZCASH_ORCHARD",
+    "label": "Orchard ≥ 100 ZEC shielded",
+    "category": "ZCASH_ORCHARD"
+  },
+  {
+    "policy_id": 900003,
+    "verifier_scope_id": 314159265,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 5915971,
+    "required_custodian_id": 8001,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Zashi ≥ 1,000 ZEC",
+    "category": "ZASHI"
   }
 ]
 

@@ -37,9 +37,11 @@ export interface ParamsResponse {
   pk_hash: string;
   // For large artifacts (especially pk), callers may expose these as either
   // plain number arrays or Uint8Array views to avoid excessive JS heap usage.
-  params: ByteArray | Uint8Array;
-  vk: ByteArray | Uint8Array;
-  pk: ByteArray | Uint8Array;
+  // Frontend callers may choose to omit these heavy blobs and fetch them
+  // directly from artifact URLs on demand.
+  params?: ByteArray | Uint8Array;
+  vk?: ByteArray | Uint8Array;
+  pk?: ByteArray | Uint8Array;
   artifact_urls?: {
     params: string;
     vk: string;
@@ -58,13 +60,46 @@ export interface PolicyDefinition {
   threshold_raw: number;
   required_currency_code: number;
   required_custodian_id: number;
+  category?: string | null;
+  rail_id?: string | null;
+  label?: string | null;
+  options?: Record<string, unknown> | null;
 }
 
 export interface PoliciesResponse {
   policies: PolicyDefinition[];
 }
 
-export type PolicyCategory = 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD';
+export type PolicyCategory = 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'ZASHI';
+
+export type ProviderSessionStatus = 'PENDING' | 'PROVING' | 'READY' | 'INVALID' | 'EXPIRED';
+
+export interface ProviderSessionPolicyView {
+  policy_id: number;
+  verifier_scope_id: number;
+  threshold_raw: number;
+  required_currency_code: number;
+  required_custodian_id: number;
+  rail_id: string;
+  label?: string | null;
+}
+
+export interface ZashiSessionStartResponse {
+  session_id: string;
+  policy: ProviderSessionPolicyView;
+  expires_at: number;
+  deep_link: string;
+}
+
+export interface ProviderSessionSnapshot {
+  session_id: string;
+  status: ProviderSessionStatus;
+  policy: ProviderSessionPolicyView;
+  bundle?: ProofBundle | null;
+  error?: string | null;
+  expires_at: number;
+  updated_at: number;
+}
 
 export interface PolicyComposeRequest {
   category: PolicyCategory;

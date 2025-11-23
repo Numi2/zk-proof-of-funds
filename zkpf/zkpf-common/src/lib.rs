@@ -19,7 +19,9 @@ use once_cell::sync::OnceCell;
 use poseidon_primitives::poseidon::primitives::{ConstantLength, Hash as PoseidonHash, Spec};
 use serde::{Deserialize, Serialize};
 use zkpf_circuit::{
-    custodians, gadgets::attestation::Secp256k1Pubkey, public_instances, PublicInputs, ZkpfCircuit,
+    custodians,
+    gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
+    public_instances, PublicInputs, ZkpfCircuit,
 };
 
 /// Number of public inputs in the legacy custodial circuit layout (V1).
@@ -79,6 +81,90 @@ pub struct ProofBundle {
     pub circuit_version: u32,
     pub proof: Vec<u8>,
     pub public_inputs: VerifierPublicInputs,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Attestation {
+    pub balance_raw: u64,
+    pub currency_code_int: u32,
+    pub custodian_id: u32,
+    pub attestation_id: u64,
+    pub issued_at: u64,
+    pub valid_until: u64,
+    #[serde(with = "serde_bytes32")]
+    pub account_id_hash: [u8; 32],
+    pub custodian_pubkey: Secp256k1Pubkey,
+    pub signature: EcdsaSignature,
+    #[serde(with = "serde_bytes32")]
+    pub message_hash: [u8; 32],
+}
+
+#[derive(Clone, Debug)]
+pub struct AttestationFields<'a> {
+    pub balance_raw: u64,
+    pub currency_code_int: u32,
+    pub custodian_id: u32,
+    pub attestation_id: u64,
+    pub issued_at: u64,
+    pub valid_until: u64,
+    pub account_id_hash: &'a [u8; 32],
+}
+
+impl<'a> From<&'a Attestation> for AttestationFields<'a> {
+    fn from(att: &'a Attestation) -> Self {
+        Self {
+            balance_raw: att.balance_raw,
+            currency_code_int: att.currency_code_int,
+            custodian_id: att.custodian_id,
+            attestation_id: att.attestation_id,
+            issued_at: att.issued_at,
+            valid_until: att.valid_until,
+            account_id_hash: &att.account_id_hash,
+        }
+    }
+}
+
+impl Attestation {
+    pub fn to_witness(&self) -> AttestationWitness {
+        AttestationWitness {
+            balance_raw: self.balance_raw,
+            currency_code_int: self.currency_code_int,
+            custodian_id: self.custodian_id,
+            attestation_id: self.attestation_id,
+            issued_at: self.issued_at,
+            valid_until: self.valid_until,
+            account_id_hash: reduce_be_bytes_to_fr(&self.account_id_hash),
+            custodian_pubkey: self.custodian_pubkey,
+            signature: self.signature.clone(),
+            message_hash: self.message_hash,
+        }
+    }
+
+    pub fn verify_message_hash(&self) -> Result<()> {
+        let expected = attestation_message_hash(&AttestationFields::from(self));
+        ensure!(
+            expected == self.message_hash,
+            "message_hash does not match canonical attestation digest"
+        );
+        Ok(())
+    }
+}
+
+pub fn attestation_from_json(json: &str) -> Result<Attestation> {
+    serde_json::from_str(json).context("failed to parse attestation JSON")
+}
+
+pub fn attestation_message_hash(fields: &AttestationFields<'_>) -> [u8; 32] {
+    let digest = poseidon_hash(&[
+        Fr::from(fields.balance_raw),
+        Fr::from(fields.attestation_id),
+        Fr::from(fields.currency_code_int as u64),
+        Fr::from(fields.custodian_id as u64),
+        Fr::from(fields.issued_at),
+        Fr::from(fields.valid_until),
+        reduce_be_bytes_to_fr(fields.account_id_hash),
+    ]);
+    fr_to_be_bytes(&digest)
 }
 
 pub const CIRCUIT_VERSION: u32 = 3;
@@ -509,6 +595,12 @@ pub fn fr_to_bytes(fr: &Fr) -> [u8; 32] {
     bytes
 }
 
+pub fn fr_to_be_bytes(fr: &Fr) -> [u8; 32] {
+    let mut bytes = fr_to_bytes(fr);
+    bytes.reverse();
+    bytes
+}
+
 pub fn reduce_be_bytes_to_fr(bytes: &[u8; 32]) -> Fr {
     let mut acc = Fr::zero();
     let base = Fr::from(256);
@@ -528,12 +620,53 @@ pub fn custodian_pubkey_hash_bytes(pubkey: &Secp256k1Pubkey) -> [u8; 32] {
     fr_to_bytes(&custodian_pubkey_hash(pubkey))
 }
 
+/// Compute the canonical nullifier field element used by the custodial circuit
+/// from the private `account_id_hash` and the public policy metadata.
+///
+/// This mirrors the in-circuit `compute_nullifier` gadget, which applies the
+/// shared Poseidon parameters over four field elements:
+/// `(account_id_hash, verifier_scope_id, policy_id, current_epoch)`.
+pub fn nullifier_fr(account_id_hash: Fr, verifier_scope_id: u64, policy_id: u64, epoch: u64) -> Fr {
+    let scope_fr = Fr::from(verifier_scope_id);
+    let policy_fr = Fr::from(policy_id);
+    let epoch_fr = Fr::from(epoch);
+    poseidon_hash(&[account_id_hash, scope_fr, policy_fr, epoch_fr])
+}
+
 pub fn allowlisted_custodian_hash(custodian_id: u32) -> Option<Fr> {
     custodians::lookup_pubkey(custodian_id).map(|pk| custodian_pubkey_hash(pk))
 }
 
 pub fn allowlisted_custodian_hash_bytes(custodian_id: u32) -> Option<[u8; 32]> {
     allowlisted_custodian_hash(custodian_id).map(|fr| fr_to_bytes(&fr))
+}
+
+pub fn compute_nullifier_fr(
+    account_id_hash: &Fr,
+    scope_id: u64,
+    policy_id: u64,
+    current_epoch: u64,
+) -> Fr {
+    poseidon_hash(&[
+        *account_id_hash,
+        Fr::from(scope_id),
+        Fr::from(policy_id),
+        Fr::from(current_epoch),
+    ])
+}
+
+pub fn compute_nullifier_bytes(
+    account_id_hash: &Fr,
+    scope_id: u64,
+    policy_id: u64,
+    current_epoch: u64,
+) -> [u8; 32] {
+    fr_to_bytes(&compute_nullifier_fr(
+        account_id_hash,
+        scope_id,
+        policy_id,
+        current_epoch,
+    ))
 }
 
 fn poseidon_hash<const L: usize>(values: &[Fr; L]) -> Fr {
@@ -656,6 +789,99 @@ fn ensure_manifest_compat(manifest: &ArtifactManifest) -> Result<()> {
         CIRCUIT_VERSION
     );
     Ok(())
+}
+
+mod serde_bytes32 {
+    use serde::de::{self, SeqAccess, Visitor};
+    use serde::{Deserializer, Serializer};
+    use std::fmt::{self, Write as FmtWrite};
+
+    pub fn serialize<S>(value: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut buf = String::with_capacity(66);
+        buf.push_str("0x");
+        for byte in value {
+            FmtWrite::write_fmt(&mut buf, format_args!("{:02x}", byte)).unwrap();
+        }
+        serializer.serialize_str(&buf)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct BytesVisitor;
+
+        impl<'de> Visitor<'de> for BytesVisitor {
+            type Value = [u8; 32];
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("32-byte value encoded as hex, byte array, or byte string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                decode_hex(v).map_err(E::custom)
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                copy_slice(v).map_err(E::custom)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut buf = Vec::with_capacity(32);
+                while let Some(byte) = seq.next_element::<u8>()? {
+                    buf.push(byte);
+                    if buf.len() > 32 {
+                        return Err(de::Error::invalid_length(buf.len(), &self));
+                    }
+                }
+                copy_slice(&buf).map_err(de::Error::custom)
+            }
+        }
+
+        fn copy_slice(bytes: &[u8]) -> Result<[u8; 32], String> {
+            if bytes.len() != 32 {
+                return Err(format!("expected 32 bytes, got {}", bytes.len()));
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(bytes);
+            Ok(arr)
+        }
+
+        fn decode_hex(input: &str) -> Result<[u8; 32], String> {
+            let hex = input
+                .strip_prefix("0x")
+                .or_else(|| input.strip_prefix("0X"))
+                .unwrap_or(input);
+            if hex.len() != 64 {
+                return Err(format!("expected 64 hex chars, got {}", hex.len()));
+            }
+            let mut out = [0u8; 32];
+            for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+                let hi = (chunk[0] as char)
+                    .to_digit(16)
+                    .ok_or_else(|| format!("invalid hex {}", input))?;
+                let lo = (chunk[1] as char)
+                    .to_digit(16)
+                    .ok_or_else(|| format!("invalid hex {}", input))?;
+                out[i] = ((hi << 4) | lo) as u8;
+            }
+            Ok(out)
+        }
+
+        deserializer.deserialize_any(BytesVisitor)
+    }
 }
 
 #[cfg(test)]

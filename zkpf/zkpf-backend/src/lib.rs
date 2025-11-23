@@ -3,7 +3,7 @@ use std::{
     env, fs,
     path::Path,
     sync::{Arc, Mutex, RwLock},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -15,22 +15,30 @@ use axum::{
     Json, Router,
 };
 use blake3;
+use hex;
 use once_cell::sync::Lazy;
+use serde_json::Value as JsonValue;
 use sled::Db;
 use tokio::{fs::File, net::TcpListener};
 use tokio_util::io::ReaderStream;
 use tower_http::cors::{Any, CorsLayer};
-use zkpf_circuit::ZkpfCircuitInput;
+use uuid::Uuid;
+use zkpf_circuit::{
+    custodians::CUSTODIAN_ID_ZASHI,
+    gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
+    PublicInputs, ZkpfCircuitInput,
+};
 use zkpf_common::{
-    allowlisted_custodian_hash_bytes, deserialize_verifier_public_inputs, load_prover_artifacts,
-    load_prover_artifacts_without_pk, load_verifier_artifacts,
-    public_inputs_to_instances_with_layout, public_to_verifier_inputs, ProofBundle,
-    ProverArtifacts, PublicInputLayout, VerifierArtifacts, VerifierPublicInputs,
+    allowlisted_custodian_hash, allowlisted_custodian_hash_bytes, compute_nullifier_fr,
+    custodian_pubkey_hash, deserialize_verifier_public_inputs, load_prover_artifacts,
+    load_prover_artifacts_without_pk, load_verifier_artifacts, nullifier_fr,
+    public_inputs_to_instances_with_layout, public_to_verifier_inputs, reduce_be_bytes_to_fr,
+    Attestation, ProofBundle, ProverArtifacts, PublicInputLayout, VerifierArtifacts,
+    VerifierPublicInputs,
 };
 use zkpf_prover::prove_bundle;
 use zkpf_verifier::verify;
 use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
-use serde_json::Value as JsonValue;
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
 const MANIFEST_ENV: &str = "ZKPF_MANIFEST_PATH";
@@ -65,7 +73,13 @@ const CODE_ATTESTATION_ONCHAIN_ERROR: &str = "ATTESTATION_ONCHAIN_ERROR";
 const CODE_INTERNAL: &str = "INTERNAL_SERVER_ERROR";
 const CODE_PROVER_DISABLED: &str = "PROVER_DISABLED";
 const CODE_POLICY_COMPOSE_INVALID: &str = "POLICY_COMPOSE_INVALID";
+const CODE_SESSION_NOT_FOUND: &str = "SESSION_NOT_FOUND";
+const CODE_SESSION_STATE: &str = "SESSION_STATE_INVALID";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
+const PROVIDER_BALANCE_RAIL_ID: &str = "PROVIDER_BALANCE_V2";
+const PROVIDER_SESSION_TTL_SECS: u64 = 15 * 60;
+const PROVIDER_SESSION_RETENTION_SECS: u64 = 60 * 60;
+const DEFAULT_DEEP_LINK_SCHEME: &str = "zashi";
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
 static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
@@ -96,7 +110,6 @@ enum RailArtifacts {
 
 #[derive(Clone)]
 struct RailVerifier {
-    rail_id: String,
     circuit_version: u32,
     layout: PublicInputLayout,
     artifacts: RailArtifacts,
@@ -113,16 +126,19 @@ impl RailRegistry {
         let mut map = HashMap::new();
 
         let default = RailVerifier {
-            rail_id: String::new(),
             circuit_version: ARTIFACTS.manifest.circuit_version,
             layout: PublicInputLayout::V1,
             artifacts: RailArtifacts::Prover(ARTIFACTS.clone()),
         };
 
         // Empty rail_id is used for backward-compat bundles; DEFAULT_RAIL_ID is a
-        // stable explicit identifier for the same rail.
+        // stable explicit identifier for the same rail. We also expose a
+        // PROVIDER_BALANCE_V2 rail identifier that uses the same artifacts and
+        // public-input layout, so provider-style attestations can be routed
+        // through the existing custodial circuit.
         map.insert(String::new(), default.clone());
-        map.insert(DEFAULT_RAIL_ID.to_string(), default);
+        map.insert(DEFAULT_RAIL_ID.to_string(), default.clone());
+        map.insert(PROVIDER_BALANCE_RAIL_ID.to_string(), default);
 
         if let Ok(path) = env::var(MULTIRAIL_MANIFEST_ENV) {
             let bytes = fs::read(&path).unwrap_or_else(|err| {
@@ -170,7 +186,6 @@ impl RailRegistry {
                 map.insert(
                     rail.rail_id.clone(),
                     RailVerifier {
-                        rail_id: rail.rail_id,
                         circuit_version: rail.circuit_version,
                         layout,
                         artifacts: RailArtifacts::Verifier(Arc::new(artifacts)),
@@ -216,6 +231,50 @@ impl OnchainAttestationService {
             .unwrap_or(false);
 
         if enabled {
+            let mut config_warnings = Vec::new();
+
+            let rpc_url_ready = env::var(ATTESTATION_RPC_URL_ENV)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+            if !rpc_url_ready {
+                config_warnings.push(format!("{} is missing", ATTESTATION_RPC_URL_ENV));
+            }
+
+            let chain_id_ready = env::var(ATTESTATION_CHAIN_ID_ENV)
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .is_some();
+            if !chain_id_ready {
+                config_warnings.push(format!(
+                    "{} is missing or invalid",
+                    ATTESTATION_CHAIN_ID_ENV
+                ));
+            }
+
+            let registry_ready = env::var(ATTESTATION_REGISTRY_ADDRESS_ENV)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+            if !registry_ready {
+                config_warnings.push(format!(
+                    "{} is missing",
+                    ATTESTATION_REGISTRY_ADDRESS_ENV
+                ));
+            }
+
+            let private_key_ready = env::var(ATTESTOR_PRIVATE_KEY_ENV)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+            if !private_key_ready {
+                config_warnings.push(format!("{} is missing", ATTESTOR_PRIVATE_KEY_ENV));
+            }
+
+            if !config_warnings.is_empty() {
+                eprintln!(
+                    "Attestation config is incomplete: {}",
+                    config_warnings.join(", ")
+                );
+            }
+
             eprintln!(
                 "ATTESTATION_ENABLED is set, but the lightweight binary build does not ship \
                  the on-chain attestation client. Disable {} or build with the full feature \
@@ -244,6 +303,7 @@ pub struct AppState {
     epoch: EpochConfig,
     nullifiers: NullifierStore,
     policies: PolicyStore,
+    provider_sessions: ProviderSessionStore,
 }
 
 impl AppState {
@@ -253,6 +313,7 @@ impl AppState {
             EpochConfig::from_env(),
             NullifierStore::from_env(),
             POLICIES.clone(),
+            ProviderSessionStore::default(),
         )
     }
 
@@ -261,12 +322,14 @@ impl AppState {
         epoch: EpochConfig,
         nullifiers: NullifierStore,
         policies: PolicyStore,
+        provider_sessions: ProviderSessionStore,
     ) -> Self {
         Self {
             artifacts,
             epoch,
             nullifiers,
             policies,
+            provider_sessions,
         }
     }
 
@@ -276,6 +339,7 @@ impl AppState {
             epoch,
             NullifierStore::from_env(),
             POLICIES.clone(),
+            ProviderSessionStore::default(),
         )
     }
 
@@ -297,6 +361,10 @@ impl AppState {
 
     pub fn policy_store(&self) -> &PolicyStore {
         &self.policies
+    }
+
+    pub fn provider_sessions(&self) -> &ProviderSessionStore {
+        &self.provider_sessions
     }
 }
 
@@ -386,7 +454,15 @@ pub fn app_router(state: AppState) -> Router {
         .route("/zkpf/attest", post(attest_handler));
 
     let router = if state.artifacts().prover_enabled() {
-        router.route("/zkpf/prove-bundle", post(prove_bundle_handler))
+        router
+            .route("/zkpf/prove-bundle", post(prove_bundle_handler))
+            .route(
+                "/zkpf/provider/prove-balance",
+                post(provider_prove_balance_handler),
+            )
+            .route("/zkpf/zashi/session/start", post(zashi_session_start))
+            .route("/zkpf/zashi/session/submit", post(zashi_session_submit))
+            .route("/zkpf/zashi/session/:session_id", get(zashi_session_status))
     } else {
         router
     };
@@ -487,6 +563,8 @@ async fn compose_policy_handler(
     State(state): State<AppState>,
     Json(req): Json<PolicyComposeRequest>,
 ) -> Result<Json<PolicyComposeResponse>, ApiError> {
+    validate_policy_compose_request(&req)?;
+
     let path = policy_config_path();
     let path_ref = Path::new(&path);
 
@@ -520,10 +598,7 @@ async fn compose_policy_handler(
     let mut existing: Option<JsonValue> = None;
 
     for entry in &entries {
-        let policy_id = entry
-            .get("policy_id")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let policy_id = entry.get("policy_id").and_then(|v| v.as_u64()).unwrap_or(0);
         if policy_id > max_policy_id {
             max_policy_id = policy_id;
         }
@@ -533,10 +608,7 @@ async fn compose_policy_handler(
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_ascii_uppercase();
-        let rail = entry
-            .get("rail_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let rail = entry.get("rail_id").and_then(|v| v.as_str()).unwrap_or("");
         let threshold = entry
             .get("threshold_raw")
             .and_then(|v| v.as_u64())
@@ -616,6 +688,10 @@ async fn compose_policy_handler(
         required_custodian_id: req.required_custodian_id,
         verifier_scope_id: req.verifier_scope_id,
         policy_id,
+        category: Some(req.category.clone()),
+        rail_id: Some(req.rail_id.clone()),
+        label: Some(req.label.clone()),
+        options: Some(req.options.clone()),
     };
     // Ensure the in-memory policy store is aware of this policy for subsequent verify calls.
     if state.policy_store().get(policy_id).is_none() {
@@ -629,6 +705,29 @@ async fn compose_policy_handler(
         summary,
         created,
     }))
+}
+
+fn validate_policy_compose_request(req: &PolicyComposeRequest) -> Result<(), ApiError> {
+    if req.category.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "category must not be empty",
+        ));
+    }
+    if req.rail_id.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "rail_id must not be empty",
+        ));
+    }
+    if req.label.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "label must not be empty",
+        ));
+    }
+
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -664,6 +763,50 @@ struct EpochResponse {
 #[derive(serde::Serialize)]
 struct PoliciesResponse {
     policies: Vec<PolicyExpectations>,
+}
+
+#[derive(serde::Deserialize)]
+struct ZashiSessionStartRequest {
+    policy_id: u64,
+    #[serde(default)]
+    deep_link_scheme: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ZashiSessionStartResponse {
+    session_id: Uuid,
+    policy: SessionPolicyView,
+    expires_at: u64,
+    deep_link: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ZashiSessionSubmitRequest {
+    session_id: Uuid,
+    attestation: Attestation,
+}
+
+#[derive(serde::Deserialize)]
+struct ProviderBalanceAttestation {
+    balance_raw: u64,
+    currency_code_int: u32,
+    attestation_id: u64,
+    issued_at: u64,
+    valid_until: u64,
+    /// Opaque account tag chosen by the provider; expected as a 32-byte hex
+    /// string (with or without 0x prefix) that is stable per logical account.
+    account_tag: String,
+    custodian_pubkey: Secp256k1Pubkey,
+    signature: EcdsaSignature,
+    /// 32-byte message hash that the provider signed, encoded as a raw byte
+    /// array in JSON (matching the existing circuit input conventions).
+    message_hash: [u8; 32],
+}
+
+#[derive(serde::Deserialize)]
+struct ProviderProveBalanceRequest {
+    policy_id: u64,
+    attestation: ProviderBalanceAttestation,
 }
 
 #[derive(serde::Deserialize)]
@@ -798,6 +941,14 @@ pub struct PolicyExpectations {
     pub required_custodian_id: u32,
     pub verifier_scope_id: u64,
     pub policy_id: u64,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub rail_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub options: Option<JsonValue>,
 }
 
 impl PolicyExpectations {
@@ -904,6 +1055,235 @@ impl PolicyStore {
             panic!("duplicate policy_id {} in policy store insert", id);
         }
     }
+}
+
+#[derive(Clone)]
+pub struct ProviderSessionStore {
+    ttl: Duration,
+    retention: Duration,
+    sessions: Arc<RwLock<HashMap<Uuid, ProviderSessionRecord>>>,
+}
+
+impl Default for ProviderSessionStore {
+    fn default() -> Self {
+        Self {
+            ttl: Duration::from_secs(PROVIDER_SESSION_TTL_SECS),
+            retention: Duration::from_secs(PROVIDER_SESSION_RETENTION_SECS),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+impl ProviderSessionStore {
+    pub(crate) fn start_session(&self, policy: PolicyExpectations) -> ProviderSessionStart {
+        let mut guard = self.sessions.write().expect("provider sessions poisoned");
+        self.purge_locked(&mut guard);
+        let now = SystemTime::now();
+        let expires_at = now + self.ttl;
+        let session_id = Uuid::new_v4();
+        guard.insert(
+            session_id,
+            ProviderSessionRecord {
+                policy: policy.clone(),
+                status: ProviderSessionStatus::Pending,
+                bundle: None,
+                last_error: None,
+                created_at: now,
+                updated_at: now,
+                expires_at,
+            },
+        );
+        ProviderSessionStart {
+            session_id,
+            policy: SessionPolicyView::from(&policy),
+            expires_at,
+        }
+    }
+
+    pub(crate) fn begin_submission(
+        &self,
+        session_id: &Uuid,
+    ) -> Result<PolicyExpectations, SessionError> {
+        let mut guard = self.sessions.write().expect("provider sessions poisoned");
+        self.purge_locked(&mut guard);
+        let record = guard.get_mut(session_id).ok_or(SessionError::NotFound)?;
+        record.expire_if_needed();
+        match record.status {
+            ProviderSessionStatus::Pending | ProviderSessionStatus::Invalid => {
+                record.status = ProviderSessionStatus::Proving;
+                record.last_error = None;
+                record.updated_at = SystemTime::now();
+                Ok(record.policy.clone())
+            }
+            ProviderSessionStatus::Proving => Err(SessionError::State("session already proving")),
+            ProviderSessionStatus::Ready => Err(SessionError::State("session already completed")),
+            ProviderSessionStatus::Expired => Err(SessionError::Expired),
+        }
+    }
+
+    pub(crate) fn finish_success(
+        &self,
+        session_id: &Uuid,
+        bundle: ProofBundle,
+    ) -> Result<ProviderSessionSnapshot, SessionError> {
+        let mut guard = self.sessions.write().expect("provider sessions poisoned");
+        let record = guard.get_mut(session_id).ok_or(SessionError::NotFound)?;
+        record.expire_if_needed();
+        if record.status != ProviderSessionStatus::Proving {
+            return Err(SessionError::State("session is not proving"));
+        }
+        record.status = ProviderSessionStatus::Ready;
+        record.bundle = Some(bundle);
+        record.last_error = None;
+        record.updated_at = SystemTime::now();
+        Ok(ProviderSessionSnapshot::from_record(*session_id, record))
+    }
+
+    pub fn finish_failure(&self, session_id: &Uuid, message: String) {
+        if let Ok(mut guard) = self.sessions.write() {
+            if let Some(record) = guard.get_mut(session_id) {
+                record.expire_if_needed();
+                if matches!(
+                    record.status,
+                    ProviderSessionStatus::Ready | ProviderSessionStatus::Expired
+                ) {
+                    return;
+                }
+                record.status = ProviderSessionStatus::Invalid;
+                record.last_error = Some(message);
+                record.updated_at = SystemTime::now();
+            }
+        }
+    }
+
+    pub(crate) fn snapshot(&self, session_id: &Uuid) -> Option<ProviderSessionSnapshot> {
+        let mut guard = self.sessions.write().expect("provider sessions poisoned");
+        self.purge_locked(&mut guard);
+        guard.get_mut(session_id).map(|record| {
+            record.expire_if_needed();
+            ProviderSessionSnapshot::from_record(*session_id, record)
+        })
+    }
+
+    fn purge_locked(&self, sessions: &mut HashMap<Uuid, ProviderSessionRecord>) {
+        let now = SystemTime::now();
+        sessions.retain(|_, record| match now.duration_since(record.expires_at) {
+            Ok(elapsed) => elapsed <= self.retention,
+            Err(_) => true,
+        });
+    }
+}
+
+#[derive(Clone)]
+struct ProviderSessionRecord {
+    policy: PolicyExpectations,
+    status: ProviderSessionStatus,
+    bundle: Option<ProofBundle>,
+    last_error: Option<String>,
+    created_at: SystemTime,
+    updated_at: SystemTime,
+    expires_at: SystemTime,
+}
+
+impl ProviderSessionRecord {
+    fn expire_if_needed(&mut self) {
+        if self.status == ProviderSessionStatus::Expired {
+            return;
+        }
+        if SystemTime::now().duration_since(self.expires_at).is_ok() {
+            self.status = ProviderSessionStatus::Expired;
+            self.updated_at = SystemTime::now();
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum ProviderSessionStatus {
+    Pending,
+    Proving,
+    Ready,
+    Invalid,
+    Expired,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct SessionPolicyView {
+    policy_id: u64,
+    verifier_scope_id: u64,
+    threshold_raw: u64,
+    required_currency_code: u32,
+    required_custodian_id: u32,
+    rail_id: String,
+    label: Option<String>,
+}
+
+impl From<&PolicyExpectations> for SessionPolicyView {
+    fn from(policy: &PolicyExpectations) -> Self {
+        Self {
+            policy_id: policy.policy_id,
+            verifier_scope_id: policy.verifier_scope_id,
+            threshold_raw: policy.threshold_raw,
+            required_currency_code: policy.required_currency_code,
+            required_custodian_id: policy.required_custodian_id,
+            rail_id: policy
+                .rail_id
+                .clone()
+                .unwrap_or_else(|| DEFAULT_RAIL_ID.to_string()),
+            label: policy.label.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct ProviderSessionSnapshot {
+    session_id: Uuid,
+    status: ProviderSessionStatus,
+    policy: SessionPolicyView,
+    bundle: Option<ProofBundle>,
+    error: Option<String>,
+    created_at: u64,
+    expires_at: u64,
+    updated_at: u64,
+}
+
+impl ProviderSessionSnapshot {
+    fn from_record(id: Uuid, record: &ProviderSessionRecord) -> Self {
+        Self {
+            session_id: id,
+            status: record.status.clone(),
+            policy: SessionPolicyView::from(&record.policy),
+            bundle: record.bundle.clone(),
+            error: record.last_error.clone(),
+            created_at: system_time_secs(record.created_at),
+            expires_at: system_time_secs(record.expires_at),
+            updated_at: system_time_secs(record.updated_at),
+        }
+    }
+}
+
+struct ProviderSessionStart {
+    session_id: Uuid,
+    policy: SessionPolicyView,
+    expires_at: SystemTime,
+}
+
+impl ProviderSessionStart {
+    fn into_response(self, deep_link: String) -> ZashiSessionStartResponse {
+        ZashiSessionStartResponse {
+            session_id: self.session_id,
+            policy: self.policy,
+            expires_at: system_time_secs(self.expires_at),
+            deep_link,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum SessionError {
+    NotFound,
+    Expired,
+    State(&'static str),
 }
 
 async fn verify_handler(
@@ -1116,19 +1496,24 @@ async fn prove_bundle_handler(
     State(state): State<AppState>,
     Json(input): Json<ZkpfCircuitInput>,
 ) -> Result<Json<ProofBundle>, ApiError> {
-    let verifier_inputs = public_to_verifier_inputs(&input.public);
-
     let policy = state
         .policy_store()
-        .get(verifier_inputs.policy_id)
-        .ok_or_else(|| ApiError::policy_not_found(verifier_inputs.policy_id))?;
+        .get(input.public.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(input.public.policy_id))?;
+
+    let bundle = prove_with_policy(&state, &policy, input)?;
+    Ok(Json(bundle))
+}
+
+fn prove_with_policy(
+    state: &AppState,
+    policy: &PolicyExpectations,
+    input: ZkpfCircuitInput,
+) -> Result<ProofBundle, ApiError> {
+    let verifier_inputs = public_to_verifier_inputs(&input.public);
 
     if let Err(err) = policy.validate_against(&verifier_inputs) {
         return Err(ApiError::bad_request(CODE_POLICY_MISMATCH, err));
-    }
-
-    if let Err(err) = validate_custodian_hash(&verifier_inputs) {
-        return Err(ApiError::bad_request(CODE_CUSTODIAN_MISMATCH, err));
     }
 
     if let Err(err) = validate_epoch(state.epoch_config(), &verifier_inputs) {
@@ -1151,7 +1536,237 @@ async fn prove_bundle_handler(
     let pk = artifacts
         .proving_key()
         .map_err(|err| ApiError::prover_disabled(err.to_string()))?;
-    let bundle = prove_bundle(&artifacts.params, pk.as_ref(), input);
+    Ok(prove_bundle(&artifacts.params, pk.as_ref(), input))
+}
+
+fn parse_hex_32(value: &str) -> Result<[u8; 32], ApiError> {
+    let trimmed = value.trim();
+    let without_prefix = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+    let bytes = hex::decode(without_prefix).map_err(|err| {
+        ApiError::bad_request(
+            CODE_PUBLIC_INPUTS,
+            format!("invalid 32-byte hex string: {err}"),
+        )
+    })?;
+    if bytes.len() != 32 {
+        return Err(ApiError::bad_request(
+            CODE_PUBLIC_INPUTS,
+            format!("expected 32 bytes, got {}", bytes.len()),
+        ));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
+async fn zashi_session_start(
+    State(state): State<AppState>,
+    Json(req): Json<ZashiSessionStartRequest>,
+) -> Result<Json<ZashiSessionStartResponse>, ApiError> {
+    let policy = state
+        .policy_store()
+        .get(req.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
+    if let Err(err) = ensure_zashi_policy(&policy) {
+        return Err(err);
+    }
+    let session = state.provider_sessions().start_session(policy);
+    let scheme = req
+        .deep_link_scheme
+        .as_deref()
+        .unwrap_or(DEFAULT_DEEP_LINK_SCHEME);
+    let deep_link = format!(
+        "{scheme}://zkpf-proof?session_id={}&policy_id={}",
+        session.session_id, req.policy_id
+    );
+    Ok(Json(session.into_response(deep_link)))
+}
+
+async fn zashi_session_submit(
+    State(state): State<AppState>,
+    Json(req): Json<ZashiSessionSubmitRequest>,
+) -> Result<Json<ProviderSessionSnapshot>, ApiError> {
+    let policy = state
+        .provider_sessions()
+        .begin_submission(&req.session_id)
+        .map_err(session_error)?;
+    if let Err(err) = ensure_zashi_policy(&policy) {
+        let reason = err.message.clone();
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, reason);
+        return Err(err);
+    }
+
+    let attestation = req.attestation;
+    if attestation.custodian_id != policy.required_custodian_id {
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, "custodian mismatch".into());
+        return Err(ApiError::bad_request(
+            CODE_POLICY_MISMATCH,
+            "attestation custodian_id does not match policy",
+        ));
+    }
+    if attestation.currency_code_int != policy.required_currency_code {
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, "currency mismatch".into());
+        return Err(ApiError::bad_request(
+            CODE_POLICY_MISMATCH,
+            "attestation currency_code_int does not match policy",
+        ));
+    }
+    if attestation.balance_raw < policy.threshold_raw {
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, "threshold not met".into());
+        return Err(ApiError::bad_request(
+            CODE_POLICY_MISMATCH,
+            "balance_raw does not satisfy policy threshold",
+        ));
+    }
+
+    if let Err(err) = attestation.verify_message_hash() {
+        let message = err.to_string();
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, message.clone());
+        return Err(ApiError::bad_request(CODE_PUBLIC_INPUTS, message));
+    }
+
+    let witness = attestation.to_witness();
+    let account_id_hash = witness.account_id_hash;
+    // Derive the custodian_pubkey_hash directly from the attestation’s
+    // secp256k1 public key instead of requiring an out-of-band allowlist
+    // entry for the custodian_id.
+    let pubkey_hash = custodian_pubkey_hash(&witness.custodian_pubkey);
+
+    let current_epoch = state.epoch_config().current_epoch();
+    let nullifier = compute_nullifier_fr(
+        &account_id_hash,
+        policy.verifier_scope_id,
+        policy.policy_id,
+        current_epoch,
+    );
+
+    let public = PublicInputs {
+        threshold_raw: policy.threshold_raw,
+        required_currency_code: policy.required_currency_code,
+        required_custodian_id: policy.required_custodian_id,
+        current_epoch,
+        verifier_scope_id: policy.verifier_scope_id,
+        policy_id: policy.policy_id,
+        nullifier,
+        custodian_pubkey_hash: pubkey_hash,
+    };
+
+    let input = ZkpfCircuitInput {
+        attestation: witness,
+        public,
+    };
+
+    let bundle = match prove_with_policy(&state, &policy, input) {
+        Ok(bundle) => bundle,
+        Err(err) => {
+            state
+                .provider_sessions()
+                .finish_failure(&req.session_id, err.message.clone());
+            return Err(err);
+        }
+    };
+
+    let snapshot = state
+        .provider_sessions()
+        .finish_success(&req.session_id, bundle)
+        .map_err(session_error)?;
+
+    Ok(Json(snapshot))
+}
+
+async fn zashi_session_status(
+    State(state): State<AppState>,
+    AxumPath(session_id): AxumPath<Uuid>,
+) -> Result<Json<ProviderSessionSnapshot>, ApiError> {
+    state
+        .provider_sessions()
+        .snapshot(&session_id)
+        .map(Json)
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                CODE_SESSION_NOT_FOUND,
+                format!("session {} not found", session_id),
+            )
+        })
+}
+
+async fn provider_prove_balance_handler(
+    State(state): State<AppState>,
+    Json(req): Json<ProviderProveBalanceRequest>,
+) -> Result<Json<ProofBundle>, ApiError> {
+    // Look up the policy to determine threshold, currency, scope, and the
+    // required provider identifier (re-using the custodial ID field).
+    let policy = state
+        .policy_store()
+        .get(req.policy_id)
+        .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
+
+    let current_epoch = state.epoch_config().current_epoch();
+
+    let att = req.attestation;
+
+    // Normalize the opaque account_tag into a field element using the same
+    // big-endian reduction helper used elsewhere in the stack.
+    let account_tag_bytes = parse_hex_32(&att.account_tag)?;
+    let account_id_hash = reduce_be_bytes_to_fr(&account_tag_bytes);
+
+    // Compute the canonical nullifier field element that the circuit expects.
+    let nullifier = nullifier_fr(
+        account_id_hash,
+        policy.verifier_scope_id,
+        policy.policy_id,
+        current_epoch,
+    );
+
+    // Hash the provider's secp256k1 public key into the field element that the
+    // circuit and policy layer both use.
+    let pubkey_hash = custodian_pubkey_hash(&att.custodian_pubkey);
+
+    let public = PublicInputs {
+        threshold_raw: policy.threshold_raw,
+        required_currency_code: policy.required_currency_code,
+        required_custodian_id: policy.required_custodian_id,
+        current_epoch,
+        verifier_scope_id: policy.verifier_scope_id,
+        policy_id: policy.policy_id,
+        nullifier,
+        custodian_pubkey_hash: pubkey_hash,
+    };
+
+    let witness = AttestationWitness {
+        balance_raw: att.balance_raw,
+        currency_code_int: att.currency_code_int,
+        custodian_id: policy.required_custodian_id,
+        attestation_id: att.attestation_id,
+        issued_at: att.issued_at,
+        valid_until: att.valid_until,
+        account_id_hash,
+        custodian_pubkey: att.custodian_pubkey,
+        signature: att.signature,
+        message_hash: att.message_hash,
+    };
+
+    let circuit_input = ZkpfCircuitInput {
+        attestation: witness,
+        public,
+    };
+
+    let mut bundle = prove_with_policy(&state, &policy, circuit_input)?;
+
+    // Mark this bundle as belonging to the provider-balance rail so that
+    // multi-rail verification routes it correctly.
+    bundle.rail_id = PROVIDER_BALANCE_RAIL_ID.to_string();
 
     Ok(Json(bundle))
 }
@@ -1169,18 +1784,6 @@ fn process_verification(
             CODE_POLICY_MISMATCH,
             err,
         ));
-    }
-
-    // Custodial rails (V1 layout) enforce the custodian allowlist. Orchard and
-    // other non-custodial rails may not use this field.
-    if matches!(rail.layout, PublicInputLayout::V1) {
-        if let Err(err) = validate_custodian_hash(public_inputs) {
-            return Ok(VerifyResponse::failure(
-                rail.circuit_version,
-                CODE_CUSTODIAN_MISMATCH,
-                err,
-            ));
-        }
     }
 
     if let Err(err) = validate_epoch(state.epoch_config(), public_inputs) {
@@ -1299,6 +1902,41 @@ fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result
         }
     }
     Ok(())
+}
+
+fn ensure_zashi_policy(policy: &PolicyExpectations) -> Result<(), ApiError> {
+    if policy.required_custodian_id != CUSTODIAN_ID_ZASHI {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_MISMATCH,
+            format!(
+                "policy {} is not bound to the Zashi custodian {}",
+                policy.policy_id, CUSTODIAN_ID_ZASHI
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn session_error(err: SessionError) -> ApiError {
+    match err {
+        SessionError::NotFound => ApiError::new(
+            StatusCode::NOT_FOUND,
+            CODE_SESSION_NOT_FOUND,
+            "session not found",
+        ),
+        SessionError::Expired => {
+            ApiError::new(StatusCode::GONE, CODE_SESSION_STATE, "session expired")
+        }
+        SessionError::State(reason) => {
+            ApiError::new(StatusCode::CONFLICT, CODE_SESSION_STATE, reason)
+        }
+    }
+}
+
+fn system_time_secs(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 #[derive(Clone)]

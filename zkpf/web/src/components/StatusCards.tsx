@@ -93,10 +93,26 @@ function ArtifactButton({
   label,
   fileName,
 }: {
-  bytes: number[] | Uint8Array;
+  bytes?: number[] | Uint8Array;
   label: string;
   fileName: string;
 }) {
+  if (!bytes) {
+    return (
+      <div className="artifact-card">
+        <h3>{label}</h3>
+        <p className="muted small">Available from verifier endpoint</p>
+        <div className="artifact-actions">
+          <button type="button" disabled>
+            Download
+          </button>
+          <button type="button" className="ghost" disabled>
+            Copy base64
+          </button>
+        </div>
+      </div>
+    );
+  }
   const size = humanFileSize(bytes.length);
   const base64 = bytesToBase64(bytes);
 

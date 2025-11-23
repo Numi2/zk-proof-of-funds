@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ZkpfClient } from '../api/zkpf';
 import { ApiError } from '../api/zkpf';
 import type { PolicyCategory, PolicyComposeRequest } from '../types/zkpf';
@@ -7,6 +7,12 @@ interface Props {
   client: ZkpfClient;
   onComposed?: (policyId: number) => void;
 }
+
+type PolicyPreview = {
+  title: string;
+  summary: string;
+  details: { label: string; value: string }[];
+};
 
 function isoCurrencyCode(code: string): number {
   switch (code.toUpperCase()) {
@@ -22,6 +28,10 @@ function isoCurrencyCode(code: string): number {
 export function PolicyComposer({ client, onComposed }: Props) {
   const [category, setCategory] = useState<PolicyCategory>('FIAT');
   const [label, setLabel] = useState('');
+  const withCustomLabel = useCallback(
+    (fallback: string) => label.trim() || fallback,
+    [label],
+  );
 
   // FIAT options
   const [fiatCurrency, setFiatCurrency] = useState<'USD' | 'EUR'>('USD');
@@ -41,6 +51,83 @@ export function PolicyComposer({ client, onComposed }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const policyPreview = useMemo<PolicyPreview>(() => {
+    const toPositiveNumber = (raw: string) => {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    };
+    if (category === 'FIAT') {
+      const numeric = toPositiveNumber(fiatThreshold);
+      const hasThreshold = numeric > 0;
+      const human = hasThreshold
+        ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : '—';
+      const fallbackLabel = `Fiat: ≥ ${human} ${fiatCurrency} (custodian ${fiatCustodianId})`;
+      return {
+        title: 'Fiat proof policy',
+        summary: hasThreshold
+          ? `Requires ≥ ${human} ${fiatCurrency} at custodian ${fiatCustodianId} (scope ${fiatScopeId || '—'}).`
+          : 'Set a minimum fiat balance to preview the enforcement text.',
+        details: [
+          { label: 'Label', value: withCustomLabel(fallbackLabel) },
+          { label: 'Threshold', value: hasThreshold ? `≥ ${human} ${fiatCurrency}` : 'Add threshold' },
+          { label: 'Custodian', value: String(fiatCustodianId || '—') },
+          { label: 'Scope', value: String(fiatScopeId || '—') },
+        ],
+      };
+    }
+    if (category === 'ONCHAIN') {
+      const numeric = toPositiveNumber(onchainThreshold);
+      const hasThreshold = numeric > 0;
+      const human = hasThreshold
+        ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+        : '—';
+      const fallbackLabel = `On-chain: ≥ ${human} ${onchainCurrency} (multi-wallet)`;
+      return {
+        title: 'On-chain wallet policy',
+        summary: hasThreshold
+          ? `Requires ≥ ${human} ${onchainCurrency} across connected wallets in scope ${onchainScopeId || '—'}.`
+          : 'Set a target balance to preview the on-chain guardrail.',
+        details: [
+          { label: 'Label', value: withCustomLabel(fallbackLabel) },
+          { label: 'Threshold', value: hasThreshold ? `≥ ${human} ${onchainCurrency}` : 'Add threshold' },
+          { label: 'Scope', value: String(onchainScopeId || '—') },
+          { label: 'Rail operator', value: 'Indexer #1000' },
+        ],
+      };
+    }
+    const numeric = toPositiveNumber(orchardThreshold);
+    const hasThreshold = numeric > 0;
+    const human = hasThreshold
+      ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+      : '—';
+    const fallbackLabel = `Orchard: ≥ ${human} ZEC`;
+    return {
+      title: 'Zcash Orchard policy',
+      summary: hasThreshold
+        ? `Requires ≥ ${human} ZEC shielded balance for scope ${orchardScopeId || '—'}.`
+        : 'Set a ZEC amount to preview the Orchard guardrail.',
+      details: [
+        { label: 'Label', value: withCustomLabel(fallbackLabel) },
+        { label: 'Threshold', value: hasThreshold ? `≥ ${human} ZEC` : 'Add threshold' },
+        { label: 'Scope', value: String(orchardScopeId || '—') },
+        { label: 'Custodian allowlist', value: 'Not enforced' },
+      ],
+    };
+  }, [
+    category,
+    fiatCurrency,
+    fiatThreshold,
+    fiatCustodianId,
+    fiatScopeId,
+    onchainCurrency,
+    onchainThreshold,
+    onchainScopeId,
+    orchardThreshold,
+    orchardScopeId,
+    withCustomLabel,
+  ]);
 
   const handleSubmit: React.FormEventHandler = async (event) => {
     event.preventDefault();
@@ -66,8 +153,9 @@ export function PolicyComposer({ client, onComposed }: Props) {
           throw new Error('Enter a valid scope ID.');
         }
 
-        const effectiveLabel =
-          label.trim() || `Fiat: ≥ ${human.toLocaleString()} ${fiatCurrency} (custodian ${custodianId})`;
+        const effectiveLabel = withCustomLabel(
+          `Fiat: ≥ ${human.toLocaleString()} ${fiatCurrency} (custodian ${custodianId})`,
+        );
 
         payload = {
           category,
@@ -96,8 +184,9 @@ export function PolicyComposer({ client, onComposed }: Props) {
           throw new Error('Enter a valid scope ID.');
         }
 
-        const effectiveLabel =
-          label.trim() || `On-chain: ≥ ${human.toLocaleString()} ${onchainCurrency} (multi-wallet)`;
+        const effectiveLabel = withCustomLabel(
+          `On-chain: ≥ ${human.toLocaleString()} ${onchainCurrency} (multi-wallet)`,
+        );
 
         payload = {
           category,
@@ -127,7 +216,7 @@ export function PolicyComposer({ client, onComposed }: Props) {
           throw new Error('Enter a valid scope ID.');
         }
 
-        const effectiveLabel = label.trim() || `Orchard: ≥ ${human.toLocaleString()} ZEC`;
+        const effectiveLabel = withCustomLabel(`Orchard: ≥ ${human.toLocaleString()} ZEC`);
 
         payload = {
           category,
@@ -152,10 +241,14 @@ export function PolicyComposer({ client, onComposed }: Props) {
       const response = await client.composePolicy(payload);
       setLoading(false);
 
-      const policy: any = response.policy;
-      const policyId: number | undefined = typeof policy?.policy_id === 'number' ? policy.policy_id : undefined;
-      if (policyId != null) {
-        onComposed?.(policyId);
+      const composed = response.policy;
+      if (
+        composed &&
+        typeof composed === 'object' &&
+        'policy_id' in composed &&
+        typeof (composed as { policy_id: unknown }).policy_id === 'number'
+      ) {
+        onComposed?.((composed as { policy_id: number }).policy_id);
       }
 
       setSuccess(response.summary || 'Policy composed');
@@ -309,6 +402,20 @@ export function PolicyComposer({ client, onComposed }: Props) {
             </label>
           </>
         )}
+
+        <div className="policy-preview-card">
+          <p className="eyebrow">Live preview</p>
+          <h5>{policyPreview.title}</h5>
+          <p className="muted small">{policyPreview.summary}</p>
+          <div className="policy-preview-grid">
+            {policyPreview.details.map((detail) => (
+              <div key={detail.label}>
+                <span>{detail.label}</span>
+                <strong>{detail.value}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className="policy-composer-actions">
           <button type="submit" className="tiny-button" disabled={loading}>

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, ZkpfClient } from '../api/zkpf';
-import type { AttestResponse, ProofBundle, VerifyResponse } from '../types/zkpf';
+import type { AttestResponse, PolicyCategory, PolicyDefinition, ProofBundle, VerifyResponse } from '../types/zkpf';
 import { publicInputsToBytes } from '../utils/bytes';
 import { parseProofBundle } from '../utils/parse';
+import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import { BundleSummary } from './BundleSummary';
-import { PolicyComposer } from './PolicyComposer';
 import type { AssetRail } from '../types/ui';
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
@@ -87,6 +88,31 @@ const assetRailCopy: Record<
   },
 };
 
+const assetRailToCategory: Record<AssetRail, PolicyCategory> = {
+  onchain: 'ONCHAIN',
+  fiat: 'FIAT',
+  orchard: 'ZCASH_ORCHARD',
+};
+
+function inferAssetRail(railId?: string | null): AssetRail {
+  const normalized = railId?.toUpperCase();
+  if (normalized?.includes('ORCHARD')) {
+    return 'orchard';
+  }
+  if (normalized?.includes('ONCHAIN')) {
+    return 'onchain';
+  }
+  return 'fiat';
+}
+
+function normalizePolicyCategory(policy: PolicyDefinition): PolicyCategory {
+  const raw = policy.category?.toUpperCase() as PolicyCategory | undefined;
+  if (raw === 'FIAT' || raw === 'ONCHAIN' || raw === 'ZCASH_ORCHARD') {
+    return raw;
+  }
+  return 'FIAT';
+}
+
 export function ProofWorkbench({
   client,
   connectionState,
@@ -112,7 +138,7 @@ export function ProofWorkbench({
   const [attestError, setAttestError] = useState<string | null>(null);
   const [attestResult, setAttestResult] = useState<AttestResponse | null>(null);
 
-  const policiesQuery = useQuery({
+  const policiesQuery = useQuery<PolicyDefinition[]>({
     queryKey: ['policies', client.baseUrl],
     queryFn: () => client.getPolicies(),
     staleTime: 5 * 60 * 1000,
@@ -182,6 +208,76 @@ export function ProofWorkbench({
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
     : null;
 
+  const policyMismatchWarning = useMemo(() => {
+    if (!bundle || !selectedPolicy) {
+      return null;
+    }
+    const publicInputs = bundle.public_inputs;
+    const problems: string[] = [];
+
+    if (publicInputs.policy_id !== selectedPolicy.policy_id) {
+      problems.push(
+        `policy_id mismatch: bundle has ${publicInputs.policy_id}, but selected policy is ${selectedPolicy.policy_id}`,
+      );
+    }
+    if (publicInputs.threshold_raw !== selectedPolicy.threshold_raw) {
+      problems.push(
+        `threshold_raw mismatch: bundle has ${publicInputs.threshold_raw}, but policy expects ${selectedPolicy.threshold_raw}`,
+      );
+    }
+    if (publicInputs.required_currency_code !== selectedPolicy.required_currency_code) {
+      problems.push(
+        `required_currency_code mismatch: bundle has ${publicInputs.required_currency_code}, but policy expects ${selectedPolicy.required_currency_code}`,
+      );
+    }
+    if (publicInputs.required_custodian_id !== selectedPolicy.required_custodian_id) {
+      problems.push(
+        `required_custodian_id mismatch: bundle has ${publicInputs.required_custodian_id}, but policy expects ${selectedPolicy.required_custodian_id}`,
+      );
+    }
+    if (publicInputs.verifier_scope_id !== selectedPolicy.verifier_scope_id) {
+      problems.push(
+        `verifier_scope_id mismatch: bundle has ${publicInputs.verifier_scope_id}, but policy expects ${selectedPolicy.verifier_scope_id}`,
+      );
+    }
+
+    if (!problems.length) {
+      return null;
+    }
+
+    return `Bundle public inputs do not match the currently configured policy: ${problems.join(
+      '; ',
+    )}. This usually means the proof was generated against an earlier policy configuration.`;
+  }, [bundle, selectedPolicy]);
+
+  const policiesForRail = useMemo(() => {
+    if (!policies.length) {
+      return [];
+    }
+    const targetCategory = assetRailToCategory[assetRail];
+    return policies.filter((policy) => normalizePolicyCategory(policy) === targetCategory);
+  }, [assetRail, policies]);
+
+  const displayedPolicies = useMemo(
+    () => (policiesForRail.length ? policiesForRail : policies),
+    [policiesForRail, policies],
+  );
+
+  const showingFallbackPolicies = policies.length > 0 && !policiesForRail.length;
+
+  useEffect(() => {
+    if (bundle) {
+      return;
+    }
+    if (!displayedPolicies.length) {
+      setSelectedPolicyId(null);
+      return;
+    }
+    if (!selectedPolicyId || !displayedPolicies.some((policy) => policy.policy_id === selectedPolicyId)) {
+      setSelectedPolicyId(displayedPolicies[0].policy_id);
+    }
+  }, [assetRail, bundle, displayedPolicies, selectedPolicyId]);
+
   // Default snapshot identifier for custodial proofs derived from the bundle epoch.
   useEffect(() => {
     if (!bundle) {
@@ -206,21 +302,44 @@ export function ProofWorkbench({
     }
   }, [bundle, policies, selectedPolicyId]);
 
+  useEffect(() => {
+    if (!bundle) {
+      return;
+    }
+    setAssetRail((prev) => {
+      const nextRail = inferAssetRail(bundle.rail_id);
+      return prev === nextRail ? prev : nextRail;
+    });
+  }, [bundle]);
+
   const handleLoadSample = useCallback(async () => {
     try {
-      const response = await fetch('/sample-bundle.json');
+      const samplePath =
+        assetRail === 'orchard'
+          ? '/sample-bundle-orchard.json'
+          : assetRail === 'onchain'
+            ? '/sample-bundle-onchain.json'
+            : '/sample-bundle-fiat.json';
+      const response = await fetch(samplePath);
       if (!response.ok) {
         throw new Error(`Sample bundle request failed (${response.status})`);
       }
       const text = await response.text();
       handleRawInput(text);
-      showToast('Loaded sample bundle', 'success');
+      showToast(
+        assetRail === 'orchard'
+          ? 'Loaded Zcash Orchard sample bundle'
+          : assetRail === 'onchain'
+            ? 'Loaded on-chain sample bundle'
+            : 'Loaded fiat sample bundle',
+        'success',
+      );
     } catch (err) {
       const message = (err as Error).message ?? 'Unknown error';
       setParseError(`Unable to load sample bundle: ${message}`);
       showToast('Failed to load sample bundle', 'error');
     }
-  }, [handleRawInput]);
+  }, [assetRail, handleRawInput]);
 
   const handleFileUpload = async (files: FileList | null) => {
     const file = files?.[0];
@@ -269,6 +388,15 @@ export function ProofWorkbench({
 
   const handleVerify = async () => {
     if (!bundle) return;
+    if (policyMismatchWarning) {
+      setVerifyError(
+        `${policyMismatchWarning} Regenerate the proof bundle against the current policy configuration, then retry verification.`,
+      );
+      setVerifyResponse(null);
+      setAttestResult(null);
+      onVerificationOutcome?.('error');
+      return;
+    }
     const policyIdForVerify = bundle.public_inputs.policy_id;
     setIsVerifying(true);
     setVerifyError(null);
@@ -603,20 +731,29 @@ export function ProofWorkbench({
                     const value = event.target.value;
                     setSelectedPolicyId(value ? Number(value) : null);
                   }}
-                  disabled={!policies.length}
+                  disabled={!displayedPolicies.length}
                 >
-                  {!policies.length ? (
+                  {!displayedPolicies.length ? (
                     <option value="">No policies available</option>
                   ) : (
-                    policies.map((policy) => (
-                      <option key={policy.policy_id} value={policy.policy_id}>
-                        Policy #{policy.policy_id} • Scope {policy.verifier_scope_id} • Threshold {policy.threshold_raw.toLocaleString()}
-                      </option>
-                    ))
+                    displayedPolicies.map((policy) => {
+                      const label = policyDisplayName(policy);
+                      const threshold = formatPolicyThreshold(policy).formatted;
+                      return (
+                        <option key={policy.policy_id} value={policy.policy_id}>
+                          {label} • {threshold} • Scope {policy.verifier_scope_id}
+                        </option>
+                      );
+                    })
                   )}
                 </select>
               )}
             </label>
+            {showingFallbackPolicies && (
+              <p className="muted small">
+                No policies are tagged for {selectedRail.label} yet. Showing all policies instead.
+              </p>
+            )}
             {selectedPolicy && (
               <>
                 <div className="policy-details-header">
@@ -624,22 +761,40 @@ export function ProofWorkbench({
                 </div>
                 <dl className="policy-details">
                   <div>
+                    <dt>Label</dt>
+                    <dd>{policyDisplayName(selectedPolicy)}</dd>
+                  </div>
+                  <div>
+                    <dt>Category</dt>
+                    <dd>{policyCategoryLabel(selectedPolicy)}</dd>
+                  </div>
+                  <div>
+                    <dt>Rail</dt>
+                    <dd>{policyRailLabel(selectedPolicy)}</dd>
+                  </div>
+                  <div>
                     <dt>Threshold</dt>
-                    <dd>{selectedPolicy.threshold_raw.toLocaleString()}</dd>
+                    <dd>{formatPolicyThreshold(selectedPolicy).formatted}</dd>
                   </div>
                   <div>
-                    <dt>Currency Code</dt>
-                    <dd>{selectedPolicy.required_currency_code}</dd>
+                    <dt>Custodian</dt>
+                    <dd>
+                      {selectedPolicy.required_custodian_id === 0
+                        ? 'Any custodian'
+                        : selectedPolicy.required_custodian_id}
+                    </dd>
                   </div>
                   <div>
-                    <dt>Custodian ID</dt>
-                    <dd>{selectedPolicy.required_custodian_id}</dd>
-                  </div>
-                  <div>
-                    <dt>Scope ID</dt>
+                    <dt>Scope</dt>
                     <dd>{selectedPolicy.verifier_scope_id}</dd>
                   </div>
                 </dl>
+                {bundle && policyMismatchWarning && (
+                  <div className="error-message">
+                    <span className="error-icon">⚠️</span>
+                    <span>{policyMismatchWarning}</span>
+                  </div>
+                )}
               </>
             )}
             {policiesError && (
@@ -653,13 +808,14 @@ export function ProofWorkbench({
                 <strong>No policies available.</strong> Configure the verifier first by updating the policies configuration.
               </div>
             )}
-            <PolicyComposer
-              client={client}
-              onComposed={(policyId) => {
-                void policiesQuery.refetch();
-                setSelectedPolicyId(policyId);
-              }}
-            />
+            <div className="policy-panel-footer">
+              <p className="muted small">
+                Need a new policy ID? Compose it in the dedicated console and it will appear here automatically.
+              </p>
+              <Link to="/policies" className="tiny-button">
+                Open policy composer
+              </Link>
+            </div>
           </div>
           <div className="actions">
             <button

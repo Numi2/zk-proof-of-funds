@@ -83,3 +83,6 @@ harness = false
 [[example]]
 name = "inner_product"
 required-features = ["test-utils"]
+
+[lints.rust]
+unexpected_cfgs = { level = 'warn', check-cfg = ['cfg(feature, values("halo2-pse"))'] }

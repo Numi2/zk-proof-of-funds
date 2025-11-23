@@ -14,7 +14,7 @@ members = [
     "zkpf-zcash-orchard-circuit",
     "zkpf-rails-zcash-orchard",
     "zkpf-orchard-inner",
-    "zkpf-orchard-pof-circuit",
+    "zkpf-orchard-pof-circuit", "zkpf-custodian-registry",
 ]
 
 [patch.crates-io]

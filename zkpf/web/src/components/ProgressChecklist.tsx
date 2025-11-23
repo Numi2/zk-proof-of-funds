@@ -5,7 +5,7 @@ export type ChecklistStatus = 'pending' | 'active' | 'complete' | 'error';
 export interface ChecklistStep {
   id: string;
   title: string;
-  description: string;
+  description: string | ReactNode;
   status: ChecklistStatus;
   hint?: string;
   disabled?: boolean;
@@ -42,7 +42,13 @@ export function ProgressChecklist({ steps, onStepClick }: ProgressChecklistProps
               <div className="checklist-step-index">{String(index + 1).padStart(2, '0')}</div>
               <div className="checklist-step-body">
                 <p className="checklist-step-title">{step.title}</p>
-                <p className="checklist-step-description">{step.description}</p>
+                {typeof step.description === 'string' ? (
+                  <p className="checklist-step-description">{step.description}</p>
+                ) : (
+                  <div className="checklist-step-description checklist-step-description-node">
+                    {step.description}
+                  </div>
+                )}
                 {step.hint && <p className="checklist-step-hint">{step.hint}</p>}
               </div>
               {step.action && <div className="checklist-step-action">{step.action}</div>}

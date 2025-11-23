@@ -3,6 +3,7 @@ import { blake3 } from '@noble/hashes/blake3.js';
 import * as secp256k1 from '@noble/secp256k1';
 import type { CircuitInput, PolicyDefinition } from '../types/zkpf';
 import { wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
+import { policyShortSummary } from '../utils/policy';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, hexToBytes, normalizeField, numberArrayFromBytes } from '../utils/field';
 
 type EthereumProvider = {
@@ -53,7 +54,6 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
   const [scopeId, setScopeId] = useState<number>(DEFAULT_SCOPE_ID);
   const [currencyCode, setCurrencyCode] = useState<number>(DEFAULT_CURRENCY);
   const [custodianId, setCustodianId] = useState<number>(DEFAULT_CUSTODIAN_ID);
-  const [currentEpoch, setCurrentEpoch] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [attestationId] = useState<number>(() => Math.floor(Math.random() * 1_000_000));
 
   useEffect(() => {
@@ -170,8 +170,6 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
 
       // Keep the UI field in sync with the value actually embedded in the
       // attestation and nullifier.
-      setCurrentEpoch(nowEpoch);
-
       const circuitInput: CircuitInput = {
         attestation: {
           balance_raw: Math.floor(attestationBalance),
@@ -260,7 +258,6 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
     chainId,
     scopeId,
     policyId,
-    currentEpoch,
     issuedAt,
     validHours,
     balanceOverride,
@@ -314,9 +311,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
           <div className="wallet-row">
             <strong>Policy</strong>
             <span>
-              {policy
-                ? `#${policy.policy_id} • ≥ ${policy.threshold_raw.toLocaleString()}`
-                : 'Select a policy above'}
+              {policy ? policyShortSummary(policy) : 'Select a policy above'}
             </span>
           </div>
         </div>

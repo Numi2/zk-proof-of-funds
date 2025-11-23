@@ -11,7 +11,10 @@ import type {
   VerifyRequest,
   VerifyResponse,
   ByteArray,
+  ProviderSessionSnapshot,
+  ZashiSessionStartResponse,
 } from '../types/zkpf';
+import { toUint8Array } from '../utils/bytes';
 
 const LOCAL_FALLBACK_BASE = 'http://localhost:3000';
 
@@ -53,43 +56,68 @@ export class ZkpfClient {
       }
     >('/zkpf/params');
 
-    if (payload.params && payload.vk && payload.pk) {
-      return payload;
-    }
-
-    if (!payload.artifact_urls) {
-      throw new Error('Params response missing artifact URLs and inline bytes.');
-    }
-
     const cacheKey = `${payload.params_hash}:${payload.pk_hash}:${payload.vk_hash}`;
-    if (this.artifactCache.has(cacheKey)) {
-      const cached = this.artifactCache.get(cacheKey)!;
+    const artifactUrls =
+      payload.artifact_urls ?? {
+        params: '/zkpf/artifacts/params',
+        vk: '/zkpf/artifacts/vk',
+        pk: '/zkpf/artifacts/pk',
+      };
+
+    if (payload.params && payload.pk) {
+      // Persist inline artifacts in the cache so callers can hydrate the WASM
+      // runtime once and release the JS copies immediately afterwards.
+      this.artifactCache.set(cacheKey, {
+        params: toUint8Array(payload.params),
+        vk: payload.vk ? toUint8Array(payload.vk) : new Uint8Array(),
+        pk: toUint8Array(payload.pk),
+      });
+    }
+
+    return {
+      circuit_version: payload.circuit_version,
+      manifest_version: payload.manifest_version,
+      params_hash: payload.params_hash,
+      vk_hash: payload.vk_hash,
+      pk_hash: payload.pk_hash,
+      artifact_urls: artifactUrls,
+    };
+  }
+
+  async loadArtifactsForKey(
+    cacheKey: string,
+    urls?: {
+      params: string;
+      vk: string;
+      pk: string;
+    },
+  ): Promise<{ params: Uint8Array; pk: Uint8Array; vk?: Uint8Array }> {
+    const cached = this.artifactCache.get(cacheKey);
+    if (cached?.params && cached?.pk) {
       return {
-        ...payload,
-        params: cached.params,
-        vk: cached.vk,
-        pk: cached.pk,
+        params: toUint8Array(cached.params),
+        pk: toUint8Array(cached.pk),
+        vk: cached.vk ? toUint8Array(cached.vk) : undefined,
       };
     }
-
-    const [paramsBytes, vkBytes, pkBytes] = await Promise.all([
-      this.downloadArtifact(payload.artifact_urls.params),
-      this.downloadArtifact(payload.artifact_urls.vk),
-      this.downloadArtifact(payload.artifact_urls.pk),
+    if (!urls) {
+      throw new Error('Artifact URLs unavailable; unable to load prover artifacts.');
+    }
+    const [paramsBytes, pkBytes] = await Promise.all([
+      this.downloadArtifact(urls.params),
+      this.downloadArtifact(urls.pk),
     ]);
-
-    const hydrated = {
-      ...payload,
-      params: paramsBytes,
-      vk: vkBytes,
-      pk: pkBytes,
-    };
+    const vkBytes = urls.vk ? await this.downloadArtifact(urls.vk) : cached?.vk ? toUint8Array(cached.vk) : undefined;
     this.artifactCache.set(cacheKey, {
       params: paramsBytes,
-      vk: vkBytes,
       pk: pkBytes,
+      vk: vkBytes ?? new Uint8Array(),
     });
-    return hydrated;
+    return { params: paramsBytes, pk: pkBytes, vk: vkBytes };
+  }
+
+  releaseArtifacts(cacheKey: string) {
+    this.artifactCache.delete(cacheKey);
   }
 
   private async downloadArtifact(pathOrUrl: string): Promise<Uint8Array> {
@@ -144,6 +172,21 @@ export class ZkpfClient {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  async startZashiSession(policyId: number, deepLinkScheme?: string): Promise<ZashiSessionStartResponse> {
+    const body: Record<string, unknown> = { policy_id: policyId };
+    if (deepLinkScheme?.trim()) {
+      body.deep_link_scheme = deepLinkScheme.trim();
+    }
+    return this.request<ZashiSessionStartResponse>('/zkpf/zashi/session/start', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getZashiSession(sessionId: string): Promise<ProviderSessionSnapshot> {
+    return this.request<ProviderSessionSnapshot>(`/zkpf/zashi/session/${encodeURIComponent(sessionId)}`);
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CircuitInput, ProofBundle, PolicyDefinition } from '../types/zkpf';
+import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
 import { WalletConnector } from './WalletConnector';
+import { BtcWalletConnector } from './BtcWalletConnector';
+import { ZcashWalletConnector } from './ZcashWalletConnector';
+import { ZashiSessionConnector } from './ZashiSessionConnector';
 import { prepareProverArtifacts, generateBundle } from '../wasm/prover';
-import { toUint8Array } from '../utils/bytes';
 
 interface Props {
   client: ZkpfClient;
@@ -44,6 +47,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
   const [wasmError, setWasmError] = useState<string | null>(null);
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
+  const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('evm');
+  const [preparedKey, setPreparedKey] = useState<string | null>(null);
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -75,20 +80,68 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
     : null;
 
-  const proverArtifacts = useMemo(() => {
+  const zashiPolicies = useMemo(
+    () =>
+      policies.filter(
+        (policy) => policy.category?.toUpperCase() === 'ZASHI' || policy.required_custodian_id === 8001,
+      ),
+    [policies],
+  );
+
+  const activeZashiPolicy = useMemo(() => {
+    if (walletMode !== 'zashi') {
+      return null;
+    }
+    if (selectedPolicy && zashiPolicies.some((policy) => policy.policy_id === selectedPolicy.policy_id)) {
+      return selectedPolicy;
+    }
+    return null;
+  }, [selectedPolicy, walletMode, zashiPolicies]);
+
+  useEffect(() => {
+    if (walletMode !== 'zashi') {
+      return;
+    }
+    if (!zashiPolicies.length) {
+      if (selectedPolicyId !== null) {
+        setSelectedPolicyId(null);
+      }
+      return;
+    }
+    if (!selectedPolicyId || !zashiPolicies.some((policy) => policy.policy_id === selectedPolicyId)) {
+      setSelectedPolicyId(zashiPolicies[0].policy_id);
+    }
+  }, [walletMode, selectedPolicyId, zashiPolicies]);
+
+  const manifestMeta = useMemo(() => {
     if (!paramsQuery.data) {
       return null;
     }
     return {
-      paramsBytes: toUint8Array(paramsQuery.data.params),
-      pkBytes: toUint8Array(paramsQuery.data.pk),
       key: `${paramsQuery.data.params_hash}:${paramsQuery.data.pk_hash}`,
       manifestVersion: paramsQuery.data.manifest_version,
       circuitVersion: paramsQuery.data.circuit_version,
       paramsHash: paramsQuery.data.params_hash,
       pkHash: paramsQuery.data.pk_hash,
+      artifactUrls: paramsQuery.data.artifact_urls ?? {
+        params: '/zkpf/artifacts/params',
+        vk: '/zkpf/artifacts/vk',
+        pk: '/zkpf/artifacts/pk',
+      },
     };
   }, [paramsQuery.data]);
+
+  useEffect(() => {
+    if (!manifestMeta) {
+      setPreparedKey(null);
+      setWasmStatus('idle');
+      return;
+    }
+    if (preparedKey && preparedKey !== manifestMeta.key) {
+      setPreparedKey(null);
+      setWasmStatus('idle');
+    }
+  }, [manifestMeta, preparedKey]);
 
   const handleLoadSample = useCallback(async () => {
     try {
@@ -113,20 +166,30 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   }, []);
 
   const ensureArtifacts = useCallback(async () => {
-    if (!proverArtifacts) {
+    if (!manifestMeta) {
       throw new Error('Verifier manifest not loaded yet.');
     }
-    if (wasmStatus !== 'ready') {
-      setWasmStatus('loading');
-      setWasmError(null);
+    if (preparedKey === manifestMeta.key) {
+      if (wasmStatus !== 'ready') {
+        setWasmStatus('ready');
+      }
+      return;
     }
-    await prepareProverArtifacts({
-      params: proverArtifacts.paramsBytes,
-      pk: proverArtifacts.pkBytes,
-      key: proverArtifacts.key,
-    });
-    setWasmStatus('ready');
-  }, [proverArtifacts, wasmStatus]);
+    setWasmStatus('loading');
+    setWasmError(null);
+    const { params, pk } = await client.loadArtifactsForKey(manifestMeta.key, manifestMeta.artifactUrls);
+    try {
+      await prepareProverArtifacts({
+        params,
+        pk,
+        key: manifestMeta.key,
+      });
+      setPreparedKey(manifestMeta.key);
+      setWasmStatus('ready');
+    } finally {
+      client.releaseArtifacts(manifestMeta.key);
+    }
+  }, [client, manifestMeta, preparedKey, wasmStatus]);
 
   const applySelectedPolicy = useCallback(
     (input: CircuitInput): CircuitInput => {
@@ -146,43 +209,52 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     [selectedPolicy, selectedPolicyId],
   );
 
+  const generateFromNormalizedJson = useCallback(
+    async (normalizedJson: string, options?: { autoSendToVerifier?: boolean }) => {
+      setIsGenerating(true);
+      setError(null);
+      setBundle(null);
+      try {
+        await ensureArtifacts();
+        const proofBundle = await generateBundle(normalizedJson);
+        setBundle(proofBundle);
+        setWasmError(null);
+        showToast('Proof bundle generated locally', 'success');
+
+        if (options?.autoSendToVerifier && onBundleReady) {
+          onBundleReady(proofBundle);
+          showToast('Proof sent to verification console', 'success');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown error';
+        setError(message);
+        setWasmError(message);
+        setWasmStatus('error');
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [ensureArtifacts, onBundleReady],
+  );
+
   const handleGenerate = useCallback(async () => {
     if (!rawInput.trim()) {
       setError('Paste an attestation JSON payload before generating a proof.');
       return;
     }
-    let normalizedJson: string;
     try {
       const parsed = JSON.parse(rawInput) as CircuitInput;
       const bound = applySelectedPolicy(parsed);
-      normalizedJson = JSON.stringify(bound);
+      const normalizedJson = JSON.stringify(bound);
+      await generateFromNormalizedJson(normalizedJson, { autoSendToVerifier: false });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       setError(`Invalid JSON: ${message}`);
-      return;
     }
-
-    setIsGenerating(true);
-    setError(null);
-    setBundle(null);
-    try {
-      await ensureArtifacts();
-      const proofBundle = await generateBundle(normalizedJson);
-      setBundle(proofBundle);
-      setWasmError(null);
-      showToast('Proof bundle generated locally', 'success');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      setError(message);
-      setWasmError(message);
-      setWasmStatus('error');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [applySelectedPolicy, ensureArtifacts, rawInput]);
+  }, [applySelectedPolicy, generateFromNormalizedJson, rawInput]);
 
   const handleWalletAttestationReady = useCallback(
-    (attestationJson: string) => {
+    async (attestationJson: string) => {
       try {
         const parsed = JSON.parse(attestationJson) as CircuitInput;
         const bound = applySelectedPolicy(parsed);
@@ -190,14 +262,17 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         setRawInput(pretty);
         setBundle(null);
         setError(null);
-        showToast('Wallet attestation loaded into prover workspace', 'success');
+        showToast('Wallet attestation loaded. Generating proof bundle…', 'success');
+
+        const normalizedJson = JSON.stringify(bound);
+        await generateFromNormalizedJson(normalizedJson, { autoSendToVerifier: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'unknown error';
         setError(`Invalid wallet attestation JSON: ${message}`);
         showToast('Wallet attestation JSON could not be parsed', 'error');
       }
     },
-    [applySelectedPolicy],
+    [applySelectedPolicy, generateFromNormalizedJson],
   );
 
   const handlePrefillWorkbench = useCallback(() => {
@@ -231,6 +306,19 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     }
   }, [bundle]);
 
+  const handleZashiBundleReady = useCallback(
+    (remoteBundle: ProofBundle) => {
+      setBundle(remoteBundle);
+      setRawInput('');
+      setError(null);
+      setWasmError(null);
+      if (onBundleReady) {
+        onBundleReady(remoteBundle);
+      }
+    },
+    [onBundleReady],
+  );
+
   const wasmStatusClass =
     wasmStatus === 'ready'
       ? 'connected'
@@ -245,7 +333,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     isGenerating ||
     paramsQuery.isLoading ||
     wasmStatus === 'loading' ||
-    !proverArtifacts;
+    !manifestMeta;
 
   const rail = railFromBundle(bundle);
 
@@ -261,11 +349,83 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         sending sensitive witness data to the verifier.
       </p>
 
-      <WalletConnector
-        onAttestationReady={handleWalletAttestationReady}
-        onShowToast={showToast}
-        policy={selectedPolicy ?? undefined}
-      />
+      <div className="wallet-mode-toggle">
+        <p className="muted small">
+          <strong>Choose wallet rail</strong>
+        </p>
+        <div className="wallet-mode-options">
+          <label>
+            <input
+              type="radio"
+              name="wallet-mode"
+              value="evm"
+              checked={walletMode === 'evm'}
+              onChange={() => setWalletMode('evm')}
+            />
+            <span>Ethereum / EVM wallet (browser extension)</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="wallet-mode"
+              value="btc"
+              checked={walletMode === 'btc'}
+              onChange={() => setWalletMode('btc')}
+            />
+            <span>Bitcoin wallet (manual signing)</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="wallet-mode"
+              value="zcash"
+              checked={walletMode === 'zcash'}
+              onChange={() => setWalletMode('zcash')}
+            />
+            <span>Zcash wallet (UFVK + EVM signer)</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="wallet-mode"
+              value="zashi"
+              checked={walletMode === 'zashi'}
+              onChange={() => setWalletMode('zashi')}
+            />
+            <span>Zashi provider session (custodial)</span>
+          </label>
+        </div>
+      </div>
+
+      {walletMode === 'evm' && (
+        <WalletConnector
+          onAttestationReady={handleWalletAttestationReady}
+          onShowToast={showToast}
+          policy={selectedPolicy ?? undefined}
+        />
+      )}
+      {walletMode === 'zashi' && (
+        <ZashiSessionConnector
+          client={client}
+          policy={activeZashiPolicy}
+          onBundleReady={handleZashiBundleReady}
+          onShowToast={showToast}
+        />
+      )}
+      {walletMode === 'btc' && (
+        <BtcWalletConnector
+          onAttestationReady={handleWalletAttestationReady}
+          onShowToast={showToast}
+          policy={selectedPolicy ?? undefined}
+        />
+      )}
+      {walletMode === 'zcash' && (
+        <ZcashWalletConnector
+          onAttestationReady={handleWalletAttestationReady}
+          onShowToast={showToast}
+          policy={selectedPolicy ?? undefined}
+        />
+      )}
       <p className="muted small">
         This page lines up with the <strong>“Build proof bundle”</strong> step in the checklist. When you finish here,
         send the bundle to the Verify console to verify it.
@@ -294,20 +454,26 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         <div className={`builder-status ${wasmStatusClass}`}>
           <span className="status-dot" />
           <div>
-            <p className="builder-status-label">
-              {wasmStatus === 'ready'
-                ? 'WASM prover ready'
-                : wasmStatus === 'loading'
-                  ? 'Preparing WASM runtime…'
-                  : wasmStatus === 'error'
-                    ? 'WASM initialization failed'
-                    : 'Waiting for prover artifacts'}
-            </p>
-            <p className="builder-status-detail">
-              {proverArtifacts
-                ? `Circuit v${proverArtifacts.circuitVersion} • Manifest v${proverArtifacts.manifestVersion}`
-                : 'Fetching params + proving key'}
-            </p>
+            {wasmStatus === 'idle' ? (
+              <button type="button" className="tiny-button" onClick={handleLoadSample}>
+                Load sample attestation
+              </button>
+            ) : (
+              <>
+                <p className="builder-status-label">
+                  {wasmStatus === 'ready'
+                    ? 'WASM prover ready'
+                    : wasmStatus === 'loading'
+                      ? 'Preparing WASM runtime…'
+                      : 'WASM initialization failed'}
+                </p>
+                <p className="builder-status-detail">
+                  {manifestMeta
+                    ? `Circuit v${manifestMeta.circuitVersion} • Manifest v${manifestMeta.manifestVersion}`
+                    : 'Fetching params + proving key'}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -387,12 +553,15 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
               {!policies.length ? (
                 <option value="">No policies available</option>
               ) : (
-                policies.map((policy) => (
-                  <option key={policy.policy_id} value={policy.policy_id}>
-                    Policy #{policy.policy_id} • Scope {policy.verifier_scope_id} • Threshold{' '}
-                    {policy.threshold_raw.toLocaleString()}
-                  </option>
-                ))
+                policies.map((policy) => {
+                  const label = policyDisplayName(policy);
+                  const threshold = formatPolicyThreshold(policy).formatted;
+                  return (
+                    <option key={policy.policy_id} value={policy.policy_id}>
+                      {label} • {threshold} • Scope {policy.verifier_scope_id}
+                    </option>
+                  );
+                })
               )}
             </select>
           )}
@@ -400,19 +569,31 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         {selectedPolicy && (
           <dl className="policy-details">
             <div>
+              <dt>Label</dt>
+              <dd>{policyDisplayName(selectedPolicy)}</dd>
+            </div>
+            <div>
+              <dt>Category</dt>
+              <dd>{policyCategoryLabel(selectedPolicy)}</dd>
+            </div>
+            <div>
+              <dt>Rail</dt>
+              <dd>{policyRailLabel(selectedPolicy)}</dd>
+            </div>
+            <div>
               <dt>Threshold</dt>
-              <dd>{selectedPolicy.threshold_raw.toLocaleString()}</dd>
+              <dd>{formatPolicyThreshold(selectedPolicy).formatted}</dd>
             </div>
             <div>
-              <dt>Currency Code</dt>
-              <dd>{selectedPolicy.required_currency_code}</dd>
+              <dt>Custodian</dt>
+              <dd>
+                {selectedPolicy.required_custodian_id === 0
+                  ? 'Any custodian'
+                  : selectedPolicy.required_custodian_id}
+              </dd>
             </div>
             <div>
-              <dt>Custodian ID</dt>
-              <dd>{selectedPolicy.required_custodian_id}</dd>
-            </div>
-            <div>
-              <dt>Scope ID</dt>
+              <dt>Scope</dt>
               <dd>{selectedPolicy.verifier_scope_id}</dd>
             </div>
           </dl>

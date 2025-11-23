@@ -105,6 +105,35 @@ export function UsageGuide() {
         </p>
       </header>
 
+      <article className="usage-guide-attestations card">
+        <p className="eyebrow">Core concept</p>
+        <h3>What is an attestation?</h3>
+        <p className="muted">
+          In zkpf, an attestation is a piece of data, bound to a specific issuer, where that issuer signs a statement
+          like “Account 123 has 1,000,000 ZEC on 2025-11-23” or “This person passed KYC.”
+        </p>
+        <ul className="value-list">
+          <li>
+            <strong>Traditional finance</strong> – Bank letters (“Numan has ≥ 100k NOK on account XYZ”) and auditor
+            reports (“these financials are correct”) are both attestations.
+          </li>
+          <li>
+            <strong>Crypto / proof-of-funds</strong> – A custodian (exchange, bank, or broker) can sign “Customer with
+            internal ID 42 has ≥ X assets with us at time T” with their private key.
+          </li>
+        </ul>
+        <p className="muted">
+          zkpf treats these as raw evidence objects that say “provider P claims balance B for account_tag A at time T.”
+          The zk circuit takes one or more signed attestations (from custodians, Zashi and other Zcash wallets, and
+          other supported rails) and proves that, given those inputs, your total balance meets or exceeds the chosen
+          policy threshold—without revealing which specific accounts you used or their exact balances.
+        </p>
+        <p className="muted">
+          The proof you share is the compressed version of all those attestations: “total ≥ threshold, signatures
+          verified, timestamps in range,” with the underlying per-account details kept private.
+        </p>
+      </article>
+
       <div className="usage-guide-grid">
         <article className="usage-guide-steps card">
           <ol>
