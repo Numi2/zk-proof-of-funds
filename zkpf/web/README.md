@@ -71,7 +71,7 @@ If you don’t have the Rust backend running, the Vercel deployment still works 
 ## Proof workflow
 
 1. Generate a proof bundle from your custody system or via `cargo test -p zkpf-test-fixtures`.
-2. Paste the JSON into the “Proof console” text area or upload the file.
+2. Paste the JSON into the “Verify console” text area or upload the file.
 3. Choose the endpoint:
    - `/zkpf/verify-bundle` accepts the JSON structure directly.
    - `/zkpf/verify` re-encodes the public inputs and sends the proof bytes separately.

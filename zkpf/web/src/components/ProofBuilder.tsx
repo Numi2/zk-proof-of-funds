@@ -5,6 +5,7 @@ import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
+import { WalletConnector } from './WalletConnector';
 import { prepareProverArtifacts, generateBundle } from '../wasm/prover';
 import { toUint8Array } from '../utils/bytes';
 
@@ -127,6 +128,24 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     setWasmStatus('ready');
   }, [proverArtifacts, wasmStatus]);
 
+  const applySelectedPolicy = useCallback(
+    (input: CircuitInput): CircuitInput => {
+      if (!selectedPolicyId) {
+        return input;
+      }
+      const next = { ...input, public: { ...input.public } };
+      next.public.policy_id = selectedPolicyId;
+      if (selectedPolicy) {
+        next.public.threshold_raw = selectedPolicy.threshold_raw;
+        next.public.required_currency_code = selectedPolicy.required_currency_code;
+        next.public.required_custodian_id = selectedPolicy.required_custodian_id;
+        next.public.verifier_scope_id = selectedPolicy.verifier_scope_id;
+      }
+      return next;
+    },
+    [selectedPolicy, selectedPolicyId],
+  );
+
   const handleGenerate = useCallback(async () => {
     if (!rawInput.trim()) {
       setError('Paste an attestation JSON payload before generating a proof.');
@@ -135,12 +154,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     let normalizedJson: string;
     try {
       const parsed = JSON.parse(rawInput) as CircuitInput;
-      if (selectedPolicyId != null) {
-        // Ensure the prover input is bound to a concrete, server-owned policy_id so the
-        // resulting bundle's public_inputs.policy_id matches an entry in /zkpf/policies.
-        parsed.public.policy_id = selectedPolicyId;
-      }
-      normalizedJson = JSON.stringify(parsed);
+      const bound = applySelectedPolicy(parsed);
+      normalizedJson = JSON.stringify(bound);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       setError(`Invalid JSON: ${message}`);
@@ -164,7 +179,26 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     } finally {
       setIsGenerating(false);
     }
-  }, [ensureArtifacts, rawInput, selectedPolicyId]);
+  }, [applySelectedPolicy, ensureArtifacts, rawInput]);
+
+  const handleWalletAttestationReady = useCallback(
+    (attestationJson: string) => {
+      try {
+        const parsed = JSON.parse(attestationJson) as CircuitInput;
+        const bound = applySelectedPolicy(parsed);
+        const pretty = JSON.stringify(bound, null, 2);
+        setRawInput(pretty);
+        setBundle(null);
+        setError(null);
+        showToast('Wallet attestation loaded into prover workspace', 'success');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown error';
+        setError(`Invalid wallet attestation JSON: ${message}`);
+        showToast('Wallet attestation JSON could not be parsed', 'error');
+      }
+    },
+    [applySelectedPolicy],
+  );
 
   const handlePrefillWorkbench = useCallback(() => {
     if (bundle && onBundleReady) {
@@ -222,8 +256,19 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         <h2>Create a proof bundle from attestation JSON</h2>
       </header>
       <p className="muted">
-        The prover runs in your browser. Paste the attestation JSON exported by your custody or treasury system to
-        generate a shareable proof bundle, without sending sensitive witness data to the verifier.
+        The prover runs in your browser. Connect a wallet to auto-fill a non-custodial attestation, or paste the
+        attestation JSON exported by your custody or treasury system to generate a shareable proof bundle, without
+        sending sensitive witness data to the verifier.
+      </p>
+
+      <WalletConnector
+        onAttestationReady={handleWalletAttestationReady}
+        onShowToast={showToast}
+        policy={selectedPolicy ?? undefined}
+      />
+      <p className="muted small">
+        This page lines up with the <strong>“Build proof bundle”</strong> step in the checklist. When you finish here,
+        send the bundle to the Verify console to verify it.
       </p>
 
       <div className="builder-status-grid">
@@ -241,7 +286,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             </p>
             <p className="builder-status-detail">
               {connectionState === 'connected'
-                ? 'Use Proof Console below to verify bundles'
+                ? 'Use Verify console below to verify bundles'
                 : 'Verifier must be reachable to submit proofs'}
             </p>
           </div>
@@ -280,6 +325,10 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         </div>
       )}
 
+      <p className="muted small">
+        <strong>Step 1.</strong> Prepare the attestation payload you want to prove over. You can paste JSON from your
+        custody / treasury systems or load the sample attestation to see the expected shape.
+      </p>
       <div className="builder-grid">
         <label className="field">
           <span>Attestation JSON</span>
@@ -315,6 +364,10 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       </div>
 
       <div className="builder-policy-panel">
+        <p className="muted small">
+          <strong>Step 2.</strong> Bind the prover input to a concrete verifier policy so the resulting bundle can be
+          checked against your counterparty’s requested minimum balance.
+        </p>
         <label className="field">
           <span>Bind to verifier policy</span>
           {policiesQuery.isLoading ? (
@@ -371,6 +424,13 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           {isGenerating ? 'Generating proof…' : 'Generate proof bundle'}
         </button>
       </div>
+
+      {!rawInput.trim() && !error && (
+        <p className="muted small">
+          Paste or load attestation JSON above to enable the prover. The checklist at the top of the page will move on
+          once a bundle is ready.
+        </p>
+      )}
 
       {error && (
         <div className="error-message">

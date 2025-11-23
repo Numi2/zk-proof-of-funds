@@ -156,11 +156,11 @@ export function FinanceContext({ params, connectionState, verifierUrl }: Finance
       <div className="card finance-narrative">
         <header>
           <p className="eyebrow">Institutional workflows</p>
-          <h2>Show counterparties you have the funds, without showing them every wallet</h2>
+          <h2>Show counterparties you have the funds, without exposing your privacy</h2>
         </header>
         <p className="muted">
           Capital markets teams use proof-of-funds to open accounts, unlock credit lines, satisfy exchange listings, and
-          close OTC deals. This view explains how proofs, policies, and verifier results fit into that process.
+          close OTC deals. 
         </p>
       </div>
       <div className="finance-use-case-grid">

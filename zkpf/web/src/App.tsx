@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useMemo as useReactMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import './App.css';
 import { ZkpfClient, detectDefaultBase } from './api/zkpf';
@@ -10,27 +10,31 @@ import { FinanceContext } from './components/FinanceContext';
 import { UsageGuide } from './components/UsageGuide';
 import { ProofBuilder } from './components/ProofBuilder';
 import type { ProofBundle } from './types/zkpf';
+import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './components/ProgressChecklist';
 
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
     title: 'Prime brokerage onboarding',
-    description: 'Show total balances to credit teams without exposing individual wallets.',
+    description: 'Prove total balances to credit teams, without exposing individual wallets.',
   },
   {
     title: 'OTC settlement guardrails',
-    description: 'Check that proofs meet your minimum balance rules before releasing fiat or stablecoins.',
+    description: 'Verify proofs meet minimum balance rules before releasing funds.',
   },
   {
     title: 'Regulator-ready audit trail',
-    description: 'Save proof files and verifier responses so they are easy to reuse in audits.',
+    description: 'Save proof files and verifier responses for audit reuse.',
   },
 ];
 
 function App() {
   const client = useMemo(() => new ZkpfClient(DEFAULT_BASE), []);
   const [prefillBundle, setPrefillBundle] = useState<string | null>(null);
+  const [hasBuiltBundle, setHasBuiltBundle] = useState(false);
+  const [verificationOutcome, setVerificationOutcome] = useState<'idle' | 'accepted' | 'rejected' | 'error'>('idle');
   const navigate = useNavigate();
+  const location = useLocation();
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -58,9 +62,101 @@ function App() {
         : 'idle';
 
   const handleBundleReady = (bundle: ProofBundle) => {
+    setHasBuiltBundle(true);
     setPrefillBundle(JSON.stringify(bundle, null, 2));
     navigate('/workbench');
   };
+
+  const checklistSteps: ChecklistStep[] = useReactMemo(() => {
+    const path = location.pathname;
+
+    const syncStatus: ChecklistStatus =
+      connectionState === 'error'
+        ? 'error'
+        : connectionState === 'connected'
+          ? 'complete'
+          : connectionState === 'connecting'
+            ? 'active'
+            : 'pending';
+
+    const buildStatus: ChecklistStatus =
+      hasBuiltBundle
+        ? 'complete'
+        : path === '/build'
+          ? 'active'
+          : 'pending';
+
+    let verifyStatus: ChecklistStatus;
+    if (verificationOutcome === 'accepted') {
+      verifyStatus = 'complete';
+    } else if (verificationOutcome === 'rejected' || verificationOutcome === 'error') {
+      verifyStatus = 'error';
+    } else if (path === '/workbench') {
+      verifyStatus = 'active';
+    } else {
+      verifyStatus = 'pending';
+    }
+
+    const shareStatus: ChecklistStatus =
+      verificationOutcome === 'accepted'
+        ? 'active'
+        : 'pending';
+
+    const syncDescription =
+      connectionState === 'connected'
+        ? 'Console is talking to the current circuit and epoch window.'
+        : connectionState === 'connecting'
+          ? 'Checking /zkpf/params and /zkpf/epoch…'
+          : connectionState === 'error'
+            ? 'Fix the backend connection before sending proofs.'
+            : 'Start here to make sure params and epoch are aligned.';
+
+    const verifyDescription =
+      verificationOutcome === 'accepted'
+        ? 'Last proof was accepted by the verifier.'
+        : verificationOutcome === 'rejected' || verificationOutcome === 'error'
+          ? 'Last verification failed—adjust the bundle or policy and retry.'
+          : 'Send a bundle or raw proof to the verifier and review the result.';
+
+    const steps: ChecklistStep[] = [
+      {
+        id: 'sync',
+        title: 'Sync with verifier',
+        description: syncDescription,
+        status: syncStatus,
+        hint: 'Use Overview to confirm params, manifest, and epoch.',
+        disabled: false,
+      },
+      {
+        id: 'build',
+        title: 'Build proof bundle',
+        description:
+          'Use attestation JSON from custody or wallets to generate a local proof bundle in the browser.',
+        status: buildStatus,
+        hint: 'Go to Build proof to create or regenerate a bundle.',
+        disabled: false,
+      },
+      {
+        id: 'verify',
+        title: 'Verify proof',
+        description: verifyDescription,
+        status: verifyStatus,
+        hint: 'Use Verify console to submit the bundle and see the verifier response.',
+        disabled: connectionState === 'error',
+      },
+      {
+        id: 'share',
+        title: 'Share & record',
+        description:
+          'Download the bundle and save the verifier response (and optional on-chain attestation) to your records.',
+        status: shareStatus,
+        hint: 'Attach artifacts to credit memos, deal rooms, or audit trails.',
+        disabled: verificationOutcome !== 'accepted',
+      },
+    ];
+
+    return steps;
+  }, [connectionState, hasBuiltBundle, location.pathname, verificationOutcome]);
 
   return (
     <div className="app-shell">
@@ -71,8 +167,8 @@ function App() {
               <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
             </div>
             <div>
-              <p className="eyebrow">For institutional teams</p>
-              <h1>Zero-knowledge proof-of-funds for capital markets</h1>
+              <p className="eyebrow">Institutional ZK </p>
+              <h1>Zero-knowledge proof-of-funds</h1>
             </div>
           </div>
           <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
@@ -81,10 +177,10 @@ function App() {
               {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
             </span>
           </div>
+          <div className="hero-subtitle"></div>
         </div>
         <p>
-          When a bank, exchange, or lender asks you to prove your funds, this console helps you create and
-          share that proof without revealing your wallet details.
+          Prove funds, without exposing privacy.
         </p>
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
@@ -113,10 +209,23 @@ function App() {
             to="/workbench"
             className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
           >
-            Proof console
+            Verify console
           </NavLink>
         </nav>
       </header>
+
+      <ProgressChecklist
+        steps={checklistSteps}
+        onStepClick={(id) => {
+          if (id === 'sync') {
+            navigate('/');
+          } else if (id === 'build') {
+            navigate('/build');
+          } else if (id === 'verify') {
+            navigate('/workbench');
+          }
+        }}
+      />
 
       <Routes>
         <Route
@@ -188,6 +297,17 @@ function App() {
               connectionState={connectionState}
               prefillBundle={prefillBundle}
               onPrefillConsumed={() => setPrefillBundle(null)}
+              onVerificationOutcome={(outcome) => {
+                if (outcome === 'accepted') {
+                  setVerificationOutcome('accepted');
+                } else if (outcome === 'rejected') {
+                  setVerificationOutcome('rejected');
+                } else if (outcome === 'error') {
+                  setVerificationOutcome('error');
+                } else {
+                  setVerificationOutcome('idle');
+                }
+              }}
             />
           )}
         />

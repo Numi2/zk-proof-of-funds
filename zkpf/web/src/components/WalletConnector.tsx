@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { blake3 } from '@noble/hashes/blake3.js';
 import * as secp256k1 from '@noble/secp256k1';
-import type { CircuitInput } from '../types/zkpf';
+import type { CircuitInput, PolicyDefinition } from '../types/zkpf';
 import { wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, hexToBytes, normalizeField, numberArrayFromBytes } from '../utils/field';
 
@@ -18,6 +18,7 @@ interface WindowWithEthereum extends Window {
 interface Props {
   onAttestationReady: (json: string) => void;
   onShowToast: (message: string, type?: 'success' | 'error') => void;
+  policy?: PolicyDefinition | null;
 }
 
 type StatusIntent = 'info' | 'success' | 'warning' | 'error';
@@ -29,7 +30,7 @@ const DEFAULT_SCOPE_ID = 314159;
 const DEFAULT_CURRENCY = 840;
 const DEFAULT_CUSTODIAN_ID = 77;
 
-export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
+export function WalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
   const provider = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
@@ -44,16 +45,16 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
   const [isBuilding, setIsBuilding] = useState(false);
   const [status, setStatus] = useState<{ intent: StatusIntent; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [issuedAt, setIssuedAt] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const [validHours, setValidHours] = useState<number>(DEFAULT_VALIDITY_HOURS);
-  const [balanceOverride, setBalanceOverride] = useState<number | ''>('');
+  const [issuedAt] = useState<number>(() => Math.floor(Date.now() / 1000));
+  const [validHours] = useState<number>(DEFAULT_VALIDITY_HOURS);
+  const [balanceOverride] = useState<number | ''>('');
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
   const [policyId, setPolicyId] = useState<number>(DEFAULT_POLICY_ID);
   const [scopeId, setScopeId] = useState<number>(DEFAULT_SCOPE_ID);
   const [currencyCode, setCurrencyCode] = useState<number>(DEFAULT_CURRENCY);
   const [custodianId, setCustodianId] = useState<number>(DEFAULT_CUSTODIAN_ID);
   const [currentEpoch, setCurrentEpoch] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const [attestationId, setAttestationId] = useState<number>(() => Math.floor(Math.random() * 1_000_000));
+  const [attestationId] = useState<number>(() => Math.floor(Math.random() * 1_000_000));
 
   useEffect(() => {
     if (!provider) {
@@ -63,6 +64,17 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
       });
     }
   }, [provider]);
+
+  useEffect(() => {
+    if (!policy) {
+      return;
+    }
+    setPolicyId(policy.policy_id);
+    setThreshold(policy.threshold_raw);
+    setCurrencyCode(policy.required_currency_code);
+    setCustodianId(policy.required_custodian_id);
+    setScopeId(policy.verifier_scope_id);
+  }, [policy]);
 
   const updateStatus = useCallback((intent: StatusIntent, message: string) => {
     setStatus({ intent, message });
@@ -136,10 +148,14 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
     setError(null);
     try {
       const normalizedAddress = account.toLowerCase();
+      // Always anchor the attestation to the current wall-clock epoch at the
+      // moment it is generated so that the resulting proof lines up with the
+      // verifier's freshness window and nullifier semantics.
+      const nowEpoch = Math.floor(Date.now() / 1000);
       const scopeBigInt = BigInt(scopeId);
       const policyBigInt = BigInt(policyId);
-      const epochBigInt = BigInt(currentEpoch);
-      const issuedAtEpoch = issuedAt || Math.floor(Date.now() / 1000);
+      const epochBigInt = BigInt(nowEpoch);
+      const issuedAtEpoch = issuedAt || nowEpoch;
       const validUntilEpoch = issuedAtEpoch + validHours * 3600;
       const attestationBalance = typeof balanceOverride === 'number' ? balanceOverride : derivedBalance;
       if (!Number.isFinite(attestationBalance) || attestationBalance <= 0) {
@@ -151,6 +167,10 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
       const accountField = normalizeField(bytesToBigIntBE(blakeDigest));
       const accountBytes = bigIntToLittleEndianBytes(accountField);
       const accountHex = bytesToHex(accountBytes);
+
+      // Keep the UI field in sync with the value actually embedded in the
+      // attestation and nullifier.
+      setCurrentEpoch(nowEpoch);
 
       const circuitInput: CircuitInput = {
         attestation: {
@@ -172,7 +192,7 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
           threshold_raw: threshold,
           required_currency_code: currencyCode,
           required_custodian_id: custodianId,
-          current_epoch: currentEpoch,
+          current_epoch: nowEpoch,
           verifier_scope_id: scopeId,
           policy_id: policyId,
           nullifier: ''.padEnd(64, '0'),
@@ -256,11 +276,8 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
   return (
     <div className="wallet-connector">
       <header>
-        <p className="eyebrow">Non-custodial attestation</p>
-        <h3>Connect a wallet to auto-fill attestation data</h3>
-        <p className="muted small">
-          Wallet balances stay in your browser. The attestation JSON and zk bundle never leave this console.
-        </p>
+        <p className="eyebrow">Wallet attestation</p>
+        <h3>Connect &amp; generate JSON</h3>
       </header>
 
       <div className="wallet-grid">
@@ -288,68 +305,36 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
         </div>
 
         <div className="wallet-card">
+          {balanceWei !== 0n && (
+            <div className="wallet-row">
+              <strong>Wallet balance</strong>
+              <span>{derivedBalance.toLocaleString()}</span>
+            </div>
+          )}
           <div className="wallet-row">
-            <label htmlFor="balanceRaw">
-              Balance to attest (minor units)
-              <input
-                id="balanceRaw"
-                type="number"
-                value={balanceOverride === '' ? '' : balanceOverride}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setBalanceOverride(value === '' ? '' : Number(value));
-                }}
-                placeholder={derivedBalance.toString()}
-              />
-            </label>
-          </div>
-          <div className="wallet-form-grid">
-            <label>
-              Threshold
-              <input type="number" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
-            </label>
-            <label>
-              Policy ID
-              <input type="number" value={policyId} onChange={(e) => setPolicyId(Number(e.target.value))} />
-            </label>
-            <label>
-              Scope ID
-              <input type="number" value={scopeId} onChange={(e) => setScopeId(Number(e.target.value))} />
-            </label>
-            <label>
-              Custodian ID
-              <input type="number" value={custodianId} onChange={(e) => setCustodianId(Number(e.target.value))} />
-            </label>
-            <label>
-              Currency code
-              <input type="number" value={currencyCode} onChange={(e) => setCurrencyCode(Number(e.target.value))} />
-            </label>
-            <label>
-              Attestation ID
-              <input type="number" value={attestationId} onChange={(e) => setAttestationId(Number(e.target.value))} />
-            </label>
-          </div>
-          <div className="wallet-form-grid">
-            <label>
-              Issued at (epoch seconds)
-              <input type="number" value={issuedAt} onChange={(e) => setIssuedAt(Number(e.target.value))} />
-            </label>
-            <label>
-              Valid window (hours)
-              <input type="number" value={validHours} onChange={(e) => setValidHours(Number(e.target.value))} />
-            </label>
-            <label>
-              Current epoch
-              <input type="number" value={currentEpoch} onChange={(e) => setCurrentEpoch(Number(e.target.value))} />
-            </label>
+            <strong>Policy</strong>
+            <span>
+              {policy
+                ? `#${policy.policy_id} • ≥ ${policy.threshold_raw.toLocaleString()}`
+                : 'Select a policy above'}
+            </span>
           </div>
         </div>
       </div>
 
       <div className="wallet-actions">
-        <button type="button" onClick={prepareAttestation} disabled={!account || isBuilding}>
+        <button
+          type="button"
+          onClick={prepareAttestation}
+          disabled={!account || isBuilding || !policy}
+        >
           {isBuilding ? 'Building attestation…' : 'Generate attestation JSON'}
         </button>
+        {!policy && (
+          <p className="muted small">
+            Choose a verifier policy first so the attestation can be checked against an explicit threshold and scope.
+          </p>
+        )}
       </div>
 
       {status && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}

@@ -99,8 +99,9 @@ export function UsageGuide() {
         <p className="eyebrow">How teams use it</p>
         <h2>Step-by-step: from custody proof to counterparty confidence</h2>
         <p className="muted">
-          Follow these steps when a lender, exchange, or regulator requests proof-of-funds. Each step highlights the part
-          of the UI you will use and the evidence your stakeholders expect to see.
+          Follow these steps when a lender, exchange, or regulator requests proof-of-funds. The checklist at the top of
+          the console and the tabs (Overview → Build proof → Verify console) mirror this journey so it is easy to see
+          where you are and what to do next.
         </p>
       </header>
 

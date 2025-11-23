@@ -192,6 +192,109 @@
   gap: 1.25rem;
 }
 
+.progress-checklist {
+  margin-top: 0.5rem;
+}
+
+.progress-checklist-header h2 {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.progress-checklist-header .muted.small {
+  max-width: 640px;
+}
+
+.progress-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.checklist-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  text-align: left;
+  color: #e2e8f0;
+  cursor: default;
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.75);
+}
+
+.checklist-step.clickable {
+  cursor: pointer;
+}
+
+.checklist-step.clickable:not(:disabled):hover {
+  border-color: rgba(56, 189, 248, 0.7);
+  box-shadow: 0 20px 40px rgba(56, 189, 248, 0.25);
+}
+
+.checklist-step-index {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #cbd5f5;
+  flex-shrink: 0;
+}
+
+.checklist-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.checklist-step-title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.checklist-step-description {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #cbd5f5;
+}
+
+.checklist-step-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.checklist-step-action {
+  margin-left: auto;
+}
+
+.checklist-step.complete .checklist-step-index {
+  border-color: rgba(34, 197, 94, 0.8);
+  color: #22c55e;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.35);
+}
+
+.checklist-step.error .checklist-step-index {
+  border-color: rgba(248, 113, 113, 0.8);
+  color: #f87171;
+  box-shadow: 0 0 15px rgba(248, 113, 113, 0.35);
+}
+
+.checklist-step.active .checklist-step-index {
+  border-color: rgba(56, 189, 248, 0.8);
+  color: #38bdf8;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.35);
+}
+
 .card {
   background: rgba(15, 23, 42, 0.85);
   border-radius: 1.5rem;

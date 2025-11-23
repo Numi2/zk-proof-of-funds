@@ -28,6 +28,7 @@ interface Props {
   connectionState: ConnectionState;
   prefillBundle?: string | null;
   onPrefillConsumed?: () => void;
+  onVerificationOutcome?: (outcome: 'accepted' | 'rejected' | 'error' | 'pending' | 'reset') => void;
 }
 
 function showToast(message: string, type: 'success' | 'error' = 'success') {
@@ -86,7 +87,13 @@ const assetRailCopy: Record<
   },
 };
 
-export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefillConsumed }: Props) {
+export function ProofWorkbench({
+  client,
+  connectionState,
+  prefillBundle,
+  onPrefillConsumed,
+  onVerificationOutcome,
+}: Props) {
   const textareaId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [rawInput, setRawInput] = useState('');
@@ -141,6 +148,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
       setVerifyError(null);
       setAttestResult(null);
       setAttestError(null);
+      onVerificationOutcome?.('reset');
       if (!value.trim()) {
         setBundle(null);
         setParseError(null);
@@ -161,7 +169,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
         setParseError((err as Error).message);
       }
     },
-    [setAssetRail],
+    [onVerificationOutcome, setAssetRail],
   );
 
   useEffect(() => {
@@ -268,6 +276,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
     setAttestResult(null);
     setAttestError(null);
     try {
+      onVerificationOutcome?.('pending');
       const response =
         mode === 'bundle'
           ? await client.verifyBundle(policyIdForVerify, bundle)
@@ -278,8 +287,14 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
               policy_id: policyIdForVerify,
             });
       setVerifyResponse(response);
+      if (response.valid) {
+        onVerificationOutcome?.('accepted');
+      } else {
+        onVerificationOutcome?.('rejected');
+      }
     } catch (err) {
       setVerifyError((err as ApiError).message);
+      onVerificationOutcome?.('error');
     } finally {
       setIsVerifying(false);
     }
@@ -335,7 +350,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
       description: policiesQuery.isLoading
         ? 'Requesting policy manifest…'
         : policiesError
-          ? policiesError
+          ? `Policy manifest failed to load. ${policiesError}`
           : policies.length
             ? `Loaded ${policies.length} policy${policies.length === 1 ? '' : 'ies'}`
             : 'No policies found. Update backend configuration.',
@@ -352,7 +367,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
       id: 'bundle',
       title: 'Prepare a proof bundle',
       description: parseError
-        ? parseError
+        ? `Bundle JSON error: ${parseError}`
         : bundle
           ? `Circuit v${bundle.circuit_version} • Policy ${bundle.public_inputs.policy_id}${
               bundle.rail_id ? ` • Rail ${bundle.rail_id}` : ''
@@ -373,11 +388,13 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
       id: 'verify',
       title: 'Send to verifier',
       description: verifyError
-        ? verifyError
+        ? `Verifier request failed: ${verifyError}`
         : verifyResponse
           ? verifyResponse.valid
             ? 'Proof accepted by backend'
-            : verifyResponse.error ?? 'Proof rejected'
+            : verifyResponse.error
+              ? `Proof rejected: ${verifyResponse.error}`
+              : 'Proof rejected'
           : isVerifying
             ? 'Verifier is running…'
             : bundle
@@ -446,12 +463,16 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
   return (
     <section className="proof-workbench card">
       <header>
-        <p className="eyebrow">Proof console</p>
-        <h2>Submit a proof bundle</h2>
+        <p className="eyebrow">Verify console</p>
+        <h2>Submit and record a proof-of-funds run</h2>
       </header>
       <p className="muted">
         Paste the JSON produced by the prover CLI or your custody pipeline. The console validates the bundle in your
         browser before it is sent to the verifier.
+      </p>
+      <p className="muted small">
+        This page lines up with the <strong>“Verify proof”</strong> and <strong>“Share &amp; record”</strong> steps in
+        the checklist. Follow the flow below from bundle preparation through optional on-chain attestation.
       </p>
       <FlowVisualizer steps={flowSteps} />
       <div className="input-grid">
@@ -660,6 +681,12 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
               )}
             </button>
           </div>
+          {!bundle && !parseError && !isVerifying && (
+            <p className="muted small">
+              Paste or upload a bundle JSON above to enable verification. The checklist will advance once the verifier
+              has accepted a proof.
+            </p>
+          )}
           {verifyResponse && (
             <VerificationBanner
               response={verifyResponse}
@@ -668,7 +695,7 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
               railId={bundle?.rail_id}
             />
           )}
-          {verifyError && <p className="error">{verifyError}</p>}
+          {verifyError && <p className="error">Verification failed: {verifyError}</p>}
           <div className="onchain-attestation-panel">
             <div className="onchain-attestation-header">
               <h3>On-chain attestation (optional)</h3>
@@ -718,6 +745,12 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
                 )}
               </button>
             </div>
+            {!canAttest && bundle && verifyResponse && verifyResponse.valid && !attestLoading && (
+              <p className="muted small">
+                Fill in Holder ID and Snapshot ID to publish an attestation. Use identifiers that make sense in your
+                internal systems (for example, a hashed KYC record or treasury account code).
+              </p>
+            )}
             {attestError && (
               <div className="error-message">
                 <span className="error-icon">⚠️</span>
