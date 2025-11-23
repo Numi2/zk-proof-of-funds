@@ -19,22 +19,26 @@ const railMeta: Record<
 > = {
   onchain: {
     label: 'On-chain',
-    summary: 'Wallets, smart contracts, and custody accounts aggregated with Merkle commitments.',
-    highlights: ['Cold + hot wallet mix hidden', 'Nullifier prevents double counting', 'Works for L1 + L2 balances'],
+    summary: 'Wallets, smart contracts, and custody accounts combined into a single proof of total balance.',
+    highlights: [
+      'Cold and hot wallet mix is hidden',
+      'Nullifier prevents counting the same balance twice',
+      'Works for both L1 and L2 balances',
+    ],
   },
   fiat: {
     label: 'Fiat',
-    summary: 'Bank, trust, or money market balances mirrored in witness data for the verifier.',
-    highlights: ['ISO currency mapping', 'Custodian IDs mirror treasury ledgers', 'Pairs with bank attestations'],
+    summary: 'Bank, trust, or money market balances represented as structured data for the verifier.',
+    highlights: ['ISO currency mapping', 'Custodian IDs mirror treasury ledgers', 'Pairs well with bank attestations'],
   },
   orchard: {
     label: 'Zcash Orchard',
     summary:
-      'Non-custodial Zcash Orchard shielded balances proven against an Orchard anchor and UFVK, with Merkle paths enforced in-circuit.',
+      'Non-custodial Zcash Orchard shielded balances proven against an Orchard anchor and viewing key, checked entirely inside the circuit.',
     highlights: [
-      'Snapshot height and Orchard Merkle anchor surfaced as public inputs',
-      'UFVK-bound holder binding without exposing raw keys',
-      'Inner Orchard circuit uses consensus MerkleChip + Sinsemilla',
+      'Snapshot height and Orchard Merkle anchor shown as public inputs',
+      'UFVK-bound holder binding without exposing the keys themselves',
+      'Inner Orchard circuit follows consensus rules for the Orchard Merkle tree',
     ],
   },
 };

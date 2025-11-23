@@ -15,15 +15,15 @@ const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
     title: 'Prime brokerage onboarding',
-    description: 'Share aggregated balances with credit committees without exposing wallet inventories.',
+    description: 'Show total balances to credit teams without exposing individual wallets.',
   },
   {
     title: 'OTC settlement guardrails',
-    description: 'Match proofs to threshold policies before releasing fiat or stablecoins to counterparties.',
+    description: 'Check that proofs meet your minimum balance rules before releasing fiat or stablecoins.',
   },
   {
     title: 'Regulator-ready audit trail',
-    description: 'Archive bundle JSON plus verifier responses to drop into SOC, ISAE, or bespoke audits.',
+    description: 'Save proof files and verifier responses so they are easy to reuse in audits.',
   },
 ];
 
@@ -71,7 +71,7 @@ function App() {
               <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
             </div>
             <div>
-              <p className="eyebrow">Institutional zk stack</p>
+              <p className="eyebrow">For institutional teams</p>
               <h1>Zero-knowledge proof-of-funds for capital markets</h1>
             </div>
           </div>
@@ -83,8 +83,8 @@ function App() {
           </div>
         </div>
         <p>
-          Counterparties expect proof-of-funds before onboarding, extending credit, or releasing assets. This console
-          packages the exact bundle, policy metadata, and verifier receipts they review in a real diligence process.
+          When a bank, exchange, or lender asks you to prove your funds, this console helps you create and
+          share that proof without revealing your wallet details.
         </p>
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
@@ -123,6 +123,34 @@ function App() {
           path="/"
           element={(
             <>
+              <section className="card concepts">
+                <header>
+                  <p className="eyebrow">Core concepts</p>
+                  <h2>Zero-knowledge proof-of-funds</h2>
+                </header>
+                <p className="muted">
+                  Zero-Knowledge Proof-of-Funds is a cryptographic technique that allows you to prove you have a certain amount of assets, without revealing the underlying raw data such as exact balances or wallet addresses.
+                </p>
+                <ul>
+                  <li>
+                    <strong>Zero-knowledge proofs</strong>: a cryptographic way to prove a statement is true (for
+                    example, “our total balance is at least a given threshold”) without revealing the underlying raw
+                    data such as exact balances or wallet addresses.
+                  </li>
+                  <li>
+                    <strong>Proof-of-funds</strong>: evidence that you control at least a certain amount of assets at a
+                    given point in time, often requested by banks, exchanges, or lenders before onboarding, extending
+                    credit, or settling large trades.
+                  </li>
+                  <li>
+                    <strong>Zero-knowledge proof-of-funds</strong>: combines the two so you can mathematically prove
+                    you meet a requested minimum balance, while keeping individual wallets, positions, and account
+                    details private. This console helps you build that proof and share it in a standard, verifiable
+                    format.
+                  </li>
+                </ul>
+              </section>
+
               <FinanceContext
                 params={paramsQuery.data}
                 connectionState={connectionState}

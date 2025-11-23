@@ -838,7 +838,7 @@ impl PolicyExpectations {
 
 #[derive(Clone)]
 pub struct PolicyStore {
-    policies: Arc<HashMap<u64, PolicyExpectations>>,
+    policies: Arc<RwLock<HashMap<u64, PolicyExpectations>>>,
 }
 
 impl PolicyStore {

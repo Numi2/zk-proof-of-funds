@@ -174,8 +174,8 @@ export function PolicyComposer({ client, onComposed }: Props) {
       <header className="policy-composer-header">
         <h4>Compose a policy</h4>
         <p className="muted small">
-          Quickly mint or reuse a policy for the selected rail. The verifier enforces the numeric
-          expectations stored on the backend.
+          Create or reuse a policy for the selected rail. The verifier then enforces the thresholds
+          and settings you define here.
         </p>
       </header>
       <form className="policy-composer-grid" onSubmit={handleSubmit}>

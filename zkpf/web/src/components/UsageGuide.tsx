@@ -1,46 +1,55 @@
 const steps = [
   {
     title: 'Sync the verifier context',
-    summary: 'The system automatically syncs the verifier manifest and epoch to confirm circuit + clock alignment.',
+    summary: 'The console automatically checks that your verifier settings and time window are up to date.',
     detail:
-      'The verifier context is automatically synchronized in the background. The system pulls /zkpf/params and /zkpf/epoch to ensure proper alignment.',
-    checklist: ['Confirm the manifest + circuit versions match the prover you are using.', 'Note the epoch drift window.'],
+      'In the background the console calls /zkpf/params and /zkpf/epoch to make sure it is talking to the right circuit version and that the verifier clock is within the allowed window.',
+    checklist: [
+      'Check that the manifest and circuit versions match the prover you are using.',
+      'Note how long a proof stays valid (the epoch drift window).',
+    ],
   },
   {
     title: 'Load a proof bundle',
     summary: 'Paste JSON or drag-and-drop the bundle exported by your custody system.',
     detail:
-      'Bundles never leave the browser until you click Send to verifier. Use the rail toggle to note whether the proof covers Zcash Orchard shielded funds, other on-chain wallets, or fiat settlement accounts.',
+      'Bundles stay in your browser unless you choose to send them to the verifier. Use the rail toggle to mark whether the proof covers on-chain crypto (including Zcash Orchard) or fiat bank accounts.',
     checklist: [
       'Normalize byte arrays to the supported JSON encodings.',
-      'Clear the input anytime with the ghost button.',
-      'Flip the rail toggle to document on-chain vs fiat provenance.',
+      'You can clear the input at any time with the secondary (ghost) button.',
+      'Use the rail toggle to record whether funds are on-chain or fiat.',
     ],
   },
   {
     title: 'Bind to a verifier policy',
-    summary: 'Choose the policy ID that corresponds to the requested counterparty threshold.',
+    summary: 'Choose the policy ID that matches the minimum balance your counterparty asked for.',
     detail:
-      'Policy metadata mirrors what compliance teams expect: required currency code, custodian ID, scope ID, and threshold. Use ISO codes for fiat currencies and internal scope IDs for digital asset pools.',
-    checklist: ['Watch for mismatch alerts if bundle inputs disagree with the policy.', 'Reload policies after backend config changes.'],
+      'Each policy describes the currency, minimum balance, custodian, and scope. Use standard currency codes (like USD or EUR) and your internal scope IDs for asset pools.',
+    checklist: [
+      'Watch for mismatch alerts if the bundle data does not match the policy.',
+      'Reload policies after backend configuration changes.',
+    ],
   },
   {
     title: 'Send to verifier',
-    summary: 'Call /zkpf/verify-bundle or /zkpf/verify directly from the UI.',
+    summary: 'Submit the proof to the verifier from the UI (either /zkpf/verify-bundle or /zkpf/verify).',
     detail:
-      'The workbench re-encodes public inputs when using /zkpf/verify, so you get the same payload shape as your automation. The verification banner now records which rail (on-chain or fiat) was asserted.',
+      'For raw proofs, the console re-encodes public inputs to match the payload your automation would send. The verification banner clearly shows which rail (on-chain, fiat, or Orchard) was used.',
     checklist: [
-      'Keep the verification banner as an immutable receipt.',
+      'Treat the verification banner as your receipt.',
       'Retry only after resolving backend errors.',
-      'Store the rail context alongside the verifier response.',
+      'Store which rail you used together with the verifier response.',
     ],
   },
   {
     title: 'Share the audit package',
-    summary: 'Export normalized JSON + policy context for credit desks, exchanges, or regulators.',
+    summary: 'Export the proof JSON and policy context for credit desks, exchanges, or regulators.',
     detail:
-      'Download artifacts, copy base64 proofs, and paste verifier responses into your deal room so every party sees the same attestation.',
-    checklist: ['Attach the response banner to your credit memo.', 'Store bundle + policy metadata in your audit log.'],
+      'Download artifacts, copy base64 proofs, and paste verifier responses into your deal room so everyone works from the same attestation.',
+    checklist: [
+      'Attach the verifier result to your credit memo or internal file.',
+      'Store the bundle and policy metadata in your audit log.',
+    ],
   },
 ];
 
@@ -48,26 +57,38 @@ const valuePillars = [
   {
     title: 'Faster diligence loops',
     body:
-      'Credit desks and exchanges review the same bundle, policy, and verifier receipt without waiting for custom spreadsheets or ad-hoc screenshots.',
-    bullets: ['Single link for onboarding teams.', 'Shared vocabulary: circuit, policy, scope IDs.', 'Automated retries + alerting.'],
+      'Credit desks and exchanges review the same bundle, policy, and verifier result instead of waiting for custom spreadsheets or screenshots.',
+    bullets: [
+      'Single link for onboarding and risk teams.',
+      'Shared language: circuit version, policy, and scope IDs.',
+      'Can be wired into automated retries and alerting.',
+    ],
   },
   {
     title: 'Privacy-preserving transparency',
     body:
-      'Zero-knowledge proofs show aggregate coverage while keeping underlying wallet structure private—ideal for OTC and treasury operations.',
-    bullets: ['No raw addresses or balance breakdowns.', 'Selective disclosure via policy binding.', 'Cryptographic receipts instead of PDFs.'],
+      'Zero-knowledge proofs show you meet the required total balance while keeping individual wallets and trades private—ideal for OTC and treasury operations.',
+    bullets: [
+      'No raw addresses or detailed balance breakdowns.',
+      'Control how much detail you share by adjusting policies.',
+      'Cryptographic receipts instead of PDFs.',
+    ],
   },
   {
     title: 'Audit ready by design',
     body:
-      'Normalized JSON, hash references, and verifier responses align with SOC 2 / ISAE evidence collection requirements.',
-    bullets: ['Deterministic bundle schema.', 'Manifest + epoch provenance.', 'Drop artifacts into existing GRC tools.'],
+      'Structured JSON, hashes, and verifier responses map cleanly to SOC 2 / ISAE evidence requirements.',
+    bullets: ['Stable bundle schema.', 'Clear manifest and epoch history.', 'Drop artifacts into existing GRC tools.'],
   },
   {
     title: 'Multi-rail coverage',
     body:
-      'One workflow addresses Orchard shielded balances, other digital asset reserves, and fiat treasury balances, so finance, compliance, and crypto-ops can share the same tool.',
-    bullets: ['Rail toggle documents provenance.', 'Policy metadata handles ISO + custody IDs.', 'Single verifier receipt for both rails.'],
+      'One workflow covers Zcash Orchard, other digital asset reserves, and fiat treasury balances, so finance, compliance, and crypto teams can share the same tool.',
+    bullets: [
+      'Rail toggle records where funds are held.',
+      'Policy metadata handles ISO currency codes and custody IDs.',
+      'Single verifier result no matter which rail you use.',
+    ],
   },
 ];
 
@@ -76,10 +97,10 @@ export function UsageGuide() {
     <section className="usage-guide">
       <header>
         <p className="eyebrow">How teams use it</p>
-        <h2>Guide: from custody proof to counterparty confidence</h2>
+        <h2>Step-by-step: from custody proof to counterparty confidence</h2>
         <p className="muted">
-          Follow these steps when a lender, exchange, or regulator requests proof-of-funds. Each step calls out the UI surface and the
-          evidence stakeholders expect.
+          Follow these steps when a lender, exchange, or regulator requests proof-of-funds. Each step highlights the part
+          of the UI you will use and the evidence your stakeholders expect to see.
         </p>
       </header>
 

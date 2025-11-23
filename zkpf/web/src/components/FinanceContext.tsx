@@ -35,33 +35,33 @@ const financeUseCases: FinanceUseCase[] = [
     eyebrow: 'Credit committees',
     title: 'Prime brokerage onboarding',
     description:
-      'Supply daily proof-of-funds that shows coverage for leverage lines without disclosing wallet addresses or counterparties.',
+      'Send daily proof-of-funds that shows you meet credit limits, without revealing individual wallets or trading partners.',
     bullets: [
-      'Map verifier policies to credit memo thresholds before settlement.',
-      'Keep cold + hot wallet granularity private while proving aggregate balances.',
-      'Attach the verifier response banner to the lender data room as an immutable receipt.',
+      'Match verifier policies to the credit limits in your memos before settlement.',
+      'Prove your total balance while keeping the split between hot and cold wallets private.',
+      'Save the verifier result in your data room as a permanent record.',
     ],
   },
   {
     eyebrow: 'Listings & compliance',
     title: 'Exchange treasury attestations',
     description:
-      'Demonstrate exchange reserves and custody scope IDs when a regulator or listing venue asks for updated proof.',
+      'Show exchange reserves and which accounts are included when a regulator or listing venue asks for updated proof.',
     bullets: [
-      'Rotate manifests in sync with circuit upgrades to keep attestations current.',
-      'Use policy IDs to separate client funds, corporate treasury, and omnibus wallets.',
-      'Export normalized JSON to plug into existing SOC / ISAE audit workflows.',
+      'Refresh the manifest whenever the circuit is upgraded so your attestations stay current.',
+      'Use separate policy IDs for client funds, corporate treasury, and omnibus wallets.',
+      'Export clean JSON that plugs into existing SOC / ISAE audit workflows.',
     ],
   },
   {
     eyebrow: 'Trading operations',
     title: 'OTC settlement guardrails',
     description:
-      'Give OTC desks confidence that incoming capital meets the requested threshold before they release assets or credit.',
+      'Let OTC desks quickly check that incoming funds meet the agreed minimum before they release assets or credit.',
     bullets: [
-      'Tie proofs to verifier scope IDs per counterparty or liquidity program.',
-      'Share `/zkpf/verify` responses so both sides archive the same settlement artifact.',
-      'Trigger re-verification automatically when the epoch guardrail drifts beyond the SLA.',
+      'Tie proofs to clear scope IDs for each counterparty or liquidity program.',
+      'Share verifier responses so both sides save the same settlement record.',
+      'Use epoch limits to know when you need a fresh proof.',
     ],
   },
 ];
@@ -70,22 +70,22 @@ const journeyTemplate: JourneyTemplate[] = [
   {
     id: 'aggregate',
     title: 'Aggregate holdings',
-    description: 'Custody teams run the prover over internal ledgers and produce a signed bundle JSON.',
+    description: 'Ops or custody teams run the prover on internal records and generate a signed proof file (bundle JSON).',
   },
   {
     id: 'policy',
     title: 'Bind to a policy',
-    description: 'Match balances to a verifier scope + threshold before the desk approves settlement.',
+    description: 'Check that balances meet the policy’s scope and minimum threshold before the desk approves settlement.',
   },
   {
     id: 'verification',
     title: 'Verifier handshake',
-    description: 'Submit the bundle or raw proof to the verifier endpoint and archive the response.',
+    description: 'Send the bundle or raw proof to the verifier and save the response.',
   },
   {
     id: 'delivery',
     title: 'Counterparty delivery',
-    description: 'Share the proof package, policy metadata, and verifier receipt with the requesting desk.',
+    description: 'Send the proof, policy details, and verifier result to the team that requested it.',
   },
 ];
 
@@ -156,11 +156,11 @@ export function FinanceContext({ params, connectionState, verifierUrl }: Finance
       <div className="card finance-narrative">
         <header>
           <p className="eyebrow">Institutional workflows</p>
-          <h2>Show counterparties the proof they need, nothing more</h2>
+          <h2>Show counterparties you have the funds, without showing them every wallet</h2>
         </header>
         <p className="muted">
-          Capital markets use proof-of-funds to unlock credit lines, satisfy exchange listings, and close OTC deals.
-          This console keeps the verifier, custody policies, and audit artifacts aligned.
+          Capital markets teams use proof-of-funds to open accounts, unlock credit lines, satisfy exchange listings, and
+          close OTC deals. This view explains how proofs, policies, and verifier results fit into that process.
         </p>
       </div>
       <div className="finance-use-case-grid">
@@ -182,7 +182,7 @@ export function FinanceContext({ params, connectionState, verifierUrl }: Finance
           <p className="eyebrow">Counterparty journey</p>
           <h2>From custody proof to settlement artifact</h2>
           <p className="muted small">
-            Track each step the finance org cares about before approving real money movement.
+            See the key steps a finance or risk team expects to see before approving real money movement.
           </p>
         </header>
         <div className="journey-steps">

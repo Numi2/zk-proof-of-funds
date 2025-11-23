@@ -57,7 +57,10 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
 
   useEffect(() => {
     if (!provider) {
-      setStatus({ intent: 'warning', message: 'Install an EIP-1193 wallet (MetaMask, Rabby, etc.) to auto-build attestations.' });
+      setStatus({
+        intent: 'warning',
+        message: 'Install a browser wallet (MetaMask, Rabby, etc.) that supports EIP-1193 to auto-build attestations.',
+      });
     }
   }, [provider]);
 
@@ -67,7 +70,7 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
 
   const connectWallet = useCallback(async () => {
     if (!provider) {
-      setError('No wallet detected. Install MetaMask or another EIP-1193 provider.');
+      setError('No wallet detected. Install MetaMask or another browser wallet that supports EIP-1193.');
       return;
     }
     setIsConnecting(true);
@@ -254,9 +257,9 @@ export function WalletConnector({ onAttestationReady, onShowToast }: Props) {
     <div className="wallet-connector">
       <header>
         <p className="eyebrow">Non-custodial attestation</p>
-        <h3>Connect a wallet to auto-fill attestation JSON</h3>
+        <h3>Connect a wallet to auto-fill attestation data</h3>
         <p className="muted small">
-          Wallet balances stay client-side. The attestation JSON and zk bundle never leave the browser.
+          Wallet balances stay in your browser. The attestation JSON and zk bundle never leave this console.
         </p>
       </header>
 

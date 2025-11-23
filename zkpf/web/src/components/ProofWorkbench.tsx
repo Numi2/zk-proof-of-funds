@@ -56,31 +56,31 @@ const assetRailCopy: Record<
   onchain: {
     label: 'On-chain wallets',
     description:
-      'Aggregate balances from cold + hot wallets, smart contracts, or L2 rollups. The verifier only sees the threshold-aligned commitments.',
+      'Combine balances from cold and hot wallets, smart contracts, or L2 rollups. The verifier sees commitments that prove you meet the threshold, not your full wallet list.',
     checklist: [
-      'Use custody pipes to export Merkle roots / nullifiers per scope.',
-      'Keep wallet inventory private—only commitments land in the bundle.',
+      'Use your custody or indexer systems to export the data the prover needs for each scope.',
+      'Keep wallet inventory private—only commitments, not raw addresses, go into the bundle.',
     ],
     endpointDetail: 'Proof sourced from digital asset custody accounts.',
   },
   fiat: {
     label: 'Fiat / bank balances',
     description:
-      'Mirror fiat settlement accounts (banks, trust companies, money market funds) by encoding account attestations inside the bundle.',
+      'Represent fiat settlement accounts (banks, trust companies, money market funds) as attestations inside the bundle.',
     checklist: [
-      'Convert statements to witness data before exporting the bundle.',
-      'Reference ISO currency + custodian IDs to map to policy requirements.',
+      'Convert bank statements into the structured data the prover expects before exporting the bundle.',
+      'Use ISO currency codes and custodian IDs that line up with your policies.',
     ],
     endpointDetail: 'Proof sourced from fiat banking rails.',
   },
   orchard: {
     label: 'Zcash Orchard (shielded)',
     description:
-      'Non-custodial proof-of-funds over the Zcash Orchard shielded pool. Anchors, Merkle paths, and UFVK ownership are enforced in the inner Orchard circuit.',
+      'Non-custodial proof-of-funds over the Zcash Orchard shielded pool. Ownership and balances are checked inside the Orchard circuit without exposing viewing keys.',
     checklist: [
-      'Bundle UFVK + Orchard notes into an Orchard proof-of-funds rail (ZCASH_ORCHARD).',
-      'Snapshot height and Orchard anchor must match your wallet / lightwalletd view.',
-      'Holder binding ties the UFVK to policy/scope/epoch without exposing raw keys.',
+      'Include UFVK and Orchard notes in a ZCASH_ORCHARD proof-of-funds rail.',
+      'Make sure the snapshot height and Orchard anchor match what your wallet or lightwalletd shows.',
+      'Holder binding ties the UFVK to policy, scope, and epoch without exposing the keys themselves.',
     ],
     endpointDetail: 'Proof sourced from Zcash Orchard shielded funds.',
   },
@@ -450,8 +450,8 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
         <h2>Submit a proof bundle</h2>
       </header>
       <p className="muted">
-        Paste JSON emitted by the prover CLI (`zkpf-test-fixtures`, `zkpf-prover`, or your custody
-        pipeline). The bundle is validated locally before hitting the verifier.
+        Paste the JSON produced by the prover CLI or your custody pipeline. The console validates the bundle in your
+        browser before it is sent to the verifier.
       </p>
       <FlowVisualizer steps={flowSteps} />
       <div className="input-grid">
@@ -673,9 +673,9 @@ export function ProofWorkbench({ client, connectionState, prefillBundle, onPrefi
             <div className="onchain-attestation-header">
               <h3>On-chain attestation (optional)</h3>
               <p className="muted small">
-                Publish a successful proof-of-funds verification to the configured EVM{' '}
-                <code>AttestationRegistry</code>. Identifiers are hashed to <code>bytes32</code>{' '}
-                using BLAKE3 on the backend before calling the contract.
+              Optionally publish a successful proof-of-funds verification to the configured EVM{' '}
+              <code>AttestationRegistry</code>. The backend hashes identifiers to <code>bytes32</code> using BLAKE3
+              before calling the contract.
               </p>
             </div>
             <div className="onchain-attestation-grid">

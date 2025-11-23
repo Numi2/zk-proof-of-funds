@@ -222,9 +222,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         <h2>Create a proof bundle from attestation JSON</h2>
       </header>
       <p className="muted">
-        The WASM prover runs locally in your browser. Paste the attestation payload exported by your
-        custody or treasury system and generate a shareable proof bundle without sending witnesses to
-        the verifier.
+        The prover runs in your browser. Paste the attestation JSON exported by your custody or treasury system to
+        generate a shareable proof bundle, without sending sensitive witness data to the verifier.
       </p>
 
       <div className="builder-status-grid">
@@ -296,13 +295,13 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         </label>
         <aside className="builder-sidepanel">
           <p>
-            This payload mirrors <code>ZkpfCircuitInput</code>: balances + custody metadata under{' '}
-            <code>attestation</code> and policy bindings under <code>public</code>.
+            This payload matches the <code>ZkpfCircuitInput</code> shape: balances and custody details under{' '}
+            <code>attestation</code> and policy fields under <code>public</code>.
           </p>
           <ul>
-            <li>Witness data never leaves the browser—the proving key stays client-side.</li>
-            <li>Use policies from the verifier to populate threshold, currency, scope, and policy_id fields.</li>
-            <li>Nullifier + custodian hash must already be normalized to 32-byte values.</li>
+            <li>Witness data stays in your browser; the proving key is never uploaded.</li>
+            <li>Use policies from the verifier to fill in threshold, currency, scope, and policy_id fields.</li>
+            <li>Make sure the nullifier and custodian hash are already normalized to 32-byte values.</li>
           </ul>
           <div className="builder-sidepanel-actions">
             <button type="button" className="tiny-button" onClick={handleLoadSample}>
