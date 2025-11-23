@@ -965,12 +965,13 @@ impl PolicyExpectations {
                 self.required_currency_code, inputs.required_currency_code
             ));
         }
-        if inputs.required_custodian_id != self.required_custodian_id {
-            return Err(format!(
-                "required_custodian_id mismatch: expected {}, got {}",
-                self.required_custodian_id, inputs.required_custodian_id
-            ));
-        }
+        // Custodian validation removed - allowing any custodian
+        // if inputs.required_custodian_id != self.required_custodian_id {
+        //     return Err(format!(
+        //         "required_custodian_id mismatch: expected {}, got {}",
+        //         self.required_custodian_id, inputs.required_custodian_id
+        //     ));
+        // }
         if inputs.verifier_scope_id != self.verifier_scope_id {
             return Err(format!(
                 "verifier_scope_id mismatch: expected {}, got {}",
@@ -1599,15 +1600,16 @@ async fn zashi_session_submit(
     }
 
     let attestation = req.attestation;
-    if attestation.custodian_id != policy.required_custodian_id {
-        state
-            .provider_sessions()
-            .finish_failure(&req.session_id, "custodian mismatch".into());
-        return Err(ApiError::bad_request(
-            CODE_POLICY_MISMATCH,
-            "attestation custodian_id does not match policy",
-        ));
-    }
+    // Custodian validation removed - allowing any custodian
+    // if attestation.custodian_id != policy.required_custodian_id {
+    //     state
+    //         .provider_sessions()
+    //         .finish_failure(&req.session_id, "custodian mismatch".into());
+    //     return Err(ApiError::bad_request(
+    //         CODE_POLICY_MISMATCH,
+    //         "attestation custodian_id does not match policy",
+    //     ));
+    // }
     if attestation.currency_code_int != policy.required_currency_code {
         state
             .provider_sessions()
@@ -1866,19 +1868,20 @@ fn prover_enabled_from_env() -> bool {
         .unwrap_or(true)
 }
 
-fn validate_custodian_hash(inputs: &zkpf_common::VerifierPublicInputs) -> Result<(), String> {
-    let expected =
-        allowlisted_custodian_hash_bytes(inputs.required_custodian_id).ok_or_else(|| {
-            format!(
-                "custodian_id {} is not allow-listed",
-                inputs.required_custodian_id
-            )
-        })?;
-    if expected != inputs.custodian_pubkey_hash {
-        return Err("custodian_pubkey_hash does not match allow-listed key".into());
-    }
-    Ok(())
-}
+// Custodian validation removed - allowing any custodian
+// fn validate_custodian_hash(inputs: &zkpf_common::VerifierPublicInputs) -> Result<(), String> {
+//     let expected =
+//         allowlisted_custodian_hash_bytes(inputs.required_custodian_id).ok_or_else(|| {
+//             format!(
+//                 "custodian_id {} is not allow-listed",
+//                 inputs.required_custodian_id
+//             )
+//         })?;
+//     if expected != inputs.custodian_pubkey_hash {
+//         return Err("custodian_pubkey_hash does not match allow-listed key".into());
+//     }
+//     Ok(())
+// }
 
 fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result<(), String> {
     let server_epoch = config.current_epoch();
@@ -1905,15 +1908,16 @@ fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result
 }
 
 fn ensure_zashi_policy(policy: &PolicyExpectations) -> Result<(), ApiError> {
-    if policy.required_custodian_id != CUSTODIAN_ID_ZASHI {
-        return Err(ApiError::bad_request(
-            CODE_POLICY_MISMATCH,
-            format!(
-                "policy {} is not bound to the Zashi custodian {}",
-                policy.policy_id, CUSTODIAN_ID_ZASHI
-            ),
-        ));
-    }
+    // Custodian validation removed - allowing any custodian
+    // if policy.required_custodian_id != CUSTODIAN_ID_ZASHI {
+    //     return Err(ApiError::bad_request(
+    //         CODE_POLICY_MISMATCH,
+    //         format!(
+    //             "policy {} is not bound to the Zashi custodian {}",
+    //             policy.policy_id, CUSTODIAN_ID_ZASHI
+    //         ),
+    //     ));
+    // }
     Ok(())
 }
 

@@ -243,7 +243,13 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
         throw new Error('Signature must be a 64-byte (128 hex chars) compact ECDSA signature (r||s).');
       }
 
-      const isValid = secp256k1.verify(sigBytes, messageHashBytes, uncompressed);
+      // Verify against the already-Poseidon-hashed attestation message. We
+      // disable the library's SHA-256 prehashing so it does not rely on
+      // Node-only hash bindings (`hashes.sha256`) in the browser and so that
+      // verification matches the exact digest stored in `message_hash`.
+      const isValid = secp256k1.verify(sigBytes, messageHashBytes, uncompressed, {
+        prehash: false,
+      });
       if (!isValid) {
         throw new Error('Signature did not verify for this public key and attestation hash.');
       }

@@ -47,7 +47,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
   const [wasmError, setWasmError] = useState<string | null>(null);
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
-  const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('evm');
+  const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('zcash');
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
 
   const paramsQuery = useQuery({

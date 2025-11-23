@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { blake3 } from '@noble/hashes/blake3.js';
+import { hmac } from '@noble/hashes/hmac.js';
+import { concatBytes } from '@noble/hashes/utils.js';
 import * as secp256k1 from '@noble/secp256k1';
 import type { CircuitInput, PolicyDefinition } from '../types/zkpf';
 import {
@@ -16,6 +18,19 @@ import {
   numberArrayFromBytes,
 } from '../utils/field';
 import { policyShortSummary } from '../utils/policy';
+
+// Noble secp256k1 relies on user-supplied sync hash functions in some code paths
+// (HMAC-DRBG / prehash). In the browser we prefer BLAKE3 over SHA-256, so wire
+// BLAKE3-based helpers into the library once at module load.
+// Cast through `any` to avoid depending on upstream TS typings for `utils`.
+const nobleUtils = secp256k1.utils as any;
+if (!nobleUtils.sha256Sync) {
+  nobleUtils.sha256Sync = (...messages: Uint8Array[]) => blake3(concatBytes(...messages));
+}
+if (!nobleUtils.hmacSha256Sync) {
+  nobleUtils.hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) =>
+    hmac(blake3, key, concatBytes(...messages));
+}
 
 type StatusIntent = 'info' | 'success' | 'warning' | 'error';
 
@@ -43,7 +58,7 @@ interface StatusState {
 const DEMO_UFVK_MAINNET =
   'uview1demo0f4zsc9qj0pdm3ntn7h0u4u2e9d4l7m0kqstt0a52f3a8q2t6sgv0p9mlc8v7ga8wdp3n2xk7m3c5qy8q2w0nh9gq2l8k0r0y0t0p0q';
 const DEMO_SNAPSHOT_HEIGHT = 2700000;
-const DEMO_BALANCE_ZATS = 5000000000;
+const DEMO_BALANCE_ZATS = 50000000000;
 
 export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
   const [zcashNetwork, setZcashNetwork] = useState<ZcashNetwork>('main');
@@ -306,8 +321,17 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       if (isDemo) {
         // Demo path: generate a synthetic signing key locally so users can see
         // a full end-to-end flow without installing an EVM wallet.
+        //
+        // Use the async signer wired to WebCrypto instead of the sync path,
+        // which expects Node-style hash bindings (`hashes.sha256` /
+        // `hashes.hmacSha256`) and will throw `hashes.sha256 not set`
+        // in a browser environment. We also disable the library's
+        // SHA-256 prehashing because `messageHashBytes` is already a
+        // Poseidon digest produced by the zkpf wasm helper.
         const demoPrivKey = secp256k1.utils.randomSecretKey();
-        const signature = await secp256k1.sign(messageHashBytes, demoPrivKey);
+        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+          prehash: false,
+        });
         const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
         pubkeyX = uncompressed.slice(1, 33);
         pubkeyY = uncompressed.slice(33);
