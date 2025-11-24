@@ -34,6 +34,7 @@ pub fn poseidon_hash4(
     hash_elements(ctx, gate, &[a, b, c, d])
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn hash_attestation(
     ctx: &mut Context<Fr>,
     gate: &GateChip<Fr>,

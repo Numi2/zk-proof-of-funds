@@ -7,7 +7,6 @@ const byteSourceSchema = z.union([z.array(byteSchema), z.string().min(2)]);
 const publicInputsSchema = z.object({
   threshold_raw: z.number().nonnegative(),
   required_currency_code: z.number().int().nonnegative(),
-  required_custodian_id: z.number().int().nonnegative(),
   current_epoch: z.number().nonnegative(),
   verifier_scope_id: z.number().nonnegative(),
   policy_id: z.number().nonnegative(),
@@ -46,7 +45,6 @@ export function parseProofBundle(json: string): ProofBundle {
   const normalizedInputs: VerifierPublicInputs = {
     threshold_raw: inputs.threshold_raw,
     required_currency_code: inputs.required_currency_code,
-    required_custodian_id: inputs.required_custodian_id,
     current_epoch: inputs.current_epoch,
     verifier_scope_id: inputs.verifier_scope_id,
     policy_id: inputs.policy_id,

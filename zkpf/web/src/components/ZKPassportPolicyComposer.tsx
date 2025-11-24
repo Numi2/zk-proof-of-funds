@@ -1,11 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import type { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import { ZKPassportPolicyError } from '../api/zkpassport-policies';
 import type { ZKPassportPolicyQuery, ZKPassportPolicyComposeRequest } from '../types/zkpassport';
+import type { PolicyTemplate } from '../config/zkpassport-templates';
 
 interface Props {
   client: ZKPassportPolicyClient;
   onComposed?: (policyId: number) => void;
+  initialTemplate?: PolicyTemplate;
 }
 
 const USE_CASES = [
@@ -18,7 +20,7 @@ const USE_CASES = [
   'Private FaceMatch',
 ];
 
-export function ZKPassportPolicyComposer({ client, onComposed }: Props) {
+export function ZKPassportPolicyComposer({ client, onComposed, initialTemplate }: Props) {
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -26,6 +28,70 @@ export function ZKPassportPolicyComposer({ client, onComposed }: Props) {
   const [validity, setValidity] = useState('604800'); // 7 days default
   const [devMode, setDevMode] = useState(false);
   const [selectedUseCases, setSelectedUseCases] = useState<string[]>([]);
+
+  // Pre-fill form when a template is provided
+  useEffect(() => {
+    if (initialTemplate) {
+      setLabel(initialTemplate.name);
+      setDescription(initialTemplate.description);
+      setPurpose(initialTemplate.purpose);
+      setSelectedUseCases(initialTemplate.useCases || []);
+      setDevMode(initialTemplate.devModeRecommended || false);
+
+      // Map template query to form fields
+      const q = initialTemplate.query;
+      setDiscloseFields({
+        nationality: q.discloseNationality || false,
+        birthdate: q.discloseBirthdate || false,
+        fullname: q.discloseFullname || false,
+        firstname: q.discloseFirstname || false,
+        lastname: q.discloseLastname || false,
+        expiry_date: q.discloseExpiryDate || false,
+        document_number: q.discloseDocumentNumber || false,
+        document_type: q.discloseDocumentType || false,
+        issuing_country: q.discloseIssuingCountry || false,
+        gender: q.discloseGender || false,
+      });
+
+      // Age verification
+      setAgeGte(q.ageGte !== undefined ? String(q.ageGte) : '');
+      setAgeLt(q.ageLt !== undefined ? String(q.ageLt) : '');
+      setAgeLte(q.ageLte !== undefined ? String(q.ageLte) : '');
+      setAgeRangeStart(q.ageRange?.[0] !== undefined ? String(q.ageRange[0]) : '');
+      setAgeRangeEnd(q.ageRange?.[1] !== undefined ? String(q.ageRange[1]) : '');
+
+      // Birthdate verification
+      setBirthdateGte(q.birthdateGte || '');
+      setBirthdateLt(q.birthdateLt || '');
+      setBirthdateLte(q.birthdateLte || '');
+      setBirthdateRangeStart(q.birthdateRange?.[0] || '');
+      setBirthdateRangeEnd(q.birthdateRange?.[1] || '');
+
+      // Expiry date
+      setExpiryDateGte(q.expiryDateGte || '');
+      setExpiryDateLt(q.expiryDateLt || '');
+      setExpiryDateLte(q.expiryDateLte || '');
+      setExpiryDateRangeStart(q.expiryDateRange?.[0] || '');
+      setExpiryDateRangeEnd(q.expiryDateRange?.[1] || '');
+
+      // Nationality checks
+      setNationalityIn(q.nationalityIn?.join(', ') || '');
+      setNationalityOut(q.nationalityOut?.join(', ') || '');
+      setIssuingCountryIn(q.issuingCountryIn?.join(', ') || '');
+      setIssuingCountryOut(q.issuingCountryOut?.join(', ') || '');
+
+      // Equality checks
+      if (q.eqChecks && q.eqChecks.length > 0) {
+        setEqField(q.eqChecks[0].field);
+        setEqValue(String(q.eqChecks[0].value));
+      }
+
+      // Binding
+      setBindUserAddress(q.bindUserAddress || '');
+      setBindChain(q.bindChain || '');
+      setBindCustomData(q.bindCustomData || '');
+    }
+  }, [initialTemplate]);
 
   // Disclosure fields
   const [discloseFields, setDiscloseFields] = useState<Record<string, boolean>>({});

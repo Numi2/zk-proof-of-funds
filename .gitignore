@@ -1,0 +1,30 @@
+# Rust build artifacts
+**/target/
+**/Cargo.lock
+
+# Large WASM files in build directories
+**/target/**/*.wasm
+webwallet/target/**/*.wasm
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+*.log
+

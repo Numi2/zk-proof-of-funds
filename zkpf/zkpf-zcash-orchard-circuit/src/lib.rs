@@ -229,15 +229,14 @@ fn build_orchard_constraints(
     let gate = range.gate();
 
     let pub_in = &input.public_inputs;
-    let mut ctx = builder.main(0);
+    let ctx = builder.main(0);
 
     // Core public fields (V1 prefix)
-    let threshold = assign_u64(&mut ctx, &range, pub_in.threshold_raw);
-    let req_currency = assign_u32(&mut ctx, &range, pub_in.required_currency_code);
-    let req_custodian = assign_u32(&mut ctx, &range, pub_in.required_custodian_id);
-    let current_epoch = assign_u64(&mut ctx, &range, pub_in.current_epoch);
-    let verifier_scope = assign_u64(&mut ctx, &range, pub_in.verifier_scope_id);
-    let policy_id = assign_u64(&mut ctx, &range, pub_in.policy_id);
+    let threshold = assign_u64(ctx, &range, pub_in.threshold_raw);
+    let req_currency = assign_u32(ctx, &range, pub_in.required_currency_code);
+    let current_epoch = assign_u64(ctx, &range, pub_in.current_epoch);
+    let verifier_scope = assign_u64(ctx, &range, pub_in.verifier_scope_id);
+    let policy_id = assign_u64(ctx, &range, pub_in.policy_id);
 
     // Nullifier and custodian_pubkey_hash are treated as opaque scalars; the rail
     // ensures their encoding via off-circuit hashing.
@@ -251,13 +250,13 @@ fn build_orchard_constraints(
     // Orchard-specific snapshot metadata.
     let snapshot_height = pub_in
         .snapshot_block_height
-        .ok_or_else(|| Error::Synthesis)?;
+        .ok_or(Error::Synthesis)?;
     let snapshot_anchor_bytes = pub_in
         .snapshot_anchor_orchard
-        .ok_or_else(|| Error::Synthesis)?;
-    let holder_binding_bytes = pub_in.holder_binding.ok_or_else(|| Error::Synthesis)?;
+        .ok_or(Error::Synthesis)?;
+    let holder_binding_bytes = pub_in.holder_binding.ok_or(Error::Synthesis)?;
 
-    let snapshot_height_cell = assign_u64(&mut ctx, &range, snapshot_height);
+    let snapshot_height_cell = assign_u64(ctx, &range, snapshot_height);
     let anchor_fr = reduce_be_bytes_to_fr(&snapshot_anchor_bytes);
     let holder_binding_fr = reduce_be_bytes_to_fr(&holder_binding_bytes);
     let anchor_cell = ctx.load_witness(anchor_fr);
@@ -269,10 +268,10 @@ fn build_orchard_constraints(
         if idx >= ORCHARD_MAX_NOTES {
             return Err(Error::Synthesis);
         }
-        let note_val = assign_u64(&mut ctx, &range, *value);
-        sum = gate.add(&mut ctx, sum, note_val);
+        let note_val = assign_u64(ctx, &range, *value);
+        sum = gate.add(ctx, sum, note_val);
     }
-    compare::enforce_geq(&mut ctx, &gate, &range, sum, threshold);
+    compare::enforce_geq(ctx, gate, &range, sum, threshold);
 
     // Expose all public inputs in the V2_ORCHARD order expected by
     // `public_inputs_to_instances_with_layout`.
@@ -281,7 +280,6 @@ fn build_orchard_constraints(
         [
             threshold,
             req_currency,
-            req_custodian,
             current_epoch,
             verifier_scope,
             policy_id,
@@ -333,9 +331,6 @@ pub fn build_verifier_public_inputs(
     let mut inputs = VerifierPublicInputs {
         threshold_raw: threshold_zats,
         required_currency_code: meta.required_currency_code,
-        // For the Orchard rail, `required_custodian_id` can represent the
-        // entity operating the rail (e.g. a specific Zcash lightwalletd/attestor).
-        required_custodian_id: 0,
         current_epoch: meta.current_epoch,
         verifier_scope_id: meta.verifier_scope_id,
         policy_id: meta.policy_id,
@@ -374,7 +369,6 @@ pub fn map_inner_to_verifier_public_inputs(
     VerifierPublicInputs {
         threshold_raw: inner.threshold_zats,
         required_currency_code: meta.required_currency_code,
-        required_custodian_id: 0,
         current_epoch: meta.current_epoch,
         verifier_scope_id: meta.verifier_scope_id,
         policy_id: meta.policy_id,
@@ -617,6 +611,7 @@ pub fn load_orchard_verifier_artifacts(
     })
 }
 
+#[allow(clippy::type_complexity)]
 fn load_orchard_artifact_bytes(
     manifest_path: &Path,
 ) -> Result<(ArtifactManifest, Vec<u8>, Vec<u8>, Vec<u8>)> {

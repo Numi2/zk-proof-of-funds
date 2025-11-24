@@ -49,9 +49,9 @@ pub struct PublicInputsWasm {
 }
 
 thread_local! {
-    static CACHED_PARAMS: RefCell<Option<ParamsWasm>> = RefCell::new(None);
-    static CACHED_VK: RefCell<Option<VerifyingKeyWasm>> = RefCell::new(None);
-    static CACHED_PK: RefCell<Option<ProvingKeyWasm>> = RefCell::new(None);
+    static CACHED_PARAMS: RefCell<Option<ParamsWasm>> = const { RefCell::new(None) };
+    static CACHED_VK: RefCell<Option<VerifyingKeyWasm>> = const { RefCell::new(None) };
+    static CACHED_PK: RefCell<Option<ProvingKeyWasm>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen]
@@ -112,7 +112,6 @@ impl PublicInputsWasm {
     pub fn new(
         threshold_raw: u64,
         required_currency_code: u32,
-        required_custodian_id: u32,
         current_epoch: u64,
         verifier_scope_id: u64,
         policy_id: u64,
@@ -123,7 +122,6 @@ impl PublicInputsWasm {
             inputs: VerifierPublicInputs {
                 threshold_raw,
                 required_currency_code,
-                required_custodian_id,
                 current_epoch,
                 verifier_scope_id,
                 policy_id,
@@ -169,11 +167,6 @@ impl PublicInputsWasm {
     #[wasm_bindgen(getter)]
     pub fn required_currency_code(&self) -> u32 {
         self.inputs.required_currency_code
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn required_custodian_id(&self) -> u32 {
-        self.inputs.required_custodian_id
     }
 
     #[wasm_bindgen(getter)]

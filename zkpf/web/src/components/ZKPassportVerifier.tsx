@@ -1,9 +1,14 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ZKPassport, type ProofResult, type QueryResult } from '@zkpassport/sdk';
 import QRCode from 'react-qr-code';
 import type { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import type { ZKPassportPolicyDefinition } from '../types/zkpassport';
+import { ZKPassportProgress, type VerificationStage } from './ZKPassportProgress';
+import { 
+  getVerificationHistoryManager, 
+  createQueryResultSummary,
+} from '../utils/zkpassport-history';
 
 interface Props {
   client: ZKPassportPolicyClient;
@@ -14,6 +19,8 @@ type VerificationStatus = 'idle' | 'requesting' | 'request-received' | 'generati
 export function ZKPassportVerifier({ client }: Props) {
   const [zkPassport] = useState(() => new ZKPassport('zkpf.dev'));
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
+  const historyManager = useRef(getVerificationHistoryManager());
+  const verificationStartTime = useRef<number | null>(null);
   const [verificationState, setVerificationState] = useState<{
     status: VerificationStatus;
     requestId: string | null;
@@ -148,6 +155,7 @@ export function ZKPassportVerifier({ client }: Props) {
     }
 
     try {
+      verificationStartTime.current = Date.now();
       setVerificationState(prev => ({ ...prev, status: 'requesting', error: null, proofs: [] }));
       
       const query = await buildQueryFromPolicy(selectedPolicy);
@@ -188,6 +196,24 @@ export function ZKPassportVerifier({ client }: Props) {
         result: QueryResult;
         queryResultErrors?: any;
       }) => {
+        const duration = verificationStartTime.current 
+          ? Date.now() - verificationStartTime.current 
+          : undefined;
+        
+        // Record to history
+        historyManager.current.addRecord({
+          policyId: selectedPolicy?.policy_id || null,
+          policyLabel: selectedPolicy?.label || 'Unknown Policy',
+          status: response.verified ? 'verified' : 'error',
+          uniqueIdentifier: response.uniqueIdentifier,
+          requestId: result.requestId,
+          queryResultSummary: createQueryResultSummary(response.result, selectedPolicy),
+          proofCount: verificationState.proofs.length,
+          error: response.verified ? undefined : 'Verification failed',
+          duration,
+          devMode: selectedPolicy?.devMode,
+        });
+        
         setVerificationState(prev => ({
           ...prev,
           status: response.verified ? 'verified' : 'error',
@@ -309,6 +335,15 @@ export function ZKPassportVerifier({ client }: Props) {
             )}
           </div>
         </section>
+      )}
+
+      {/* Progress Component */}
+      {verificationState.status !== 'idle' && (
+        <ZKPassportProgress
+          currentStage={verificationState.status as VerificationStage}
+          proofCount={verificationState.proofs.length}
+          error={verificationState.error}
+        />
       )}
 
       <section className="card">

@@ -6,5 +6,3 @@ webwallet/target/
 node_modules/
 
 # Other build artifacts
-*.wasm
-

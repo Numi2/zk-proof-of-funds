@@ -51,9 +51,9 @@ fn load_pubkey<'chip>(
     ecc_chip.load_private::<Secp256k1Affine>(ctx, (x, y))
 }
 
-fn load_signature<'chip>(
+fn load_signature(
     ctx: &mut Context<Fr>,
-    fq_chip: &FqChip<'chip, Fr>,
+    fq_chip: &FqChip<'_, Fr>,
     sig: &EcdsaSignature,
 ) -> (ProperCrtUint<Fr>, ProperCrtUint<Fr>) {
     let r = fq_chip.load_private(ctx, fq_from_bytes(&sig.r));
@@ -61,9 +61,9 @@ fn load_signature<'chip>(
     (r, s)
 }
 
-fn load_scalar<'chip>(
+fn load_scalar(
     ctx: &mut Context<Fr>,
-    fq_chip: &FqChip<'chip, Fr>,
+    fq_chip: &FqChip<'_, Fr>,
     bytes: &[u8; 32],
 ) -> ProperCrtUint<Fr> {
     fq_chip.load_private(ctx, fq_from_bytes(bytes))

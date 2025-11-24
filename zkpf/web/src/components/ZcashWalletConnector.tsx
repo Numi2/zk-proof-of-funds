@@ -98,7 +98,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       return undefined;
     }
     return walletState.summary.account_balances.find(
-      ([accountId]: [number]) => accountId === walletState.activeAccount,
+      ([accountId]) => accountId === walletState.activeAccount,
     );
   }, [walletState.summary, walletState.activeAccount]);
 
@@ -401,7 +401,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         attestation: {
           balance_raw: Math.floor(effectiveBalance),
           currency_code_int: policy.required_currency_code,
-          custodian_id: policy.required_custodian_id,
+          custodian_id: 0,
           attestation_id: attestationId,
           issued_at: issuedAtEpoch,
           valid_until: validUntilEpoch,
@@ -416,7 +416,6 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         public: {
           threshold_raw: policy.threshold_raw,
           required_currency_code: policy.required_currency_code,
-          required_custodian_id: policy.required_custodian_id,
           current_epoch: nowEpoch,
           verifier_scope_id: policy.verifier_scope_id,
           policy_id: policy.policy_id,

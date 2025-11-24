@@ -19,15 +19,14 @@ use once_cell::sync::OnceCell;
 use poseidon_primitives::poseidon::primitives::{ConstantLength, Hash as PoseidonHash, Spec};
 use serde::{Deserialize, Serialize};
 use zkpf_circuit::{
-    custodians,
     gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
     public_instances, PublicInputs, ZkpfCircuit,
 };
 
 /// Number of public inputs in the legacy custodial circuit layout (V1).
-pub const PUBLIC_INPUT_COUNT: usize = 8;
+pub const PUBLIC_INPUT_COUNT: usize = 7;
 /// Number of public inputs in the Orchard layout (V2_ORCHARD): V1 prefix + 3 Orchard fields.
-pub const PUBLIC_INPUT_COUNT_V2_ORCHARD: usize = 11;
+pub const PUBLIC_INPUT_COUNT_V2_ORCHARD: usize = 10;
 const POSEIDON_T: usize = 6;
 const POSEIDON_RATE: usize = 5;
 const POSEIDON_FULL_ROUNDS: usize = 8;
@@ -37,7 +36,6 @@ const POSEIDON_PARTIAL_ROUNDS: usize = 57;
 pub struct VerifierPublicInputs {
     pub threshold_raw: u64,
     pub required_currency_code: u32,
-    pub required_custodian_id: u32,
     pub current_epoch: u64,
     pub verifier_scope_id: u64,
     pub policy_id: u64,
@@ -357,7 +355,6 @@ pub fn verifier_inputs_to_public(inputs: &VerifierPublicInputs) -> Result<Public
     Ok(PublicInputs {
         threshold_raw: inputs.threshold_raw,
         required_currency_code: inputs.required_currency_code,
-        required_custodian_id: inputs.required_custodian_id,
         current_epoch: inputs.current_epoch,
         verifier_scope_id: inputs.verifier_scope_id,
         policy_id: inputs.policy_id,
@@ -370,7 +367,6 @@ pub fn public_to_verifier_inputs(public: &PublicInputs) -> VerifierPublicInputs 
     VerifierPublicInputs {
         threshold_raw: public.threshold_raw,
         required_currency_code: public.required_currency_code,
-        required_custodian_id: public.required_custodian_id,
         current_epoch: public.current_epoch,
         verifier_scope_id: public.verifier_scope_id,
         policy_id: public.policy_id,
@@ -432,7 +428,6 @@ pub fn public_inputs_vector(public: &PublicInputs) -> [Fr; PUBLIC_INPUT_COUNT] {
     [
         Fr::from(public.threshold_raw),
         Fr::from(public.required_currency_code as u64),
-        Fr::from(public.required_custodian_id as u64),
         Fr::from(public.current_epoch),
         Fr::from(public.verifier_scope_id),
         Fr::from(public.policy_id),
@@ -459,12 +454,11 @@ pub fn instances_to_public_inputs(instances: &[Vec<Fr>]) -> Result<PublicInputs>
             1,
             "required_currency_code",
         )?)?,
-        required_custodian_id: fr_to_u32(&first_instance(instances, 2, "required_custodian_id")?)?,
-        current_epoch: fr_to_u64(&first_instance(instances, 3, "current_epoch")?)?,
-        verifier_scope_id: fr_to_u64(&first_instance(instances, 4, "verifier_scope_id")?)?,
-        policy_id: fr_to_u64(&first_instance(instances, 5, "policy_id")?)?,
-        nullifier: first_instance(instances, 6, "nullifier")?,
-        custodian_pubkey_hash: first_instance(instances, 7, "custodian_pubkey_hash")?,
+        current_epoch: fr_to_u64(&first_instance(instances, 2, "current_epoch")?)?,
+        verifier_scope_id: fr_to_u64(&first_instance(instances, 3, "verifier_scope_id")?)?,
+        policy_id: fr_to_u64(&first_instance(instances, 4, "policy_id")?)?,
+        nullifier: first_instance(instances, 5, "nullifier")?,
+        custodian_pubkey_hash: first_instance(instances, 6, "custodian_pubkey_hash")?,
     })
 }
 
@@ -633,14 +627,6 @@ pub fn nullifier_fr(account_id_hash: Fr, verifier_scope_id: u64, policy_id: u64,
     poseidon_hash(&[account_id_hash, scope_fr, policy_fr, epoch_fr])
 }
 
-pub fn allowlisted_custodian_hash(custodian_id: u32) -> Option<Fr> {
-    custodians::lookup_pubkey(custodian_id).map(|pk| custodian_pubkey_hash(pk))
-}
-
-pub fn allowlisted_custodian_hash_bytes(custodian_id: u32) -> Option<[u8; 32]> {
-    allowlisted_custodian_hash(custodian_id).map(|fr| fr_to_bytes(&fr))
-}
-
 pub fn compute_nullifier_fr(
     account_id_hash: &Fr,
     scope_id: u64,
@@ -699,7 +685,7 @@ fn first_instance(instances: &[Vec<Fr>], column: usize, label: &str) -> Result<F
     let col = instances
         .get(column)
         .with_context(|| format!("missing instance column '{}'", label))?;
-    col.get(0)
+    col.first()
         .copied()
         .with_context(|| format!("column '{}' has no rows", label))
 }
@@ -728,6 +714,7 @@ fn fr_to_u32(fr: &Fr) -> Result<u32> {
     Ok(u32::from_le_bytes(buf))
 }
 
+#[allow(clippy::type_complexity)]
 fn load_artifact_bytes(
     manifest_path: &Path,
 ) -> Result<(ArtifactManifest, Vec<u8>, Vec<u8>, Vec<u8>)> {
@@ -893,7 +880,6 @@ mod tests {
         PublicInputs {
             threshold_raw: 1000,
             required_currency_code: 840,
-            required_custodian_id: 42,
             current_epoch: 1_700_000_000,
             verifier_scope_id: 99,
             policy_id: 7,
@@ -913,10 +899,6 @@ mod tests {
         assert_eq!(
             reconstructed_public.required_currency_code,
             public.required_currency_code
-        );
-        assert_eq!(
-            reconstructed_public.required_custodian_id,
-            public.required_custodian_id
         );
         assert_eq!(reconstructed_public.nullifier, public.nullifier);
 

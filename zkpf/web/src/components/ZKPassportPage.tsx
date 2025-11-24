@@ -1,14 +1,21 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ZKPassport, type ProofResult, type QueryResult } from '@zkpassport/sdk';
 import QRCode from 'react-qr-code';
+import { ZKPassportProgress, type VerificationStage } from './ZKPassportProgress';
+import { 
+  getVerificationHistoryManager, 
+  createQueryResultSummary,
+  type VerificationRecord,
+} from '../utils/zkpassport-history';
+import { COUNTRY_GROUPS } from '../config/zkpassport-templates';
 
 // Import country constants - these should be available in the SDK
 import * as ZKPassportSDK from '@zkpassport/sdk';
 
-const EU_COUNTRIES = (ZKPassportSDK as any).EU_COUNTRIES || [];
-const EEA_COUNTRIES = (ZKPassportSDK as any).EEA_COUNTRIES || [];
-const SCHENGEN_COUNTRIES = (ZKPassportSDK as any).SCHENGEN_COUNTRIES || [];
-const SANCTIONED_COUNTRIES = (ZKPassportSDK as any).SANCTIONED_COUNTRIES || [];
+const EU_COUNTRIES = (ZKPassportSDK as any).EU_COUNTRIES || COUNTRY_GROUPS.EU;
+const EEA_COUNTRIES = (ZKPassportSDK as any).EEA_COUNTRIES || COUNTRY_GROUPS.EEA;
+const SCHENGEN_COUNTRIES = (ZKPassportSDK as any).SCHENGEN_COUNTRIES || COUNTRY_GROUPS.SCHENGEN;
+const SANCTIONED_COUNTRIES = (ZKPassportSDK as any).SANCTIONED_COUNTRIES || COUNTRY_GROUPS.SANCTIONED;
 
 type VerificationStatus = 'idle' | 'requesting' | 'request-received' | 'generating-proof' | 'proof-generated' | 'verified' | 'rejected' | 'error';
 type TabType = 'basic' | 'verification' | 'advanced' | 'example';
@@ -132,6 +139,10 @@ export function ZKPassportPage() {
     error: null,
     bridgeConnected: false,
   });
+  
+  // For history tracking
+  const historyManager = useRef(getVerificationHistoryManager());
+  const verificationStartTime = useRef<number | null>(null);
 
   // Request configuration
   const [requestConfig, setRequestConfig] = useState({
@@ -177,6 +188,57 @@ export function ZKPassportPage() {
     bindChain: '',
     bindCustomData: '',
   });
+
+  // Record verification to history
+  const recordVerification = useCallback((
+    status: VerificationRecord['status'],
+    result?: QueryResult,
+    error?: string
+  ) => {
+    const duration = verificationStartTime.current 
+      ? Date.now() - verificationStartTime.current 
+      : undefined;
+    
+    historyManager.current.addRecord({
+      policyId: null,
+      policyLabel: requestConfig.name,
+      status,
+      uniqueIdentifier: verificationState.uniqueIdentifier,
+      requestId: verificationState.requestId || 'unknown',
+      queryResultSummary: result ? createQueryResultSummary(result) : undefined,
+      proofCount: verificationState.proofs.length,
+      error,
+      duration,
+      devMode: requestConfig.devMode,
+    });
+  }, [requestConfig.name, requestConfig.devMode, verificationState]);
+
+  // Download verification proofs
+  const downloadProofs = useCallback(() => {
+    if (verificationState.proofs.length === 0) return;
+    
+    const proofData = {
+      timestamp: new Date().toISOString(),
+      requestId: verificationState.requestId,
+      uniqueIdentifier: verificationState.uniqueIdentifier,
+      verified: verificationState.verified,
+      proofs: verificationState.proofs,
+      result: verificationState.result,
+      config: {
+        name: requestConfig.name,
+        purpose: requestConfig.purpose,
+        devMode: requestConfig.devMode,
+      },
+    };
+    
+    const blob = new Blob([JSON.stringify(proofData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zkpassport-proof-${verificationState.requestId || 'unknown'}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [verificationState, requestConfig]);
 
   const buildQuery = useCallback(async () => {
     try {
@@ -332,6 +394,7 @@ export function ZKPassportPage() {
 
   const startVerification = useCallback(async () => {
     try {
+      verificationStartTime.current = Date.now();
       setVerificationState(prev => ({ ...prev, status: 'requesting', error: null, proofs: [] }));
       
       const query = await buildQuery();
@@ -1110,6 +1173,15 @@ export function ZKPassportPage() {
         </div>
       </section>
 
+      {/* Progress Component */}
+      {verificationState.status !== 'idle' && (
+        <ZKPassportProgress
+          currentStage={verificationState.status as VerificationStage}
+          proofCount={verificationState.proofs.length}
+          error={verificationState.error}
+        />
+      )}
+
       {/* Status Display */}
       {verificationState.status !== 'idle' && (
         <section className={`card zkpassport-status ${getStatusColor()}`}>
@@ -1169,6 +1241,13 @@ export function ZKPassportPage() {
                   <strong>Unique Identifier:</strong> {verificationState.uniqueIdentifier}
                 </div>
               )}
+              <button
+                onClick={downloadProofs}
+                className="tiny-button"
+                style={{ marginTop: '1rem' }}
+              >
+                📥 Download Verification Proof
+              </button>
             </div>
           )}
         </section>

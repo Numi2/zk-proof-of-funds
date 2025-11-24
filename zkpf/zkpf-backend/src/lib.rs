@@ -14,8 +14,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use blake3;
-use hex;
 use once_cell::sync::Lazy;
 use serde_json::Value as JsonValue;
 use sled::Db;
@@ -24,14 +22,12 @@ use tokio_util::io::ReaderStream;
 use tower_http::cors::{Any, CorsLayer};
 use uuid::Uuid;
 use zkpf_circuit::{
-    custodians::CUSTODIAN_ID_ZASHI,
     gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
     PublicInputs, ZkpfCircuitInput,
 };
 use zkpf_common::{
-    allowlisted_custodian_hash, allowlisted_custodian_hash_bytes, compute_nullifier_fr,
-    custodian_pubkey_hash, deserialize_verifier_public_inputs, load_prover_artifacts,
-    load_prover_artifacts_without_pk, load_verifier_artifacts, nullifier_fr,
+    compute_nullifier_fr, custodian_pubkey_hash, deserialize_verifier_public_inputs,
+    load_prover_artifacts, load_prover_artifacts_without_pk, load_verifier_artifacts, nullifier_fr,
     public_inputs_to_instances_with_layout, public_to_verifier_inputs, reduce_be_bytes_to_fr,
     Attestation, ProofBundle, ProverArtifacts, PublicInputLayout, VerifierArtifacts,
     VerifierPublicInputs,
@@ -61,7 +57,6 @@ const CODE_CIRCUIT_VERSION: &str = "CIRCUIT_VERSION_MISMATCH";
 const CODE_PUBLIC_INPUTS: &str = "PUBLIC_INPUTS_INVALID";
 const CODE_POLICY_NOT_FOUND: &str = "POLICY_NOT_FOUND";
 const CODE_POLICY_MISMATCH: &str = "POLICY_MISMATCH";
-const CODE_CUSTODIAN_MISMATCH: &str = "CUSTODIAN_MISMATCH";
 const CODE_EPOCH_DRIFT: &str = "EPOCH_DRIFT";
 const CODE_NULLIFIER_REPLAY: &str = "NULLIFIER_REPLAY";
 const CODE_NULLIFIER_STORE_ERROR: &str = "NULLIFIER_STORE_ERROR";
@@ -591,7 +586,6 @@ async fn compose_policy_handler(
     let key_rail = req.rail_id.clone();
     let key_threshold = req.threshold_raw;
     let key_currency = req.required_currency_code as u64;
-    let key_custodian = req.required_custodian_id as u64;
     let key_scope = req.verifier_scope_id;
 
     let mut max_policy_id: u64 = 0;
@@ -617,10 +611,6 @@ async fn compose_policy_handler(
             .get("required_currency_code")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let custodian = entry
-            .get("required_custodian_id")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
         let scope = entry
             .get("verifier_scope_id")
             .and_then(|v| v.as_u64())
@@ -630,7 +620,6 @@ async fn compose_policy_handler(
             && rail == key_rail
             && threshold == key_threshold
             && currency == key_currency
-            && custodian == key_custodian
             && scope == key_scope
         {
             existing = Some(entry.clone());
@@ -656,7 +645,6 @@ async fn compose_policy_handler(
             "options": req.options,
             "threshold_raw": req.threshold_raw,
             "required_currency_code": req.required_currency_code,
-            "required_custodian_id": req.required_custodian_id,
             "verifier_scope_id": req.verifier_scope_id,
             "policy_id": new_policy_id,
         });
@@ -685,7 +673,6 @@ async fn compose_policy_handler(
     let expectations = PolicyExpectations {
         threshold_raw: req.threshold_raw,
         required_currency_code: req.required_currency_code,
-        required_custodian_id: req.required_custodian_id,
         verifier_scope_id: req.verifier_scope_id,
         policy_id,
         category: Some(req.category.clone()),
@@ -818,7 +805,6 @@ struct PolicyComposeRequest {
     options: JsonValue,
     threshold_raw: u64,
     required_currency_code: u32,
-    required_custodian_id: u32,
     verifier_scope_id: u64,
 }
 
@@ -938,7 +924,6 @@ impl AttestResponse {
 pub struct PolicyExpectations {
     pub threshold_raw: u64,
     pub required_currency_code: u32,
-    pub required_custodian_id: u32,
     pub verifier_scope_id: u64,
     pub policy_id: u64,
     #[serde(default)]
@@ -965,13 +950,6 @@ impl PolicyExpectations {
                 self.required_currency_code, inputs.required_currency_code
             ));
         }
-        // Custodian validation removed - allowing any custodian
-        // if inputs.required_custodian_id != self.required_custodian_id {
-        //     return Err(format!(
-        //         "required_custodian_id mismatch: expected {}, got {}",
-        //         self.required_custodian_id, inputs.required_custodian_id
-        //     ));
-        // }
         if inputs.verifier_scope_id != self.verifier_scope_id {
             return Err(format!(
                 "verifier_scope_id mismatch: expected {}, got {}",
@@ -1214,7 +1192,6 @@ struct SessionPolicyView {
     verifier_scope_id: u64,
     threshold_raw: u64,
     required_currency_code: u32,
-    required_custodian_id: u32,
     rail_id: String,
     label: Option<String>,
 }
@@ -1226,7 +1203,6 @@ impl From<&PolicyExpectations> for SessionPolicyView {
             verifier_scope_id: policy.verifier_scope_id,
             threshold_raw: policy.threshold_raw,
             required_currency_code: policy.required_currency_code,
-            required_custodian_id: policy.required_custodian_id,
             rail_id: policy
                 .rail_id
                 .clone()
@@ -1568,9 +1544,7 @@ async fn zashi_session_start(
         .policy_store()
         .get(req.policy_id)
         .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
-    if let Err(err) = ensure_zashi_policy(&policy) {
-        return Err(err);
-    }
+    ensure_zashi_policy(&policy)?;
     let session = state.provider_sessions().start_session(policy);
     let scheme = req
         .deep_link_scheme
@@ -1600,16 +1574,6 @@ async fn zashi_session_submit(
     }
 
     let attestation = req.attestation;
-    // Custodian validation removed - allowing any custodian
-    // if attestation.custodian_id != policy.required_custodian_id {
-    //     state
-    //         .provider_sessions()
-    //         .finish_failure(&req.session_id, "custodian mismatch".into());
-    //     return Err(ApiError::bad_request(
-    //         CODE_POLICY_MISMATCH,
-    //         "attestation custodian_id does not match policy",
-    //     ));
-    // }
     if attestation.currency_code_int != policy.required_currency_code {
         state
             .provider_sessions()
@@ -1655,7 +1619,6 @@ async fn zashi_session_submit(
     let public = PublicInputs {
         threshold_raw: policy.threshold_raw,
         required_currency_code: policy.required_currency_code,
-        required_custodian_id: policy.required_custodian_id,
         current_epoch,
         verifier_scope_id: policy.verifier_scope_id,
         policy_id: policy.policy_id,
@@ -1738,7 +1701,6 @@ async fn provider_prove_balance_handler(
     let public = PublicInputs {
         threshold_raw: policy.threshold_raw,
         required_currency_code: policy.required_currency_code,
-        required_custodian_id: policy.required_custodian_id,
         current_epoch,
         verifier_scope_id: policy.verifier_scope_id,
         policy_id: policy.policy_id,
@@ -1749,7 +1711,7 @@ async fn provider_prove_balance_handler(
     let witness = AttestationWitness {
         balance_raw: att.balance_raw,
         currency_code_int: att.currency_code_int,
-        custodian_id: policy.required_custodian_id,
+        custodian_id: att.custodian_id,
         attestation_id: att.attestation_id,
         issued_at: att.issued_at,
         valid_until: att.valid_until,
@@ -1868,21 +1830,6 @@ fn prover_enabled_from_env() -> bool {
         .unwrap_or(true)
 }
 
-// Custodian validation removed - allowing any custodian
-// fn validate_custodian_hash(inputs: &zkpf_common::VerifierPublicInputs) -> Result<(), String> {
-//     let expected =
-//         allowlisted_custodian_hash_bytes(inputs.required_custodian_id).ok_or_else(|| {
-//             format!(
-//                 "custodian_id {} is not allow-listed",
-//                 inputs.required_custodian_id
-//             )
-//         })?;
-//     if expected != inputs.custodian_pubkey_hash {
-//         return Err("custodian_pubkey_hash does not match allow-listed key".into());
-//     }
-//     Ok(())
-// }
-
 fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result<(), String> {
     let server_epoch = config.current_epoch();
     let drift = config.max_drift_secs();
@@ -1907,17 +1854,7 @@ fn validate_epoch(config: &EpochConfig, inputs: &VerifierPublicInputs) -> Result
     Ok(())
 }
 
-fn ensure_zashi_policy(policy: &PolicyExpectations) -> Result<(), ApiError> {
-    // Custodian validation removed - allowing any custodian
-    // if policy.required_custodian_id != CUSTODIAN_ID_ZASHI {
-    //     return Err(ApiError::bad_request(
-    //         CODE_POLICY_MISMATCH,
-    //         format!(
-    //             "policy {} is not bound to the Zashi custodian {}",
-    //             policy.policy_id, CUSTODIAN_ID_ZASHI
-    //         ),
-    //     ));
-    // }
+fn ensure_zashi_policy(_policy: &PolicyExpectations) -> Result<(), ApiError> {
     Ok(())
 }
 

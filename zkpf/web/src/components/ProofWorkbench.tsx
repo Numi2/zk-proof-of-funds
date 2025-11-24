@@ -230,11 +230,6 @@ export function ProofWorkbench({
         `required_currency_code mismatch: bundle has ${publicInputs.required_currency_code}, but policy expects ${selectedPolicy.required_currency_code}`,
       );
     }
-    if (publicInputs.required_custodian_id !== selectedPolicy.required_custodian_id) {
-      problems.push(
-        `required_custodian_id mismatch: bundle has ${publicInputs.required_custodian_id}, but policy expects ${selectedPolicy.required_custodian_id}`,
-      );
-    }
     if (publicInputs.verifier_scope_id !== selectedPolicy.verifier_scope_id) {
       problems.push(
         `verifier_scope_id mismatch: bundle has ${publicInputs.verifier_scope_id}, but policy expects ${selectedPolicy.verifier_scope_id}`,
@@ -602,6 +597,10 @@ export function ProofWorkbench({
         This page lines up with the <strong>“Verify proof”</strong> and <strong>“Share &amp; record”</strong> steps in
         the checklist. Follow the flow below from bundle preparation through optional on-chain attestation.
       </p>
+      <p className="muted small">
+        The built-in sample bundles use mock proof bytes for shape and policy/epoch wiring only. The verifier will
+        ultimately reject them at the cryptographic check, so use real prover output for end-to-end success.
+      </p>
       <FlowVisualizer steps={flowSteps} />
       <div className="input-grid">
         <label className="field" htmlFor={textareaId}>
@@ -775,14 +774,6 @@ export function ProofWorkbench({
                   <div>
                     <dt>Threshold</dt>
                     <dd>{formatPolicyThreshold(selectedPolicy).formatted}</dd>
-                  </div>
-                  <div>
-                    <dt>Custodian</dt>
-                    <dd>
-                      {selectedPolicy.required_custodian_id === 0
-                        ? 'Any custodian'
-                        : selectedPolicy.required_custodian_id}
-                    </dd>
                   </div>
                   <div>
                     <dt>Scope</dt>

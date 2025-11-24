@@ -51,6 +51,8 @@ declare module '@chainsafe/webzjs-wallet' {
   }
 
   export function initThreadPool(threads: number): Promise<void>;
+
+  export default function init(module_or_path?: string | URL | Request | WebAssembly.Module): Promise<void>;
 }
 
 

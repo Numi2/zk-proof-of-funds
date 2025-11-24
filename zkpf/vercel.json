@@ -4,6 +4,21 @@
   "installCommand": "cd web && npm install",
   "buildCommand": "cd web && npm run build",
   "outputDirectory": "web/dist",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "credentialless"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/zkpf/params", "destination": "/api/zkpf/params" },
     { "source": "/zkpf/epoch", "destination": "/api/zkpf/epoch" },
@@ -11,6 +26,7 @@
     { "source": "/zkpf/verify", "destination": "/api/zkpf/verify" },
     { "source": "/zkpf/verify-bundle", "destination": "/api/zkpf/verify-bundle" },
     { "source": "/zkpf/attest", "destination": "/api/zkpf/attest" },
+    { "source": "/lightwalletd/:path*", "destination": "/api/lightwalletd" },
     {
       "source": "/(.*)",
       "destination": "/index.html"

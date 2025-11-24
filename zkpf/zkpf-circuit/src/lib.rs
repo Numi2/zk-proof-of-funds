@@ -1,7 +1,6 @@
 // zkpf/zkpf-circuit/src/lib.rs
 // Numan Thabit 2025
 
-pub mod custodians;
 pub mod gadgets;
 
 use halo2_base::{
@@ -26,7 +25,7 @@ use crate::gadgets::attestation::{AttestationWitness, Secp256k1Pubkey};
 
 const DEFAULT_K: usize = 19;
 const DEFAULT_LOOKUP_BITS: usize = 18;
-const NUM_INSTANCE_COLUMNS: usize = 8;
+const NUM_INSTANCE_COLUMNS: usize = 7;
 const DEFAULT_ADVICE_PER_PHASE: usize = 4;
 const DEFAULT_FIXED_COLUMNS: usize = 1;
 const DEFAULT_LOOKUP_ADVICE_PER_PHASE: usize = 1;
@@ -46,7 +45,6 @@ fn default_params() -> BaseCircuitParams {
 pub struct PublicInputs {
     pub threshold_raw: u64,
     pub required_currency_code: u32,
-    pub required_custodian_id: u32,
     pub current_epoch: u64,
     pub verifier_scope_id: u64,
     pub policy_id: u64,
@@ -88,7 +86,6 @@ pub fn public_instances(public: &PublicInputs) -> Vec<Vec<Fr>> {
     vec![
         vec![Fr::from(public.threshold_raw)],
         vec![Fr::from(public.required_currency_code as u64)],
-        vec![Fr::from(public.required_custodian_id as u64)],
         vec![Fr::from(public.current_epoch)],
         vec![Fr::from(public.verifier_scope_id)],
         vec![Fr::from(public.policy_id)],
@@ -157,32 +154,30 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
     let att = &input.attestation;
     let pub_in = &input.public;
 
-    let mut ctx = builder.main(0);
+    let ctx = builder.main(0);
 
-    let balance = assign_u64(&mut ctx, &range, att.balance_raw);
-    let threshold = assign_u64(&mut ctx, &range, pub_in.threshold_raw);
-    let currency = assign_u32(&mut ctx, &range, att.currency_code_int);
-    let req_currency = assign_u32(&mut ctx, &range, pub_in.required_currency_code);
-    let custodian = assign_u32(&mut ctx, &range, att.custodian_id);
-    let req_custodian = assign_u32(&mut ctx, &range, pub_in.required_custodian_id);
-    let attestation_id = assign_u64(&mut ctx, &range, att.attestation_id);
-    let issued_at = assign_u64(&mut ctx, &range, att.issued_at);
-    let valid_until = assign_u64(&mut ctx, &range, att.valid_until);
-    let current_epoch = assign_u64(&mut ctx, &range, pub_in.current_epoch);
-    let verifier_scope = assign_u64(&mut ctx, &range, pub_in.verifier_scope_id);
-    let policy_id = assign_u64(&mut ctx, &range, pub_in.policy_id);
+    let balance = assign_u64(ctx, &range, att.balance_raw);
+    let threshold = assign_u64(ctx, &range, pub_in.threshold_raw);
+    let currency = assign_u32(ctx, &range, att.currency_code_int);
+    let req_currency = assign_u32(ctx, &range, pub_in.required_currency_code);
+    let custodian = assign_u32(ctx, &range, att.custodian_id);
+    let attestation_id = assign_u64(ctx, &range, att.attestation_id);
+    let issued_at = assign_u64(ctx, &range, att.issued_at);
+    let valid_until = assign_u64(ctx, &range, att.valid_until);
+    let current_epoch = assign_u64(ctx, &range, pub_in.current_epoch);
+    let verifier_scope = assign_u64(ctx, &range, pub_in.verifier_scope_id);
+    let policy_id = assign_u64(ctx, &range, pub_in.policy_id);
     let account_id_hash = ctx.load_witness(att.account_id_hash);
 
-    crate::gadgets::compare::enforce_leq(&mut ctx, gate, &range, issued_at, current_epoch);
-    crate::gadgets::compare::enforce_leq(&mut ctx, gate, &range, current_epoch, valid_until);
+    crate::gadgets::compare::enforce_leq(ctx, gate, &range, issued_at, current_epoch);
+    crate::gadgets::compare::enforce_leq(ctx, gate, &range, current_epoch, valid_until);
 
-    crate::gadgets::policy::enforce_currency(&mut ctx, gate, currency, req_currency);
-    crate::gadgets::policy::enforce_custodian(&mut ctx, gate, custodian, req_custodian);
+    crate::gadgets::policy::enforce_currency(ctx, gate, currency, req_currency);
 
-    crate::gadgets::compare::enforce_geq(&mut ctx, gate, &range, balance, threshold);
+    crate::gadgets::compare::enforce_geq(ctx, gate, &range, balance, threshold);
 
     let digest_fr = crate::gadgets::poseidon::hash_attestation(
-        &mut ctx,
+        ctx,
         gate,
         balance,
         attestation_id,
@@ -192,21 +187,21 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
         valid_until,
         account_id_hash,
     );
-    let digest_from_bytes = fr_from_be_bytes(&mut ctx, gate, &range, &att.message_hash);
+    let digest_from_bytes = fr_from_be_bytes(ctx, gate, &range, &att.message_hash);
     ctx.constrain_equal(&digest_fr, &digest_from_bytes);
 
     let (witness_pubkey_x, witness_pubkey_y) =
-        assign_pubkey_coords(&mut ctx, gate, &range, &att.custodian_pubkey);
+        assign_pubkey_coords(ctx, gate, &range, &att.custodian_pubkey);
 
     crate::gadgets::ecdsa::verify_ecdsa_over_attestation(
-        &mut ctx,
+        ctx,
         &range,
         att,
         &att.custodian_pubkey,
     );
 
     let computed_nullifier = crate::gadgets::nullifier::compute_nullifier(
-        &mut ctx,
+        ctx,
         gate,
         account_id_hash,
         verifier_scope,
@@ -217,10 +212,10 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
     ctx.constrain_equal(&computed_nullifier, &public_nullifier);
 
     let pubkey_hash = hash_pubkey_coords(
-        &mut ctx,
+        ctx,
         gate,
-        witness_pubkey_x.clone(),
-        witness_pubkey_y.clone(),
+        witness_pubkey_x,
+        witness_pubkey_y,
     );
     let public_pubkey_hash = ctx.load_witness(pub_in.custodian_pubkey_hash);
     ctx.constrain_equal(&pubkey_hash, &public_pubkey_hash);
@@ -232,7 +227,6 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
         [
             threshold,
             req_currency,
-            req_custodian,
             current_epoch,
             verifier_scope,
             policy_id,

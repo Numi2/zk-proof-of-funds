@@ -76,23 +76,15 @@ export function policyRailLabel(policy: PolicyDefinition): string {
 
 export function policyShortSummary(policy: PolicyDefinition): string {
   const threshold = formatPolicyThreshold(policy).formatted;
-  const custodian =
-    policy.required_custodian_id === 0
-      ? 'Any custodian'
-      : `Custodian ${policy.required_custodian_id}`;
-  return `${threshold} · ${custodian} · Scope ${policy.verifier_scope_id}`;
+  return `${threshold} · Scope ${policy.verifier_scope_id}`;
 }
 
 export function policyNarrative(policy: PolicyDefinition): string {
   const displayName = policyDisplayName(policy);
   const threshold = formatPolicyThreshold(policy).formatted;
   const scope = `scope ${policy.verifier_scope_id}`;
-  const custodian =
-    policy.required_custodian_id === 0
-      ? 'no custodian allowlist'
-      : `custodian ${policy.required_custodian_id}`;
   const rail = policyRailLabel(policy);
-  return `${displayName} enforces ≥ ${threshold} for ${scope} (${custodian}) via ${rail}.`;
+  return `${displayName} enforces ≥ ${threshold} for ${scope} via ${rail}.`;
 }
 
 export function matchesPolicyQuery(policy: PolicyDefinition, query: string): boolean {
@@ -104,7 +96,6 @@ export function matchesPolicyQuery(policy: PolicyDefinition, query: string): boo
   return (
     policy.policy_id.toString().includes(normalized) ||
     policy.verifier_scope_id.toString().includes(normalized) ||
-    policy.required_custodian_id.toString().includes(normalized) ||
     (policy.label?.toLowerCase().includes(normalized) ?? false) ||
     threshold.includes(normalized)
   );

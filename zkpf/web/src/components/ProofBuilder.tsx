@@ -83,7 +83,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const zashiPolicies = useMemo(
     () =>
       policies.filter(
-        (policy) => policy.category?.toUpperCase() === 'ZASHI' || policy.required_custodian_id === 8001,
+        (policy) => policy.category?.toUpperCase() === 'ZASHI',
       ),
     [policies],
   );
@@ -201,7 +201,6 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       if (selectedPolicy) {
         next.public.threshold_raw = selectedPolicy.threshold_raw;
         next.public.required_currency_code = selectedPolicy.required_currency_code;
-        next.public.required_custodian_id = selectedPolicy.required_custodian_id;
         next.public.verifier_scope_id = selectedPolicy.verifier_scope_id;
       }
       return next;
@@ -584,14 +583,6 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             <div>
               <dt>Threshold</dt>
               <dd>{formatPolicyThreshold(selectedPolicy).formatted}</dd>
-            </div>
-            <div>
-              <dt>Custodian</dt>
-              <dd>
-                {selectedPolicy.required_custodian_id === 0
-                  ? 'Any custodian'
-                  : selectedPolicy.required_custodian_id}
-              </dd>
             </div>
             <div>
               <dt>Scope</dt>

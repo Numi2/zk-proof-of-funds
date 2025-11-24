@@ -3,7 +3,6 @@ export type ByteArray = number[];
 export interface VerifierPublicInputs {
   threshold_raw: number;
   required_currency_code: number;
-  required_custodian_id: number;
   current_epoch: number;
   verifier_scope_id: number;
   policy_id: number;
@@ -59,7 +58,6 @@ export interface PolicyDefinition {
   verifier_scope_id: number;
   threshold_raw: number;
   required_currency_code: number;
-  required_custodian_id: number;
   category?: string | null;
   rail_id?: string | null;
   label?: string | null;
@@ -79,7 +77,6 @@ export interface ProviderSessionPolicyView {
   verifier_scope_id: number;
   threshold_raw: number;
   required_currency_code: number;
-  required_custodian_id: number;
   rail_id: string;
   label?: string | null;
 }
@@ -108,7 +105,6 @@ export interface PolicyComposeRequest {
   options?: unknown;
   threshold_raw: number;
   required_currency_code: number;
-  required_custodian_id: number;
   verifier_scope_id: number;
 }
 
@@ -158,7 +154,6 @@ export interface AttestationWitness {
 export interface CircuitPublicInputs {
   threshold_raw: number;
   required_currency_code: number;
-  required_custodian_id: number;
   current_epoch: number;
   verifier_scope_id: number;
   policy_id: number;

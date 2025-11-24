@@ -98,10 +98,6 @@ export function BundleSummary({ bundle, assetRail }: Props) {
             <dd>{inputs.required_currency_code}</dd>
           </div>
           <div>
-            <dt>Custodian ID</dt>
-            <dd>{inputs.required_custodian_id}</dd>
-          </div>
-          <div>
             <dt>Verifier scope</dt>
             <dd>{inputs.verifier_scope_id}</dd>
           </div>

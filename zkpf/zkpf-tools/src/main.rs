@@ -7,7 +7,6 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
-use serde_json;
 use zkpf_common::{
     load_prover_artifacts, serialize_params, serialize_proving_key, serialize_verifying_key,
     write_manifest, ArtifactFile, ArtifactManifest, ProverArtifacts, CIRCUIT_VERSION,
