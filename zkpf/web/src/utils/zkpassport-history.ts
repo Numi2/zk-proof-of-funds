@@ -208,7 +208,7 @@ export function getVerificationHistoryManager(): VerificationHistoryManager {
 }
 
 // Helper function to create a summary from query results
-export function createQueryResultSummary(result: any, policy?: ZKPassportPolicyDefinition): QueryResultSummary {
+export function createQueryResultSummary(result: any, _policy?: ZKPassportPolicyDefinition): QueryResultSummary {
   const summary: QueryResultSummary = {
     disclosedFields: [],
   };

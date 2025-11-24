@@ -169,7 +169,6 @@ export function PolicyComposer({ client, onComposed }: Props) {
           },
           threshold_raw: thresholdRaw,
           required_currency_code: currencyCode,
-          required_custodian_id: custodianId,
           verifier_scope_id: scopeId,
         };
       } else if (category === 'ONCHAIN') {
@@ -200,8 +199,6 @@ export function PolicyComposer({ client, onComposed }: Props) {
           },
           threshold_raw: thresholdRaw,
           required_currency_code: currencyCode,
-          // Synthetic ID representing the on-chain rail operator / indexer.
-          required_custodian_id: 1000,
           verifier_scope_id: scopeId,
         };
       } else {
@@ -231,8 +228,6 @@ export function PolicyComposer({ client, onComposed }: Props) {
           threshold_raw: thresholdRaw,
           // Synthetic code for ZEC; must match the Orchard rail configuration.
           required_currency_code: 999001,
-          // Orchard rail uses 0 for this field and does not enforce a custodian allowlist.
-          required_custodian_id: 0,
           verifier_scope_id: scopeId,
         };
       }

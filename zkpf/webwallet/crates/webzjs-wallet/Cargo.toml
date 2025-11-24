@@ -51,25 +51,16 @@ zcash_primitives = { workspace = true }
 zcash_address = { workspace = true }
 zcash_protocol = { workspace = true, default-features = false }
 zcash_proofs = { workspace = true, default-features = false, features = ["bundled-prover", "multicore"] }
+zcash_keys = { workspace = true, features = ["transparent-inputs", "orchard", "sapling", "unstable"] }
+zcash_client_backend = { workspace = true, default-features = false, features = ["sync", "lightwalletd-tonic", "wasm-bindgen", "orchard", "pczt", "transparent-inputs"] }
+zcash_client_memory = { workspace = true, features = ["orchard", "transparent-inputs"] }
 zip321 = { workspace = true }
 zip32 = { workspace = true }
 orchard = { version = "0.10.1", default-features = false }
 sapling = { workspace = true }
 bip32 = "0.5"
-
-# For WASM builds, we exclude transparent-inputs to avoid secp256k1-sys C compilation
-# For native builds, transparent-inputs is included
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-zcash_keys = { workspace = true, features = ["transparent-inputs", "orchard", "sapling", "unstable"] }
-zcash_client_backend = { workspace = true, default-features = false, features = ["sync", "lightwalletd-tonic", "wasm-bindgen", "orchard", "pczt", "transparent-inputs"] }
-zcash_client_memory = { workspace = true, features = ["orchard", "transparent-inputs"] }
 pczt = { workspace = true, default-features = false, features = ["orchard", "sapling", "transparent"] }
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-zcash_keys = { workspace = true, features = ["orchard", "sapling", "unstable"] }
-zcash_client_backend = { workspace = true, default-features = false, features = ["sync", "lightwalletd-tonic", "wasm-bindgen", "orchard", "pczt"] }
-zcash_client_memory = { workspace = true, features = ["orchard"] }
-pczt = { workspace = true, default-features = false, features = ["orchard", "sapling"] }
 ## gRPC Web dependencies
 prost = { version = "0.13", default-features = false }
 tonic = { version = "0.12", default-features = false, features = [

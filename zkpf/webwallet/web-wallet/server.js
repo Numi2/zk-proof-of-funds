@@ -31,7 +31,7 @@ async function run() {
 
   const app = express();
 
-  // Set custom headers (for WASM multi-threading)
+  // Set custom headers (for WASM multi-threading with SharedArrayBuffer)
   app.use((req, res, next) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');

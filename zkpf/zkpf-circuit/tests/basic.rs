@@ -7,7 +7,6 @@ use halo2curves_axiom::{
 use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1, SecretKey};
 use std::sync::OnceLock;
 use zkpf_circuit::{
-    custodians,
     gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
     PublicInputs, ZkpfCircuit, ZkpfCircuitInput,
 };
@@ -60,25 +59,6 @@ fn test_wrong_currency_fails() {
         .with_public(|public| public.required_currency_code = BASE_CURRENCY + 1)
         .build();
     assert!(run_mock_prover(input).verify().is_err());
-}
-
-#[test]
-fn test_wrong_custodian_fails() {
-    let input = FixtureBuilder::new()
-        .with_public(|public| public.required_custodian_id = BASE_CUSTODIAN + 1)
-        .build();
-    assert!(run_mock_prover(input).verify().is_err());
-}
-
-#[test]
-#[should_panic(expected = "allow-listed")]
-fn test_disallowed_custodian_panics() {
-    let input = FixtureBuilder::new()
-        .with_att(|att| att.custodian_id = BASE_CUSTODIAN + 100)
-        .build();
-    // Building the circuit should panic before the prover runs because the custodian_id
-    // is not part of the compiled allowlist.
-    let _ = run_mock_prover(input);
 }
 
 #[test]
@@ -140,7 +120,6 @@ struct AttestationCore {
 struct PublicCore {
     threshold_raw: u64,
     required_currency_code: u32,
-    required_custodian_id: u32,
     current_epoch: u64,
     verifier_scope_id: u64,
     policy_id: u64,
@@ -167,7 +146,6 @@ impl FixtureBuilder {
             public: PublicCore {
                 threshold_raw: BASE_THRESHOLD,
                 required_currency_code: BASE_CURRENCY,
-                required_custodian_id: BASE_CUSTODIAN,
                 current_epoch: BASE_CURRENT_EPOCH,
                 verifier_scope_id: BASE_SCOPE_ID,
                 policy_id: BASE_POLICY_ID,
@@ -200,18 +178,6 @@ fn assemble_input(att: &AttestationCore, public: &PublicCore) -> ZkpfCircuitInpu
     let derived_pubkey = secp_pubkey_from_secret(&secp, &signing_key);
 
     let custodian_pubkey = derived_pubkey;
-    let allowlisted_pubkey =
-        custodians::lookup_pubkey(att.custodian_id).expect("test custodian must be allow-listed");
-    assert_eq!(
-        custodian_pubkey.x, allowlisted_pubkey.x,
-        "allowlist entry for custodian {} does not match signing key x-coordinate",
-        att.custodian_id
-    );
-    assert_eq!(
-        custodian_pubkey.y, allowlisted_pubkey.y,
-        "allowlist entry for custodian {} does not match signing key y-coordinate",
-        att.custodian_id
-    );
 
     let attestation = AttestationWitness {
         balance_raw: att.balance_raw,
@@ -237,7 +203,6 @@ fn assemble_input(att: &AttestationCore, public: &PublicCore) -> ZkpfCircuitInpu
     let public_inputs = PublicInputs {
         threshold_raw: public.threshold_raw,
         required_currency_code: public.required_currency_code,
-        required_custodian_id: public.required_custodian_id,
         current_epoch: public.current_epoch,
         verifier_scope_id: public.verifier_scope_id,
         policy_id: public.policy_id,

@@ -1,0 +1,15 @@
+{
+  "name": "webzjs-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build:wasm": "./build-wasm.sh",
+    "install:all": "pnpm install",
+    "dev": "pnpm run build:wasm && cd web-wallet && pnpm run dev",
+    "build": "pnpm run build:wasm && cd web-wallet && pnpm run build"
+  },
+  "devDependencies": {
+    "svgo": "^3",
+    "typescript": "^5.0.0"
+  }
+}

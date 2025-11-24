@@ -18,7 +18,7 @@ type WebZjsState = {
 };
 
 type Action =
-  | { type: 'set-web-wallet'; payload: WebWallet }
+  | { type: 'set-web-wallet'; payload: WebWallet | null }
   | { type: 'set-error'; payload: Error | null | string }
   | { type: 'set-summary'; payload: WalletSummary }
   | { type: 'set-chain-height'; payload: bigint }

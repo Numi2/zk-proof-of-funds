@@ -1,0 +1,6 @@
+packages:
+  - "crates/webzjs-wallet/pkg"
+  - "crates/webzjs-keys/pkg"
+  - "web-wallet"
+  - "snap"
+

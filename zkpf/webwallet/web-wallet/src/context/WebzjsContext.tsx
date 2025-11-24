@@ -17,6 +17,24 @@ import { MAINNET_LIGHTWALLETD_PROXY } from '../config/constants';
 import { Snap } from '../types';
 import toast, { Toaster } from 'react-hot-toast';
 
+// Check if SharedArrayBuffer is properly supported
+const isSharedMemorySupported = () => {
+  try {
+    // Check if we have cross-origin isolation
+    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
+      return false;
+    }
+    // Try to create a SharedArrayBuffer
+    const sab = new SharedArrayBuffer(1);
+    // Try to use Atomics
+    const ta = new Int32Array(sab);
+    Atomics.load(ta, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export interface WebZjsState {
   webWallet: WebWallet | null;
   installedSnap: Snap | null;
@@ -91,16 +109,25 @@ export const WebZjsProvider = ({ children }: { children: React.ReactNode }) => {
       await initWebzJSWallet();
       await initWebzJSKeys();
 
-      try {
-        const concurrency = navigator.hardwareConcurrency || 4;
-        await initThreadPool(concurrency);
-      } catch (err) {
-        console.error('Unable to initialize Thread Pool:', err);
-        dispatch({
-          type: 'set-error',
-          payload: new Error('Unable to initialize Thread Pool'),
-        });
-        return;
+      // Check if shared memory is supported before attempting thread pool init
+      const sharedMemSupported = isSharedMemorySupported();
+      if (sharedMemSupported) {
+        try {
+          const concurrency = navigator.hardwareConcurrency || 4;
+          await initThreadPool(concurrency);
+          console.info('Thread pool initialized with', concurrency, 'threads');
+        } catch (err) {
+          // Thread pool initialization failed despite SharedArrayBuffer being available.
+          // This typically means the WASM wasn't compiled with shared memory support.
+          console.warn('Thread pool initialization failed:', err);
+          console.warn('The WASM module may not have been compiled with shared memory support.');
+          console.warn('Continuing without multi-threading - operations will be slower.');
+        }
+      } else {
+        console.info('SharedArrayBuffer not available - running in single-threaded mode');
+        console.info('For multi-threading support, ensure:');
+        console.info('  1. The page is served with COOP/COEP headers');
+        console.info('  2. The WASM is compiled with shared memory support');
       }
 
       const bytes = await get('wallet');

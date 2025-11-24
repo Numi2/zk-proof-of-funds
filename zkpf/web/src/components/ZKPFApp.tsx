@@ -22,6 +22,22 @@ const PolicyConsole = lazy(() =>
   import('./PolicyConsole').then((module) => ({ default: module.PolicyConsole })),
 );
 
+const WalletLayout = lazy(() =>
+  import('./wallet/WalletLayout').then((module) => ({ default: module.WalletLayout })),
+);
+
+const WalletDashboard = lazy(() =>
+  import('./wallet/WalletDashboard').then((module) => ({ default: module.WalletDashboard })),
+);
+
+const WalletReceive = lazy(() =>
+  import('./wallet/WalletReceive').then((module) => ({ default: module.WalletReceive })),
+);
+
+const WalletSend = lazy(() =>
+  import('./wallet/WalletSend').then((module) => ({ default: module.WalletSend })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
@@ -173,67 +189,76 @@ export function ZKPFApp() {
   }, [connectionState, hasBuiltBundle, location.pathname, verificationOutcome]);
 
   const isWorkbenchRoute = location.pathname === '/workbench';
+  const isWalletRoute = location.pathname.startsWith('/wallet');
 
   return (
     <div className="app-shell">
+      <div className="wallet-entry">
+        <NavLink to="/wallet" className="wallet-button">
+          <span>Wallet</span>
+        </NavLink>
+      </div>
       <div className="zkpassport-entry">
         <NavLink to="/zkpassport" className="zkpassport-button">
           <span>ZKPassport</span>
         </NavLink>
       </div>
-      <header className="hero">
-        <div className="header-top">
-          <div className="brand">
-            <div className="logo">
-              <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
+      
+      {!isWalletRoute && (
+        <header className="hero">
+          <div className="header-top">
+            <div className="brand">
+              <div className="logo">
+                <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
+              </div>
+              <div>
+                <p className="eyebrow">Institutional ZK </p>
+                <h1>Zero-knowledge proof-of-funds</h1>
+              </div>
             </div>
-            <div>
-              <p className="eyebrow">Institutional ZK </p>
-              <h1>Zero-knowledge proof-of-funds</h1>
+            <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
+              <span className="status-dot"></span>
+              <span className="status-text">
+                {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
+              </span>
             </div>
+            <div className="hero-subtitle"></div>
           </div>
-          <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
-            <span className="status-dot"></span>
-            <span className="status-text">
-              {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
-            </span>
-          </div>
-          <div className="hero-subtitle"></div>
-        </div>
-        <p>
-          Prove funds, without exposing privacy.
-        </p>
+          <p>
+            Prove funds, without exposing privacy.
+          </p>
 
-        <nav className="main-nav">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-          >
-            Overview
-          </NavLink>
-          <NavLink
-            to="/build"
-            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-          >
-            Build proof
-          </NavLink>
-          <NavLink
-            to="/workbench"
-            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-          >
-            Verify console
-          </NavLink>
-          <NavLink
-            to="/policies"
-            className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
-          >
-            Policy composer
-          </NavLink>
-        </nav>
-      </header>
+          <nav className="main-nav">
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            >
+              Overview
+            </NavLink>
+            <NavLink
+              to="/build"
+              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            >
+              Build proof
+            </NavLink>
+            <NavLink
+              to="/workbench"
+              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            >
+              Verify console
+            </NavLink>
+            <NavLink
+              to="/policies"
+              className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
+            >
+              Policy composer
+            </NavLink>
+          </nav>
+        </header>
+      )}
 
-      {!isWorkbenchRoute && (
+      {!isWorkbenchRoute && !isWalletRoute && (
         <ProgressChecklist
           steps={checklistSteps}
           onStepClick={(id) => {
@@ -381,17 +406,39 @@ export function ZKPFApp() {
           )}
         />
 
+        <Route
+          path="/wallet"
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading wallet</p>
+                  <p className="muted small">Preparing Zcash WebWallet…</p>
+                </section>
+              )}
+            >
+              <WalletLayout />
+            </Suspense>
+          )}
+        >
+          <Route index element={<WalletDashboard />} />
+          <Route path="receive" element={<WalletReceive />} />
+          <Route path="send" element={<WalletSend />} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      <div className="hero-highlights">
-        {HERO_HIGHLIGHTS.map((item) => (
-          <div key={item.title} className="hero-highlight">
-            <p className="hero-highlight-title">{item.title}</p>
-            <p>{item.description}</p>
-          </div>
-        ))}
-      </div>
+      {!isWalletRoute && (
+        <div className="hero-highlights">
+          {HERO_HIGHLIGHTS.map((item) => (
+            <div key={item.title} className="hero-highlight">
+              <p className="hero-highlight-title">{item.title}</p>
+              <p>{item.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <footer>
         <p>

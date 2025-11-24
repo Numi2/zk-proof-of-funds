@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
+    "@parcel/config-default": "^2.16.1",
     "@parcel/core": "^2.13.3",
     "@parcel/transformer-svg-react": "^2.13.3",
     "@tailwindcss/postcss": "^4.0.0",

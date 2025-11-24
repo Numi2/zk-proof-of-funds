@@ -597,7 +597,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
               <textarea
                 value={seedPhraseInput}
                 onChange={(event) => setSeedPhraseInput(event.target.value)}
-                placeholder="abandon abandon abandon ..."
+                placeholder="..."
                 rows={3}
               />
             </div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ZKPassportPolicyClient } from '../api/zkpassport-policies';
-import type { ZKPassportPolicyDefinition, ZKPassportPolicyComposeRequest } from '../types/zkpassport';
+import type { ZKPassportPolicyDefinition } from '../types/zkpassport';
 import { ZKPassportPolicyComposer } from './ZKPassportPolicyComposer';
 import { ZKPassportTemplateSelector } from './ZKPassportTemplateSelector';
 import { ZKPassportHistory } from './ZKPassportHistory';

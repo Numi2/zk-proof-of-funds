@@ -11,6 +11,37 @@ type AccountData = {
   transparentAddress: string;
 };
 
+/**
+ * Extract a human-readable error message from various error types.
+ * Handles MetaMask errors which are often plain objects with `message` properties.
+ */
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  if (err && typeof err === 'object') {
+    const errObj = err as Record<string, unknown>;
+    if (typeof errObj.message === 'string') {
+      return errObj.message;
+    }
+    if (errObj.data && typeof errObj.data === 'object') {
+      const data = errObj.data as Record<string, unknown>;
+      if (typeof data.message === 'string') {
+        return data.message;
+      }
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return 'Unknown error';
+    }
+  }
+  return 'Unknown error';
+}
+
 export function useWebzjsActions() {
   const { state, dispatch } = useWebZjsContext();
   const { installedSnap } = useMetaMask();
@@ -60,7 +91,7 @@ export function useWebzjsActions() {
       console.error('Error syncing state with WebWallet:', error);
       dispatch({
         type: 'set-error',
-        payload: error instanceof Error ? error : new Error(String(error)),
+        payload: error instanceof Error ? error : new Error(extractErrorMessage(error)),
       });
     }
   }, [state.webWallet, dispatch]);
@@ -76,7 +107,7 @@ export function useWebzjsActions() {
       console.error('Error flushing WebWallet DB to store:', error);
       dispatch({
         type: 'set-error',
-        payload: error instanceof Error ? error : new Error(String(error)),
+        payload: error instanceof Error ? error : new Error(extractErrorMessage(error)),
       });
     }
   }, [state.webWallet, dispatch]);
@@ -132,7 +163,7 @@ export function useWebzjsActions() {
       await syncStateWithWallet();
       await flushDbToStore();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = extractErrorMessage(error);
       dispatch({
         type: 'set-error',
         payload: new Error(
@@ -179,7 +210,7 @@ export function useWebzjsActions() {
       console.error('Error during Zcash rescan:', err);
       dispatch({
         type: 'set-error',
-        payload: err instanceof Error ? err : new Error(String(err)),
+        payload: err instanceof Error ? err : new Error(extractErrorMessage(err)),
       });
     } finally {
       dispatch({ type: 'set-sync-in-progress', payload: false });
@@ -218,7 +249,7 @@ export function useWebzjsActions() {
         console.error('Error creating account from seed phrase:', error);
         dispatch({
           type: 'set-error',
-          payload: error instanceof Error ? error : new Error(String(error)),
+          payload: error instanceof Error ? error : new Error(extractErrorMessage(error)),
         });
         throw error;
       }

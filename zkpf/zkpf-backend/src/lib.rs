@@ -1711,7 +1711,7 @@ async fn provider_prove_balance_handler(
     let witness = AttestationWitness {
         balance_raw: att.balance_raw,
         currency_code_int: att.currency_code_int,
-        custodian_id: att.custodian_id,
+        custodian_id: 0,
         attestation_id: att.attestation_id,
         issued_at: att.issued_at,
         valid_until: att.valid_until,

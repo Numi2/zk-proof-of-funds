@@ -32,8 +32,10 @@ tokio_with_wasm = { version = "0.7.1", features = ["rt", "rt-multi-thread", "syn
 
 ## Zcash dependencies
 
+# Note: transparent-inputs requires secp256k1-sys C compilation - use Homebrew LLVM on macOS
 zcash_keys = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", features = ["transparent-inputs", "orchard", "sapling", "unstable"] }
 zcash_client_backend = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", default-features = false, features = ["sync", "lightwalletd-tonic", "wasm-bindgen", "orchard"] }
+# Note: transparent-inputs requires secp256k1-sys C compilation - use Homebrew LLVM on macOS
 zcash_client_memory = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", features = ["orchard", "transparent-inputs"] }
 zcash_primitives = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090" }
 zcash_address = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090" }

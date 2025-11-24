@@ -191,7 +191,6 @@ export function PolicyConsole({ client }: Props) {
     return filteredPolicies.map((policy) => {
       const threshold = formatPolicyThreshold(policy).formatted;
       const isSelected = inspectorPolicy?.policy_id === policy.policy_id;
-      const custodian = policy.required_custodian_id === 0 ? 'Any' : `#{policy.required_custodian_id}`;
       return (
         <tr
           key={policy.policy_id}
@@ -216,7 +215,7 @@ export function PolicyConsole({ client }: Props) {
           </td>
           <td>{threshold}</td>
           <td>Scope {policy.verifier_scope_id}</td>
-          <td>{custodian}</td>
+          <td>—</td>
           <td>{policyRailLabel(policy)}</td>
         </tr>
       );
@@ -324,14 +323,6 @@ export function PolicyConsole({ client }: Props) {
                   <div>
                     <span>Scope</span>
                     <strong>{inspectorPolicy.verifier_scope_id}</strong>
-                  </div>
-                  <div>
-                    <span>Custodian</span>
-                    <strong>
-                      {inspectorPolicy.required_custodian_id === 0
-                        ? 'Any custodian'
-                        : inspectorPolicy.required_custodian_id}
-                    </strong>
                   </div>
                   <div>
                     <span>Category</span>

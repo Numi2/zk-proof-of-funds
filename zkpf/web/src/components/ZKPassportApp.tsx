@@ -23,6 +23,9 @@ export function ZKPassportApp() {
   return (
     <div className="app-shell zkpassport-app">
       <header className="hero">
+        <NavLink to="/" className="zkpassport-back-link">
+          ← Back to ZKPF
+        </NavLink>
         <div className="header-top">
           <div className="brand">
             <div className="logo">

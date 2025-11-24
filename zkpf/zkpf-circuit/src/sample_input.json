@@ -185,7 +185,6 @@
   "public": {
     "threshold_raw": 1000000,
     "required_currency_code": 840,
-    "required_custodian_id": 42,
     "current_epoch": 1700000000,
     "verifier_scope_id": 31415,
     "policy_id": 271828,

@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use halo2curves_axiom::{
     bn256::Fr,
     ff::{Field, PrimeField},
@@ -13,7 +13,6 @@ use once_cell::sync::OnceCell;
 use poseidon_primitives::poseidon::primitives::{Hash as PoseidonHash, Spec, VariableLengthIden3};
 use sha2::Sha256;
 use zkpf_circuit::{
-    custodians,
     gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
     PublicInputs, ZkpfCircuitInput,
 };
@@ -208,13 +207,6 @@ fn prepare_input() -> Result<PreparedInput> {
 
     let (sig_r, sig_s) = sign_digest(&signing_key, &message_hash)?;
     let derived_pubkey = derive_pubkey(&signing_key)?;
-    let allowlisted_pubkey = *custodians::lookup_pubkey(custodian_id)
-        .ok_or_else(|| anyhow!("custodian {} is not allow-listed", custodian_id))?;
-    ensure!(
-        pubkey_eq(&derived_pubkey, &allowlisted_pubkey),
-        "signing key does not match allow-listed pubkey for id {}",
-        custodian_id
-    );
     let nullifier_inputs = vec![
         account_id_hash,
         Fr::from(verifier_scope_id),
@@ -222,17 +214,16 @@ fn prepare_input() -> Result<PreparedInput> {
         Fr::from(current_epoch),
     ];
     let nullifier = poseidon_hash(&nullifier_inputs);
-    let custodian_pubkey_hash = custodian_pubkey_hash(&allowlisted_pubkey);
+    let custodian_pubkey_hash_fr = custodian_pubkey_hash(&derived_pubkey);
 
     let public_inputs = PublicInputs {
         threshold_raw,
         required_currency_code: currency_code_int,
-        required_custodian_id: custodian_id,
         current_epoch,
         verifier_scope_id,
         policy_id,
         nullifier,
-        custodian_pubkey_hash,
+        custodian_pubkey_hash: custodian_pubkey_hash_fr,
     };
 
     let attestation = AttestationWitness {
@@ -243,7 +234,7 @@ fn prepare_input() -> Result<PreparedInput> {
         issued_at,
         valid_until,
         account_id_hash,
-        custodian_pubkey: allowlisted_pubkey,
+        custodian_pubkey: derived_pubkey,
         signature: EcdsaSignature { r: sig_r, s: sig_s },
         message_hash,
     };
@@ -311,10 +302,6 @@ fn derive_pubkey(signing_key: &SigningKey) -> Result<Secp256k1Pubkey> {
     x.copy_from_slice(encoded.x().ok_or_else(|| anyhow!("missing x coordinate"))?);
     y.copy_from_slice(encoded.y().ok_or_else(|| anyhow!("missing y coordinate"))?);
     Ok(Secp256k1Pubkey { x, y })
-}
-
-fn pubkey_eq(a: &Secp256k1Pubkey, b: &Secp256k1Pubkey) -> bool {
-    a.x == b.x && a.y == b.y
 }
 
 fn fr_to_be_bytes(fr: &Fr) -> [u8; 32] {
