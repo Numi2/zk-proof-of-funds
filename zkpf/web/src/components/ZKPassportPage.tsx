@@ -349,6 +349,7 @@ export function ZKPassportPage() {
 
       // Set up event handlers
       result.onRequestReceived(() => {
+        console.log('Request received');
         setVerificationState(prev => ({ ...prev, status: 'request-received' }));
       });
 
@@ -357,10 +358,15 @@ export function ZKPassportPage() {
       });
 
       result.onGeneratingProof(() => {
+        console.log('Generating proof');
         setVerificationState(prev => ({ ...prev, status: 'generating-proof' }));
       });
 
       result.onProofGenerated((proof: ProofResult) => {
+        console.log('Proof generated', proof);
+        console.log('Verification key hash', proof.vkeyHash);
+        console.log('Version', proof.version);
+        console.log('Name', proof.name);
         setVerificationState(prev => ({
           ...prev,
           status: 'proof-generated',
@@ -374,6 +380,31 @@ export function ZKPassportPage() {
         result: QueryResult;
         queryResultErrors?: any;
       }) => {
+        console.log('=== Verification Results ===');
+        
+        // Access the verification results
+        if (response.result.firstname?.disclose) {
+          console.log('firstname', response.result.firstname.disclose.result);
+        }
+        if (response.result.age?.gte) {
+          console.log('age over 18', response.result.age.gte.result);
+          console.log('age over', response.result.age.gte.expected);
+        }
+        if (response.result.nationality?.in) {
+          console.log('nationality in EU', response.result.nationality.in.result);
+          console.log('nationality in', response.result.nationality.in.expected);
+        }
+        if (response.result.nationality?.out) {
+          console.log('nationality not from Scandinavia', response.result.nationality.out.result);
+          console.log('nationality not in', response.result.nationality.out.expected);
+        }
+
+        // Verify proof validity
+        console.log('proofs are valid', response.verified);
+
+        // Get unique identifier
+        console.log('unique identifier', response.uniqueIdentifier);
+
         setVerificationState(prev => ({
           ...prev,
           status: response.verified ? 'verified' : 'error',
@@ -385,10 +416,12 @@ export function ZKPassportPage() {
       });
 
       result.onReject(() => {
+        console.log('Request rejected');
         setVerificationState(prev => ({ ...prev, status: 'rejected' }));
       });
 
       result.onError((error: string) => {
+        console.error('Error:', error);
         setVerificationState(prev => ({
           ...prev,
           status: 'error',
@@ -1101,11 +1134,26 @@ export function ZKPassportPage() {
             </div>
           )}
           {verificationState.url && (
-            <div className="status-info hidden-field">
-              <strong>Verification URL:</strong>{' '}
-              <a href={verificationState.url} target="_blank" rel="noopener noreferrer">
-                {verificationState.url}
-              </a>
+            <div className="status-info">
+              <div className="qr-code-section">
+                <h4>Scan QR Code or Click Link</h4>
+                <div className="qr-code-container">
+                  <QRCode value={verificationState.url} size={256} />
+                </div>
+                <div className="qr-link">
+                  <a 
+                    href={verificationState.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="qr-link-button"
+                  >
+                    Verify with ZKPassport
+                  </a>
+                </div>
+                <small className="muted" style={{ display: 'block', marginTop: '0.75rem', textAlign: 'center' }}>
+                  Scan this QR code with the ZKPassport app or click the link above
+                </small>
+              </div>
             </div>
           )}
           {verificationState.error && (

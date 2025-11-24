@@ -1,6 +1,0 @@
-cargo:rerun-if-changed=proto/compact_formats.proto
-cargo:rerun-if-changed=proto
-cargo:rerun-if-changed=proto/service.proto
-cargo:rerun-if-changed=proto/
-cargo:rerun-if-changed=proto/proposal.proto
-cargo:rerun-if-changed=proto

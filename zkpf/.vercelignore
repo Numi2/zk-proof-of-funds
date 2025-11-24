@@ -1,0 +1,10 @@
+# Rust build artifacts - exclude large WASM files
+webwallet/target/
+**/target/
+
+# Node modules
+node_modules/
+
+# Other build artifacts
+*.wasm
+
