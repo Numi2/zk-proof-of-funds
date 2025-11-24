@@ -1,10 +1,19 @@
-import { useMemo } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
-import { ZKPassportPage } from './ZKPassportPage';
-import { ZKPassportPolicyConsole } from './ZKPassportPolicyConsole';
-import { ZKPassportVerifier } from './ZKPassportVerifier';
 import { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import { detectDefaultBase } from '../api/zkpf';
+
+const ZKPassportPage = lazy(() =>
+  import('./ZKPassportPage').then((module) => ({ default: module.ZKPassportPage })),
+);
+
+const ZKPassportPolicyConsole = lazy(() =>
+  import('./ZKPassportPolicyConsole').then((module) => ({ default: module.ZKPassportPolicyConsole })),
+);
+
+const ZKPassportVerifier = lazy(() =>
+  import('./ZKPassportVerifier').then((module) => ({ default: module.ZKPassportVerifier })),
+);
 
 const DEFAULT_BASE = detectDefaultBase();
 
@@ -56,15 +65,48 @@ export function ZKPassportApp() {
       <Routes>
         <Route
           index
-          element={<ZKPassportPage />}
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Preparing ZKPassport overview…</p>
+                </section>
+              )}
+            >
+              <ZKPassportPage />
+            </Suspense>
+          )}
         />
         <Route
           path="policies"
-          element={<ZKPassportPolicyConsole client={zkpassportPolicyClient} />}
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Fetching ZKPassport policies…</p>
+                </section>
+              )}
+            >
+              <ZKPassportPolicyConsole client={zkpassportPolicyClient} />
+            </Suspense>
+          )}
         />
         <Route
           path="verify"
-          element={<ZKPassportVerifier client={zkpassportPolicyClient} />}
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Preparing ZKPassport verifier…</p>
+                </section>
+              )}
+            >
+              <ZKPassportVerifier client={zkpassportPolicyClient} />
+            </Suspense>
+          )}
         />
         <Route path="*" element={<Navigate to="/zkpassport" replace />} />
       </Routes>

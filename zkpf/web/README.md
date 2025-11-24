@@ -25,6 +25,7 @@ Override the target by defining the env variable—there’s no longer a runtime
 ```bash
 # .env.local (not committed)
 VITE_ZKPF_API_URL=https://your-verifier.company.com
+VITE_ZKPF_SNAP_ORIGIN=local:http://localhost:8080
 ```
 
 Available scripts:
@@ -67,6 +68,48 @@ Vercel will run `npm run build` inside `web/`, publish `web/dist/`, and serve `/
 ### Built-in mock verifier
 
 If you don’t have the Rust backend running, the Vercel deployment still works out-of-the-box thanks to serverless routes located in `api/zkpf`. They expose `/zkpf/params`, `/zkpf/epoch`, `/zkpf/policies`, `/zkpf/verify`, and `/zkpf/verify-bundle` with deterministic mock data that mirrors the test fixtures. Point `VITE_ZKPF_API_URL` at your real verifier when you’re ready for production traffic; otherwise the UI will happily talk to the embedded mock.
+
+## Zcash WebWallet + MetaMask Snap integration
+
+The console can derive Zcash balances and snapshot heights directly from a lightwalletd-backed Zcash WebWallet, instead of requiring manual UFVK and balance entry:
+
+- **Prerequisites**
+  - MetaMask with Snaps support (Flask or a Snaps-enabled build).
+  - The zkpf Zcash Snap running at `VITE_ZKPF_SNAP_ORIGIN` (defaults to `local:http://localhost:8080`).
+  - A reachable lightwalletd-compatible endpoint (the app uses `https://zcash-mainnet.chainsafe.dev` by default).
+
+- **Flow**
+  - In the Zcash wallet attestation card, click **“Connect via MetaMask Snap”**.
+  - MetaMask will prompt you to install/authorize the zkpf Snap and derive a view key.
+  - The WebWallet will:
+    - Import the UFVK and birthday height returned by the Snap.
+    - Sync with lightwalletd in a WebWorker.
+    - Expose per-account balances and heights via the WebWallet API.
+  - The UI then:
+    - Auto-populates shielded balance (Sapling + Orchard) and snapshot height (fully scanned height) for the active account.
+    - Lets you click **“Rescan Zcash balance”** to sync again and refresh balances before building an attestation.
+
+- **Attestation compatibility**
+  - The attestation JSON and `CircuitInput` shape are unchanged.
+  - `account_id_hash` is still computed as `BLAKE3("zcash:<network>:<UFVK>")`.
+  - Existing policies for the Zcash Orchard rail (e.g. `rail_id: "ZCASH_ORCHARD"`) continue to apply unchanged; the WebWallet flow only changes how balances and heights are sourced.
+
+## Creating a Zcash wallet in the browser
+
+The Zcash connector lets users create a wallet directly from the website:
+
+- **Recommended: MetaMask Snap-backed wallet**
+  - Click **“Create via MetaMask Snap”** in the Zcash wallet card.
+  - MetaMask installs/authorizes the zkpf Snap, derives a UFVK and birthday, and the WebWallet imports them as a mainnet account.
+  - Balances and snapshot heights for that account are then synced from lightwalletd and used when building attestations.
+  - Private keys stay inside MetaMask/Snap; the zkpf app only sees viewing keys and balance data.
+
+- **Advanced: manual seed phrase**
+  - Under the “Advanced: create wallet from seed phrase” section, you can paste a 24-word seed and optional birthday height.
+  - This is intended for demos/testing only. The seed phrase is handled in-browser and the resulting wallet DB can be persisted to IndexedDB.
+  - Once created and synced, this account’s shielded balance and snapshot height are treated exactly like Snap-backed wallets for proofs-of-funds.
+
+In both flows, the proof format and policy semantics are unchanged; the wallet creation methods only affect how Zcash balances and heights are sourced before building a Zcash attestation.
 
 ## Proof workflow
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { ProofBundle } from '../types/zkpf';
 import { bytesToBase64, bytesToHex, formatEpoch, truncateMiddle } from '../utils/bytes';
 import type { AssetRail } from '../types/ui';
@@ -59,8 +60,8 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
 
 export function BundleSummary({ bundle, assetRail }: Props) {
   const { public_inputs: inputs, rail_id } = bundle;
-  const proofBase64 = bytesToBase64(bundle.proof);
-  const normalizedJson = JSON.stringify(bundle, null, 2);
+  const proofBase64 = useMemo(() => bytesToBase64(bundle.proof), [bundle]);
+  const normalizedJson = useMemo(() => JSON.stringify(bundle, null, 2), [bundle]);
   const rail = railMeta[assetRail];
 
   const handleCopyProof = async () => {

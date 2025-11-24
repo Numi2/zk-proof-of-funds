@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { blake3 } from '@noble/hashes/blake3.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { concatBytes } from '@noble/hashes/utils.js';
@@ -18,6 +18,8 @@ import {
   numberArrayFromBytes,
 } from '../utils/field';
 import { policyShortSummary } from '../utils/policy';
+import { useWebZjsContext } from '../context/WebzjsContext';
+import { useWebzjsActions } from '../hooks/useWebzjsActions';
 
 // Noble secp256k1 relies on user-supplied sync hash functions in some code paths
 // (HMAC-DRBG / prehash). In the browser we prefer BLAKE3 over SHA-256, so wire
@@ -61,6 +63,9 @@ const DEMO_SNAPSHOT_HEIGHT = 2700000;
 const DEMO_BALANCE_ZATS = 50000000000;
 
 export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
+  const { state: walletState } = useWebZjsContext();
+  const { connectWebZjsSnap, triggerRescan, createAccountFromSeed } = useWebzjsActions();
+
   const [zcashNetwork, setZcashNetwork] = useState<ZcashNetwork>('main');
   const [ufvk, setUfvk] = useState<string>('');
   const [snapshotHeightInput, setSnapshotHeightInput] = useState<string>('');
@@ -79,9 +84,34 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
   const [status, setStatus] = useState<StatusState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [showAdvancedSeed, setShowAdvancedSeed] = useState(false);
+  const [seedPhraseInput, setSeedPhraseInput] = useState('');
+  const [seedBirthdayInput, setSeedBirthdayInput] = useState('');
+  const [isCreatingFromSeed, setIsCreatingFromSeed] = useState(false);
+
   const [issuedAt] = useState<number>(() => Math.floor(Date.now() / 1000));
   const [validHours] = useState<number>(24);
   const [attestationId] = useState<number>(() => Math.floor(Math.random() * 1_000_000));
+
+  const activeAccountReport = useMemo(() => {
+    if (!walletState.summary || walletState.activeAccount == null) {
+      return undefined;
+    }
+    return walletState.summary.account_balances.find(
+      ([accountId]: [number]) => accountId === walletState.activeAccount,
+    );
+  }, [walletState.summary, walletState.activeAccount]);
+
+  const derivedShieldedBalance = useMemo(() => {
+    if (!activeAccountReport) return null;
+    const balance = activeAccountReport[1];
+    return balance.sapling_balance + balance.orchard_balance;
+  }, [activeAccountReport]);
+
+  const derivedSnapshotHeight = useMemo(() => {
+    if (!walletState.summary) return null;
+    return walletState.summary.fully_scanned_height ?? walletState.summary.chain_tip_height;
+  }, [walletState.summary]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -107,9 +137,90 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     });
   }, [policy]);
 
+  useEffect(() => {
+    if (!derivedShieldedBalance || !derivedSnapshotHeight) {
+      return;
+    }
+    // Auto-populate snapshot and balance from WebWallet when available.
+    setSnapshotHeight(derivedSnapshotHeight);
+    setZcashBalanceZats(derivedShieldedBalance);
+  }, [derivedShieldedBalance, derivedSnapshotHeight]);
+
   const updateStatus = useCallback((intent: StatusIntent, message: string) => {
     setStatus({ intent, message });
   }, []);
+
+  const connectZcashWebWallet = useCallback(async () => {
+    try {
+      await connectWebZjsSnap();
+      updateStatus(
+        'success',
+        'Connected Zcash WebWallet via MetaMask Snap. You can now sync and derive balances.',
+      );
+      onShowToast('Connected Zcash WebWallet via MetaMask Snap.', 'success');
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to connect Zcash WebWallet Snap.';
+      setError(message);
+      updateStatus('error', message);
+      onShowToast(message, 'error');
+    }
+  }, [connectWebZjsSnap, onShowToast, updateStatus]);
+
+  const rescanZcashWallet = useCallback(async () => {
+    try {
+      await triggerRescan();
+      updateStatus('info', 'Rescanned Zcash WebWallet. Balances will refresh shortly.');
+      onShowToast('Rescanned Zcash WebWallet.', 'success');
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to rescan Zcash WebWallet.';
+      setError(message);
+      updateStatus('error', message);
+      onShowToast(message, 'error');
+    }
+  }, [triggerRescan, onShowToast, updateStatus]);
+
+  const handleCreateWalletFromSeed = useCallback(async () => {
+    const phrase = seedPhraseInput.trim();
+    if (!phrase) {
+      setError('Enter a 24-word Zcash seed phrase before creating a wallet.');
+      updateStatus('error', 'Seed phrase is required for advanced wallet creation.');
+      return;
+    }
+
+    let birthday: number | null = null;
+    if (seedBirthdayInput.trim()) {
+      const parsed = Number(seedBirthdayInput.trim().replace(/[, _]/g, ''));
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Birthday height must be a positive integer.');
+        updateStatus('error', 'Birthday height must be a positive integer.');
+        return;
+      }
+      birthday = Math.floor(parsed);
+    }
+
+    setIsCreatingFromSeed(true);
+    setError(null);
+    try {
+      await createAccountFromSeed(phrase, birthday);
+      updateStatus(
+        'success',
+        'Created Zcash wallet from seed. Sync to refresh balances before building an attestation.',
+      );
+      onShowToast('Created Zcash wallet from seed.', 'success');
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to create Zcash wallet from the provided seed phrase.';
+      setError(message);
+      updateStatus('error', message);
+      onShowToast(message, 'error');
+    } finally {
+      setIsCreatingFromSeed(false);
+    }
+  }, [seedPhraseInput, seedBirthdayInput, createAccountFromSeed, onShowToast, updateStatus]);
 
   const connectEvmWallet = useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -238,7 +349,12 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       updateStatus('error', 'UFVK is required.');
       return;
     }
-    if (zcashBalanceZats === null || snapshotHeight === null) {
+    const effectiveBalance =
+      zcashBalanceZats ?? (derivedShieldedBalance !== null ? derivedShieldedBalance : null);
+    const effectiveSnapshotHeight =
+      snapshotHeight ?? (derivedSnapshotHeight !== null ? derivedSnapshotHeight : null);
+
+    if (effectiveBalance === null || effectiveSnapshotHeight === null) {
       setError('Set a Zcash snapshot height and shielded balance first.');
       updateStatus('warning', 'Provide snapshot height and balance before generating attestation.');
       return;
@@ -283,7 +399,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
 
       const circuitInput: CircuitInput = {
         attestation: {
-          balance_raw: Math.floor(zcashBalanceZats),
+          balance_raw: Math.floor(effectiveBalance),
           currency_code_int: policy.required_currency_code,
           custodian_id: policy.required_custodian_id,
           attestation_id: attestationId,
@@ -420,17 +536,34 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     ufvk,
     attestationId,
     isDemoSnapshot,
+    derivedShieldedBalance,
+    derivedSnapshotHeight,
   ]);
 
   return (
     <div className="wallet-connector zcash-wallet-connector">
       <header>
         <p className="eyebrow">Zcash wallet attestation</p>
-        <h3>Import UFVK, sync, and generate JSON</h3>
+        <h3>Connect or create a Zcash wallet, then generate JSON</h3>
       </header>
 
       <div className="wallet-grid">
         <div className="wallet-card">
+          <div className="wallet-row">
+            <strong>Zcash WebWallet</strong>
+            <button
+              type="button"
+              className="tiny-button"
+              onClick={connectZcashWebWallet}
+              disabled={walletState.loading || walletState.webWallet === null}
+            >
+              {walletState.webWallet ? 'Create / reconnect via MetaMask Snap' : 'Create via MetaMask Snap'}
+            </button>
+          </div>
+          <p className="muted small">
+            Recommended: create or connect a Zcash wallet via MetaMask Snap (keys stay inside
+            MetaMask). New wallets are created on Zcash mainnet.
+          </p>
           <div className="wallet-row">
             <strong>Zcash network</strong>
             <select
@@ -450,6 +583,45 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
               rows={3}
             />
           </div>
+          <details
+            className="wallet-advanced"
+            open={showAdvancedSeed}
+            onToggle={(event) => setShowAdvancedSeed((event.target as HTMLDetailsElement).open)}
+          >
+            <summary>Advanced: create wallet from seed phrase</summary>
+            <p className="muted small">
+              For demos and testing only. Do not reuse production seeds here. The seed phrase will
+              be handled by this browser tab and serialized in the WebWallet database.
+            </p>
+            <div className="wallet-row">
+              <strong>Seed phrase (24 words)</strong>
+              <textarea
+                value={seedPhraseInput}
+                onChange={(event) => setSeedPhraseInput(event.target.value)}
+                placeholder="abandon abandon abandon ..."
+                rows={3}
+              />
+            </div>
+            <div className="wallet-row">
+              <strong>Birthday height (optional)</strong>
+              <input
+                type="text"
+                value={seedBirthdayInput}
+                onChange={(event) => setSeedBirthdayInput(event.target.value)}
+                placeholder="Block height when this wallet first received funds"
+              />
+            </div>
+            <div className="wallet-actions">
+              <button
+                type="button"
+                className="tiny-button"
+                onClick={handleCreateWalletFromSeed}
+                disabled={isCreatingFromSeed || walletState.webWallet === null}
+              >
+                {isCreatingFromSeed ? 'Creating wallet…' : 'Create wallet from seed'}
+              </button>
+            </div>
+          </details>
           <div className="wallet-row">
             <strong>Snapshot height</strong>
             <input
@@ -501,17 +673,32 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
             <button type="button" onClick={connectEvmWallet} disabled={isConnectingEvm}>
               {isConnectingEvm ? 'Connecting…' : evmAccount ? 'Reconnect signer' : 'Connect EVM signer'}
             </button>
+            <button
+              type="button"
+              className="ghost tiny-button"
+              onClick={rescanZcashWallet}
+              disabled={walletState.syncInProgress || walletState.webWallet === null}
+            >
+              {walletState.syncInProgress ? 'Rescanning Zcash…' : 'Rescan Zcash balance'}
+            </button>
           </div>
 
-          {zcashBalanceZats !== null && snapshotHeight !== null && (
+          {(zcashBalanceZats !== null || derivedShieldedBalance !== null) &&
+            (snapshotHeight !== null || derivedSnapshotHeight !== null) && (
             <>
               <div className="wallet-row">
                 <strong>Shielded balance (zats)</strong>
-                <span>{zcashBalanceZats.toLocaleString()}</span>
+                <span>
+                  {(zcashBalanceZats ?? derivedShieldedBalance ?? 0).toLocaleString()}
+                  {derivedShieldedBalance !== null && zcashBalanceZats === null && ' (from WebWallet)'}
+                </span>
               </div>
               <div className="wallet-row">
                 <strong>Snapshot height</strong>
-                <span>{snapshotHeight}</span>
+                <span>
+                  {snapshotHeight ?? derivedSnapshotHeight}
+                  {derivedSnapshotHeight !== null && snapshotHeight === null && ' (fully scanned height)'}
+                </span>
               </div>
             </>
           )}
@@ -530,8 +717,9 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
           disabled={
             isBuilding ||
             !policy ||
-            zcashBalanceZats === null ||
-            snapshotHeight === null ||
+            (zcashBalanceZats === null &&
+              snapshotHeight === null &&
+              (derivedShieldedBalance === null || derivedSnapshotHeight === null)) ||
             (!evmAccount && !isDemoSnapshot)
           }
         >

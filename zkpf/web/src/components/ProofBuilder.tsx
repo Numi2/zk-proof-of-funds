@@ -336,6 +336,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     !manifestMeta;
 
   const rail = railFromBundle(bundle);
+  const bundleJson = useMemo(() => (bundle ? JSON.stringify(bundle, null, 2) : ''), [bundle]);
 
   return (
     <section className="proof-builder card">
@@ -643,7 +644,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             </div>
           </div>
           <div className="builder-preview">
-            <pre>{JSON.stringify(bundle, null, 2)}</pre>
+            <pre>{bundleJson}</pre>
           </div>
           <BundleSummary bundle={bundle} assetRail={rail} />
         </>

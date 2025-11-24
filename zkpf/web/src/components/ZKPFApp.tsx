@@ -1,16 +1,26 @@
-import { useMemo, useState, useMemo as useReactMemo } from 'react';
+import { lazy, Suspense, useMemo, useState, useMemo as useReactMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { ZkpfClient, detectDefaultBase } from '../api/zkpf';
 import { VerifierEndpointCard } from './StatusCards';
-import { ProofWorkbench, type ConnectionState } from './ProofWorkbench';
+import type { ConnectionState } from './ProofWorkbench';
 import { FinanceContext } from './FinanceContext';
 import { UsageGuide } from './UsageGuide';
-import { ProofBuilder } from './ProofBuilder';
 import type { ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
-import { PolicyConsole } from './PolicyConsole';
+
+const ProofBuilder = lazy(() =>
+  import('./ProofBuilder').then((module) => ({ default: module.ProofBuilder })),
+);
+
+const ProofWorkbench = lazy(() =>
+  import('./ProofWorkbench').then((module) => ({ default: module.ProofWorkbench })),
+);
+
+const PolicyConsole = lazy(() =>
+  import('./PolicyConsole').then((module) => ({ default: module.PolicyConsole })),
+);
 
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
@@ -292,11 +302,20 @@ export function ZKPFApp() {
         <Route
           path="/build"
           element={(
-            <ProofBuilder
-              client={client}
-              connectionState={connectionState}
-              onBundleReady={handleBundleReady}
-            />
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading prover</p>
+                  <p className="muted small">Preparing in-browser proving key and WASM runtime…</p>
+                </section>
+              )}
+            >
+              <ProofBuilder
+                client={client}
+                connectionState={connectionState}
+                onBundleReady={handleBundleReady}
+              />
+            </Suspense>
           )}
         />
 
@@ -304,23 +323,32 @@ export function ZKPFApp() {
           path="/workbench"
           element={(
             <>
-              <ProofWorkbench
-                client={client}
-                connectionState={connectionState}
-                prefillBundle={prefillBundle}
-                onPrefillConsumed={() => setPrefillBundle(null)}
-                onVerificationOutcome={(outcome) => {
-                  if (outcome === 'accepted') {
-                    setVerificationOutcome('accepted');
-                  } else if (outcome === 'rejected') {
-                    setVerificationOutcome('rejected');
-                  } else if (outcome === 'error') {
-                    setVerificationOutcome('error');
-                  } else {
-                    setVerificationOutcome('idle');
-                  }
-                }}
-              />
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading verifier</p>
+                    <p className="muted small">Preparing verification console…</p>
+                  </section>
+                )}
+              >
+                <ProofWorkbench
+                  client={client}
+                  connectionState={connectionState}
+                  prefillBundle={prefillBundle}
+                  onPrefillConsumed={() => setPrefillBundle(null)}
+                  onVerificationOutcome={(outcome) => {
+                    if (outcome === 'accepted') {
+                      setVerificationOutcome('accepted');
+                    } else if (outcome === 'rejected') {
+                      setVerificationOutcome('rejected');
+                    } else if (outcome === 'error') {
+                      setVerificationOutcome('error');
+                    } else {
+                      setVerificationOutcome('idle');
+                    }
+                  }}
+                />
+              </Suspense>
               <ProgressChecklist
                 steps={checklistSteps}
                 onStepClick={(id) => {
@@ -339,7 +367,18 @@ export function ZKPFApp() {
 
         <Route
           path="/policies"
-          element={<PolicyConsole client={client} />}
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading policies</p>
+                  <p className="muted small">Fetching policy catalog…</p>
+                </section>
+              )}
+            >
+              <PolicyConsole client={client} />
+            </Suspense>
+          )}
         />
 
         <Route path="*" element={<Navigate to="/" replace />} />

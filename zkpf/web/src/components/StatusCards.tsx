@@ -114,7 +114,6 @@ function ArtifactButton({
     );
   }
   const size = humanFileSize(bytes.length);
-  const base64 = bytesToBase64(bytes);
 
   const handleDownload = () => {
     downloadBytes(bytes, fileName);
@@ -123,6 +122,7 @@ function ArtifactButton({
 
   const handleCopy = async () => {
     try {
+      const base64 = bytesToBase64(bytes);
       await navigator.clipboard.writeText(base64);
       showToast(`${label} copied to clipboard`, 'success');
     } catch (error) {

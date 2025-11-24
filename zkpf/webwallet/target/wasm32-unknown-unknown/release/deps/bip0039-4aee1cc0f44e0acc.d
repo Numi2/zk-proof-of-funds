@@ -1,0 +1,11 @@
+/Users/home/zk-proof-of-funds/zkpf/webwallet/target/wasm32-unknown-unknown/release/deps/bip0039-4aee1cc0f44e0acc.d: /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/lib.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/error.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/mod.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/english.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/mnemonic.rs
+
+/Users/home/zk-proof-of-funds/zkpf/webwallet/target/wasm32-unknown-unknown/release/deps/libbip0039-4aee1cc0f44e0acc.rlib: /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/lib.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/error.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/mod.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/english.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/mnemonic.rs
+
+/Users/home/zk-proof-of-funds/zkpf/webwallet/target/wasm32-unknown-unknown/release/deps/libbip0039-4aee1cc0f44e0acc.rmeta: /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/lib.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/error.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/mod.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/english.rs /Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/mnemonic.rs
+
+/Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/lib.rs:
+/Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/error.rs:
+/Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/mod.rs:
+/Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/language/english.rs:
+/Users/home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bip0039-0.12.0/src/mnemonic.rs:

@@ -19,10 +19,20 @@ export function bytesToHex(bytes: ByteArray | Uint8Array, group = 4): string {
 
 export function bytesToBase64(bytes: ByteArray | Uint8Array): string {
   const arr = toUint8Array(bytes);
+  if (arr.length === 0) {
+    return '';
+  }
+  // Build the binary string in chunks to avoid creating extremely large
+  // argument lists for `String.fromCharCode` and to keep memory usage
+  // reasonable for very large buffers (for example, proving keys).
+  const CHUNK_SIZE = 0x8000; // 32KB
   let binary = '';
-  arr.forEach((b) => {
-    binary += String.fromCharCode(b);
-  });
+  for (let i = 0; i < arr.length; i += CHUNK_SIZE) {
+    const chunk = arr.subarray(i, i + CHUNK_SIZE);
+    // `apply` accepts array-like objects; casting keeps TypeScript happy.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    binary += String.fromCharCode.apply(null, chunk as any);
+  }
   return btoa(binary);
 }
 
