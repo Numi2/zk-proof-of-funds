@@ -7,12 +7,12 @@
     "url": "https://github.com/zkpf/proof-of-funds.git"
   },
   "source": {
-    "shasum": "placeholder",
+    "shasum": "8+Nq0LjbZFL4AavrS1Xl3cmMbf26wOZHbSjgx7cMEh0=",
     "location": {
       "npm": {
         "filePath": "dist/bundle.js",
         "iconPath": "images/logo.svg",
-        "packageName": "@zkpf/proof-of-funds-snap",
+        "packageName": "@numi2/proof-of-funds-snap",
         "registry": "https://registry.npmjs.org/"
       }
     }
@@ -33,7 +33,6 @@
     "snap_manageState": {},
     "endowment:ethereum-provider": {}
   },
-  "platformVersion": "6.17.1",
+  "platformVersion": "6.24.0",
   "manifestVersion": "0.1"
 }
-

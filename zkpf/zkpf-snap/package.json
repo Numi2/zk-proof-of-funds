@@ -1,5 +1,5 @@
 {
-  "name": "@zkpf/proof-of-funds-snap",
+  "name": "@numi2/proof-of-funds-snap",
   "version": "0.1.0",
   "description": "zkpf MetaMask Snap for generating zero-knowledge proof-of-funds attestations",
   "repository": {
