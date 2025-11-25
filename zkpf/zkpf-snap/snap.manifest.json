@@ -1,0 +1,35 @@
+{
+  "version": "0.1.0",
+  "description": "zkpf Snap for generating zero-knowledge proof-of-funds attestations",
+  "proposedName": "zkpf Proof of Funds",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zkpf/proof-of-funds.git"
+  },
+  "source": {
+    "shasum": "placeholder",
+    "location": {
+      "npm": {
+        "filePath": "dist/bundle.js",
+        "iconPath": "images/logo.svg",
+        "packageName": "@zkpf/proof-of-funds-snap",
+        "registry": "https://registry.npmjs.org/"
+      }
+    }
+  },
+  "initialPermissions": {
+    "snap_dialog": {},
+    "endowment:lifecycle-hooks": {},
+    "endowment:rpc": {
+      "allowedOrigins": [
+        "https://zkpf.dev",
+        "https://www.zkpf.dev"
+      ]
+    },
+    "snap_manageState": {},
+    "endowment:ethereum-provider": {}
+  },
+  "platformVersion": "6.17.1",
+  "manifestVersion": "0.1"
+}
+

@@ -932,6 +932,121 @@
   gap: 0.9rem;
 }
 
+/* Wallet Method Tabs */
+.wallet-method-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.wallet-method-tab {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.85rem 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.wallet-method-tab:hover {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.wallet-method-tab.active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(129, 140, 248, 0.15));
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+}
+
+.wallet-method-icon {
+  font-size: 1.5rem;
+}
+
+.wallet-method-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.wallet-method-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.wallet-method-badge.recommended {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.wallet-method-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.wallet-method-header h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: #e2e8f0;
+}
+
+.wallet-method-header p {
+  margin: 0;
+}
+
+.wallet-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  font-size: 0.85rem;
+}
+
+.wallet-warning .warning-icon {
+  flex-shrink: 0;
+}
+
+.seed-input-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.seed-textarea {
+  width: 100%;
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.seed-actions {
+  justify-content: flex-end;
+}
+
+.wallet-common-settings {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.25);
+}
+
 .wallet-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -4911,6 +5026,16 @@ dd {
   max-width: 500px;
   text-align: center;
   padding: 2.5rem;
+}
+
+.wallet-connect-card-wide {
+  max-width: 600px;
+}
+
+.wallet-seed-form,
+.wallet-snap-form {
+  text-align: left;
+  width: 100%;
 }
 
 .wallet-connect-icon {

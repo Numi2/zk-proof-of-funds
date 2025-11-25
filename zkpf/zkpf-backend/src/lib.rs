@@ -38,6 +38,8 @@ use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
 const MANIFEST_ENV: &str = "ZKPF_MANIFEST_PATH";
+const SNAP_DIR_ENV: &str = "ZKPF_SNAP_DIR";
+const DEFAULT_SNAP_DIR: &str = "snap";
 const EPOCH_OVERRIDE_ENV: &str = "ZKPF_VERIFIER_EPOCH";
 const EPOCH_DRIFT_ENV: &str = "ZKPF_VERIFIER_MAX_DRIFT_SECS";
 const DEFAULT_MAX_EPOCH_DRIFT_SECS: u64 = 300;
@@ -446,7 +448,11 @@ pub fn app_router(state: AppState) -> Router {
         .route("/zkpf/epoch", get(get_epoch))
         .route("/zkpf/verify", post(verify_handler))
         .route("/zkpf/verify-bundle", post(verify_bundle_handler))
-        .route("/zkpf/attest", post(attest_handler));
+        .route("/zkpf/attest", post(attest_handler))
+        // MetaMask Snap hosting routes
+        .route("/snap/snap.manifest.json", get(serve_snap_manifest))
+        .route("/snap/dist/bundle.js", get(serve_snap_bundle))
+        .route("/snap/images/logo.svg", get(serve_snap_logo));
 
     let router = if state.artifacts().prover_enabled() {
         router
@@ -1935,6 +1941,50 @@ async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {
         current_epoch: epoch,
         max_drift_secs: drift,
     })
+}
+
+fn snap_dir() -> String {
+    env::var(SNAP_DIR_ENV).unwrap_or_else(|_| DEFAULT_SNAP_DIR.to_string())
+}
+
+async fn serve_snap_manifest() -> Result<Response, ApiError> {
+    let path = format!("{}/snap.manifest.json", snap_dir());
+    serve_snap_file(&path, "application/json").await
+}
+
+async fn serve_snap_bundle() -> Result<Response, ApiError> {
+    let path = format!("{}/dist/bundle.js", snap_dir());
+    serve_snap_file(&path, "application/javascript").await
+}
+
+async fn serve_snap_logo() -> Result<Response, ApiError> {
+    let path = format!("{}/images/logo.svg", snap_dir());
+    serve_snap_file(&path, "image/svg+xml").await
+}
+
+async fn serve_snap_file(path: &str, content_type: &'static str) -> Result<Response, ApiError> {
+    let file = File::open(path).await.map_err(|err| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            CODE_INTERNAL,
+            format!("snap file not found: {path}: {err}"),
+        )
+    })?;
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut response = Response::new(body);
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    // Cache snap files for 1 hour (they change infrequently)
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=3600"),
+    );
+
+    Ok(response)
 }
 
 #[derive(Clone)]
