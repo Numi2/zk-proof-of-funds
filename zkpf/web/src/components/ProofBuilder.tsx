@@ -19,6 +19,7 @@ interface Props {
 }
 
 type WasmStatus = 'idle' | 'loading' | 'ready' | 'error';
+type ProofProgress = 'idle' | 'preparing' | 'generating' | 'finalizing';
 
 const railFromBundle = (bundle: ProofBundle | null): AssetRail => {
   if (!bundle) return 'onchain';
@@ -39,9 +40,20 @@ function showToast(message: string, type: 'success' | 'error' = 'success') {
   }, 3000);
 }
 
+// Helper to yield to the main thread, allowing UI updates
+const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+const PROOF_PROGRESS_MESSAGES: Record<ProofProgress, string> = {
+  idle: '',
+  preparing: 'Initializing cryptographic parameters…',
+  generating: 'Computing zero-knowledge proof (this may take 30-60 seconds)…',
+  finalizing: 'Packaging proof bundle…',
+};
+
 export function ProofBuilder({ client, connectionState, onBundleReady }: Props) {
   const [rawInput, setRawInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [proofProgress, setProofProgress] = useState<ProofProgress>('idle');
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<ProofBundle | null>(null);
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
@@ -215,11 +227,27 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const generateFromNormalizedJson = useCallback(
     async (normalizedJson: string, options?: { autoSendToVerifier?: boolean }) => {
       setIsGenerating(true);
+      setProofProgress('preparing');
       setError(null);
       setBundle(null);
+      
       try {
+        // Yield to allow UI to update before heavy computation
+        await yieldToMain();
+        
         await ensureArtifacts();
+        
+        // Update progress and yield before proof generation
+        setProofProgress('generating');
+        await yieldToMain();
+        
+        // The actual proof generation - this is the CPU-intensive part
         const proofBundle = await generateBundle(normalizedJson);
+        
+        // Finalize
+        setProofProgress('finalizing');
+        await yieldToMain();
+        
         setBundle(proofBundle);
         setWasmError(null);
         showToast('Proof bundle generated locally', 'success');
@@ -235,6 +263,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         setWasmStatus('error');
       } finally {
         setIsGenerating(false);
+        setProofProgress('idle');
       }
     },
     [ensureArtifacts, onBundleReady],
@@ -645,6 +674,39 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           </p>
         )}
       </div>
+
+      {/* Proof Generation Progress Overlay */}
+      {isGenerating && (
+        <div className="proof-progress-overlay">
+          <div className="proof-progress-card">
+            <div className="proof-progress-spinner">
+              <div className="spinner-ring"></div>
+            </div>
+            <h3>Generating Zero-Knowledge Proof</h3>
+            <p className="proof-progress-message">
+              {PROOF_PROGRESS_MESSAGES[proofProgress]}
+            </p>
+            <div className="proof-progress-steps">
+              <div className={`proof-step ${proofProgress === 'preparing' ? 'active' : proofProgress !== 'idle' ? 'complete' : ''}`}>
+                <span className="step-indicator">1</span>
+                <span>Initialize</span>
+              </div>
+              <div className={`proof-step ${proofProgress === 'generating' ? 'active' : proofProgress === 'finalizing' ? 'complete' : ''}`}>
+                <span className="step-indicator">2</span>
+                <span>Compute Proof</span>
+              </div>
+              <div className={`proof-step ${proofProgress === 'finalizing' ? 'active' : ''}`}>
+                <span className="step-indicator">3</span>
+                <span>Finalize</span>
+              </div>
+            </div>
+            <p className="proof-progress-hint">
+              Please wait — this computation runs entirely in your browser and may take up to 600 seconds.
+              The page will become unresponsive while the proof is being generated.
+            </p>
+          </div>
+        </div>
+      )}
 
       {!rawInput.trim() && !error && (
         <p className="muted small">

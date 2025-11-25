@@ -52,7 +52,7 @@ interface ZkpfRampProps {
 
 // Asset metadata
 const ASSET_META: Record<CryptoAsset, { icon: string; name: string; color: string; tokenAddress?: string }> = {
-  zkUSD: { icon: '💵', name: 'zkUSD', color: '#22c55e', tokenAddress: undefined }, // Will be set from contract
+  zkUSD: { icon: '💵', name: 'zkUSD', color: '#22c55e', tokenAddress: undefined },
   ZEC: { icon: '🛡️', name: 'Zcash', color: '#f4b728' },
   STRK: { icon: '⚡', name: 'Starknet', color: '#ec796b' },
 };
@@ -162,7 +162,7 @@ async function pollIntentStatus(
 
 export function ZkpfRamp({
   destinationAddress,
-  defaultAsset = 'zkUSD',
+  defaultAsset = 'ZEC',
   onSuccess,
   onError,
   className,
@@ -204,6 +204,8 @@ export function ZkpfRamp({
   useEffect(() => {
     if (fiatAmount < 10) {
       setQuote(null);
+      setError(null);
+      setStatus('idle');
       return;
     }
 
@@ -255,10 +257,9 @@ export function ZkpfRamp({
           setStatus('complete');
           onSuccess?.(
             updatedIntent.txHash || '',
-            String(updatedIntent.cryptoAmount / 1_000_000), // Convert from 6 decimals
+            String(updatedIntent.cryptoAmount / 1_000_000),
             asset
           );
-          // Stop polling
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
@@ -274,14 +275,10 @@ export function ZkpfRamp({
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         console.warn('Status poll error:', err);
-        // Don't stop polling on transient errors
       }
     };
 
-    // Initial poll
     pollStatus();
-
-    // Continue polling every 5 seconds
     pollIntervalRef.current = setInterval(pollStatus, 5000);
 
     return () => {
@@ -310,7 +307,6 @@ export function ZkpfRamp({
       return;
     }
 
-    // Check quote expiration
     if (Date.now() > quote.expiresAt) {
       setError('Quote expired, please try again');
       setQuote(null);
@@ -332,22 +328,18 @@ export function ZkpfRamp({
       setIntentId(result.intentId);
       setIntent(result.intent);
 
-      // Open payment window
       const paymentWindow = window.open(
         result.paymentUrl,
         'zkpf-ramp-payment',
         'width=500,height=700,left=100,top=100'
       );
 
-      // Start status polling
       setStatus('processing');
 
-      // Monitor if payment window is closed
       if (paymentWindow) {
         const checkWindow = setInterval(() => {
           if (paymentWindow.closed) {
             clearInterval(checkWindow);
-            // Window closed, but don't cancel - user might have completed payment
           }
         }, 1000);
       }
@@ -369,7 +361,6 @@ export function ZkpfRamp({
     return `~${Math.round(seconds / 60)} min`;
   };
 
-  // Get status message
   const getStatusMessage = useCallback(() => {
     if (!intent) return null;
     
@@ -470,7 +461,7 @@ export function ZkpfRamp({
         </div>
       )}
 
-      {quote && status !== 'quoting' && (
+      {quote && status !== 'quoting' && status !== 'error' && (
         <div className="ramp-quote">
           <div className="quote-main">
             <span className="quote-label">You receive</span>
@@ -501,7 +492,6 @@ export function ZkpfRamp({
               </span>
             </div>
           </div>
-          {/* Quote expiration warning */}
           {quote.expiresAt - Date.now() < 60000 && (
             <div className="quote-expiring">
               Quote expires in {Math.round((quote.expiresAt - Date.now()) / 1000)}s
@@ -553,6 +543,7 @@ export function ZkpfRamp({
           !quote ||
           status === 'processing' ||
           status === 'pending' ||
+          status === 'error' ||
           fiatAmount < 10
         }
       >

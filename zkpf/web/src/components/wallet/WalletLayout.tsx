@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 
@@ -70,7 +71,9 @@ export function WalletLayout() {
         </nav>
       </header>
       
-      <Outlet />
+      <Suspense fallback={<div className="wallet-loading">Loading...</div>}>
+        <Outlet />
+      </Suspense>
     </div>
   );
 }

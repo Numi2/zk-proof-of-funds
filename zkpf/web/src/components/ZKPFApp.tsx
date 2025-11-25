@@ -429,6 +429,7 @@ export function ZKPFApp() {
           <Route path="buy" element={<WalletBuy />} />
           <Route path="receive" element={<WalletReceive />} />
           <Route path="send" element={<WalletSend />} />
+          <Route path="*" element={<Navigate to="/wallet" replace />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -447,7 +448,7 @@ export function ZKPFApp() {
 
       <footer>
         <p>
-          Made by Numan Thabit
+          Made by Numan - inspired heavily by webzjs - vendored keys.
         </p>
       </footer>
 

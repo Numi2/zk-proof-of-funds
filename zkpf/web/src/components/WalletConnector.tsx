@@ -158,8 +158,8 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
       const issuedAtEpoch = issuedAt || nowEpoch;
       const validUntilEpoch = issuedAtEpoch + validHours * 3600;
       const attestationBalance = typeof balanceOverride === 'number' ? balanceOverride : derivedBalance;
-      if (!Number.isFinite(attestationBalance) || attestationBalance <= 0) {
-        throw new Error('Set a positive balance to attest.');
+      if (!Number.isFinite(attestationBalance) || attestationBalance < 0) {
+        throw new Error('Balance must be zero or positive.');
       }
 
       const accountSeed = new TextEncoder().encode(`${chainId || '0x0'}:${normalizedAddress}`);
@@ -328,6 +328,12 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
         {!policy && (
           <p className="muted small">
             Choose a verifier policy first so the attestation can be checked against an explicit threshold and scope.
+          </p>
+        )}
+        {policy && derivedBalance === 0 && (
+          <p className="muted small zero-balance-info">
+            ✓ Your balance is 0. You can generate an empty wallet attestation — 
+            the proof will cryptographically confirm your wallet holds no funds.
           </p>
         )}
       </div>

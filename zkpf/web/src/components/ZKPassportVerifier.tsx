@@ -5,10 +5,15 @@ import QRCode from 'react-qr-code';
 import type { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import type { ZKPassportPolicyDefinition } from '../types/zkpassport';
 import { ZKPassportProgress, type VerificationStage } from './ZKPassportProgress';
+import { ZKPassportProofShare } from './ZKPassportProofShare';
 import { 
   getVerificationHistoryManager, 
   createQueryResultSummary,
 } from '../utils/zkpassport-history';
+import { 
+  createShareableProof,
+  type ShareableProofBundle,
+} from '../utils/shareable-proof';
 
 interface Props {
   client: ZKPassportPolicyClient;
@@ -19,6 +24,8 @@ type VerificationStatus = 'idle' | 'requesting' | 'request-received' | 'generati
 export function ZKPassportVerifier({ client }: Props) {
   const [zkPassport] = useState(() => new ZKPassport('zkpf.dev'));
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareableProof, setShareableProof] = useState<ShareableProofBundle | null>(null);
   const historyManager = useRef(getVerificationHistoryManager());
   const verificationStartTime = useRef<number | null>(null);
   const [verificationState, setVerificationState] = useState<{
@@ -214,14 +221,39 @@ export function ZKPassportVerifier({ client }: Props) {
           devMode: selectedPolicy?.devMode,
         });
         
-        setVerificationState(prev => ({
-          ...prev,
-          status: response.verified ? 'verified' : 'error',
-          uniqueIdentifier: response.uniqueIdentifier,
-          verified: response.verified,
-          result: response.result,
-          error: response.verified ? null : 'Verification failed',
-        }));
+        // Create shareable proof if verification succeeded
+        if (response.verified) {
+          setVerificationState(prev => {
+            // Create the shareable proof with the current proofs from prev state
+            const proofBundle = createShareableProof({
+              policy: selectedPolicy,
+              proofs: prev.proofs,
+              queryResult: response.result,
+              uniqueIdentifier: response.uniqueIdentifier,
+              requestId: result.requestId,
+              duration,
+            });
+            setShareableProof(proofBundle);
+            
+            return {
+              ...prev,
+              status: 'verified',
+              uniqueIdentifier: response.uniqueIdentifier,
+              verified: true,
+              result: response.result,
+              error: null,
+            };
+          });
+        } else {
+          setVerificationState(prev => ({
+            ...prev,
+            status: 'error',
+            uniqueIdentifier: response.uniqueIdentifier,
+            verified: false,
+            result: response.result,
+            error: 'Verification failed',
+          }));
+        }
       });
 
       result.onReject(() => {
@@ -393,6 +425,19 @@ export function ZKPassportVerifier({ client }: Props) {
                   <strong>Policy Verified:</strong> {selectedPolicy.label} (ID: {selectedPolicy.policy_id})
                 </div>
               )}
+              
+              {/* Share Proof Button */}
+              <div className="share-proof-actions" style={{ marginTop: '1.5rem' }}>
+                <button
+                  className="primary-button share-proof-button"
+                  onClick={() => setShowShareModal(true)}
+                >
+                  🔗 Share This Proof
+                </button>
+                <p className="muted small" style={{ marginTop: '0.5rem' }}>
+                  Generate a shareable link or QR code that others can use to independently verify this proof.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -430,6 +475,18 @@ export function ZKPassportVerifier({ client }: Props) {
             <pre>{JSON.stringify(verificationState.result, null, 2)}</pre>
           </details>
         </section>
+      )}
+
+      {/* Share Proof Modal */}
+      {showShareModal && shareableProof && (
+        <div className="share-modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="share-modal-content" onClick={(e) => e.stopPropagation()}>
+            <ZKPassportProofShare
+              proofBundle={shareableProof}
+              onClose={() => setShowShareModal(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

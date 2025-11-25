@@ -86,6 +86,32 @@ function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'):
   return ufvk.encode(network);
 }
 
+/**
+ * Extract a human-readable error message from various error types, including
+ * plain strings and wasm-bindgen `JsValue` strings that surface from the
+ * zkpf_wasm helpers.
+ */
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  if (err && typeof err === 'object') {
+    const maybeMessage = (err as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string') {
+      return maybeMessage;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      // fall through to generic message below
+    }
+  }
+  return 'Failed to build Zcash wallet attestation JSON.';
+}
+
 export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
   const { state: walletState } = useWebZjsContext();
   const { connectWebZjsSnap, triggerRescan, createAccountFromSeed } = useWebzjsActions();
@@ -94,9 +120,39 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
   const [walletMethod, setWalletMethod] = useState<WalletMethod>('seed');
 
   const [zcashNetwork, setZcashNetwork] = useState<ZcashNetwork>('main');
-  const [ufvk, setUfvk] = useState<string>('');
+  const [ufvk, setUfvkState] = useState<string>('');
   const [snapshotHeightInput, setSnapshotHeightInput] = useState<string>('');
   const [balanceZatsInput, setBalanceZatsInput] = useState<string>('');
+
+  // Persist UFVK to localStorage so it survives page reloads
+  const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+  
+  const setUfvk = useCallback((value: string) => {
+    setUfvkState(value);
+    try {
+      if (value.trim()) {
+        localStorage.setItem(UFVK_STORAGE_KEY, value);
+      } else {
+        localStorage.removeItem(UFVK_STORAGE_KEY);
+      }
+    } catch {
+      // localStorage might be unavailable in some contexts
+    }
+  }, []);
+
+  // Restore UFVK from localStorage on mount if we have an active wallet
+  useEffect(() => {
+    if (walletState.activeAccount != null && !ufvk.trim()) {
+      try {
+        const storedUfvk = localStorage.getItem(UFVK_STORAGE_KEY);
+        if (storedUfvk) {
+          setUfvkState(storedUfvk);
+        }
+      } catch {
+        // localStorage might be unavailable
+      }
+    }
+  }, [walletState.activeAccount, ufvk]);
 
   const [evmAccount, setEvmAccount] = useState<string>('');
   const [evmChainId, setEvmChainId] = useState<string>('');
@@ -335,9 +391,22 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     const trimmed = raw.trim().replace(/[, _]/g, '');
     if (!trimmed) return null;
     const value = Number(trimmed);
-    if (!Number.isFinite(value) || value <= 0) {
-      setError(`${fieldLabel} must be a positive number.`);
-      updateStatus('error', `${fieldLabel} must be a positive number.`);
+    if (!Number.isFinite(value) || value < 0) {
+      setError(`${fieldLabel} must be a non-negative number.`);
+      updateStatus('error', `${fieldLabel} must be a non-negative number.`);
+      return null;
+    }
+    return Math.floor(value);
+  };
+
+  // Allows 0 for balance (for empty wallet proofs)
+  const parseNonNegativeInt = (raw: string, fieldLabel: string): number | null => {
+    const trimmed = raw.trim().replace(/[, _]/g, '');
+    if (trimmed === '' || trimmed === null || trimmed === undefined) return null;
+    const value = Number(trimmed);
+    if (!Number.isFinite(value) || value < 0) {
+      setError(`${fieldLabel} must be zero or a positive number.`);
+      updateStatus('error', `${fieldLabel} must be zero or a positive number.`);
       return null;
     }
     return Math.floor(value);
@@ -359,7 +428,8 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     if (height === null) {
       return;
     }
-    const balance = parsePositiveInt(balanceZatsInput, 'Shielded balance (zats)');
+    // Allow 0 for balance (for empty wallet proofs)
+    const balance = parseNonNegativeInt(balanceZatsInput, 'Shielded balance (zats)');
     if (balance === null) {
       return;
     }
@@ -368,12 +438,18 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     setZcashBalanceZats(balance);
     setIsDemoSnapshot(false);
     setError(null);
+    
+    const balanceMessage = balance === 0
+      ? 'Balance is 0 ZEC — you can generate a zero-balance attestation.'
+      : `Shielded balance ${balance.toLocaleString()} zats.`;
     updateStatus(
       'success',
-      `Using manual Zcash snapshot at height ${height} with shielded balance ${balance.toLocaleString()} zats.`,
+      `Using manual Zcash snapshot at height ${height}. ${balanceMessage}`,
     );
     onShowToast(
-      'Zcash snapshot and balance recorded. You can now generate a proof-of-funds attestation.',
+      balance === 0
+        ? 'Zero balance recorded. You can generate an empty wallet attestation.'
+        : 'Zcash snapshot and balance recorded. You can now generate a proof-of-funds attestation.',
       'success',
     );
   }, [
@@ -383,6 +459,8 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     snapshotHeightInput,
     ufvk,
     updateStatus,
+    parsePositiveInt,
+    parseNonNegativeInt,
   ]);
 
   const loadDemoSnapshot = useCallback(() => {
@@ -428,7 +506,10 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       updateStatus('warning', 'Provide snapshot height and balance before generating attestation.');
       return;
     }
-    const isDemo = isDemoSnapshot && !evmAccount;
+    
+    // Allow demo mode OR zero-balance attestations without EVM wallet
+    const isZeroBalance = effectiveBalance === 0;
+    const isDemo = (isDemoSnapshot && !evmAccount) || (isZeroBalance && !evmAccount);
 
     let provider: EthereumProvider | null = null;
     if (!isDemo) {
@@ -498,7 +579,14 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       };
 
       const normalizedJson = JSON.stringify(circuitInput);
-      const messageHashBytes = await wasmComputeAttestationMessageHash(normalizedJson);
+
+      let messageHashBytes: Uint8Array;
+      try {
+        messageHashBytes = await wasmComputeAttestationMessageHash(normalizedJson);
+      } catch (err) {
+        // Surface underlying wasm error (often a plain string) with context.
+        throw new Error(`Failed to compute Zcash attestation hash: ${extractErrorMessage(err)}`);
+      }
       circuitInput.attestation.message_hash = numberArrayFromBytes(messageHashBytes);
 
       let pubkeyX: Uint8Array;
@@ -560,15 +648,27 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         s: numberArrayFromBytes(sBytes),
       };
 
-      const pubkeyHashBytes = await wasmComputeCustodianPubkeyHash(pubkeyX, pubkeyY);
+      let pubkeyHashBytes: Uint8Array;
+      try {
+        pubkeyHashBytes = await wasmComputeCustodianPubkeyHash(pubkeyX, pubkeyY);
+      } catch (err) {
+        throw new Error(
+          `Failed to compute Zcash custodian pubkey hash: ${extractErrorMessage(err)}`,
+        );
+      }
       circuitInput.public.custodian_pubkey_hash = bytesToHex(pubkeyHashBytes);
 
-      const nullifierBytes = await wasmComputeNullifier(
-        accountBytes,
-        scopeBigInt,
-        policyBigInt,
-        epochBigInt,
-      );
+      let nullifierBytes: Uint8Array;
+      try {
+        nullifierBytes = await wasmComputeNullifier(
+          accountBytes,
+          scopeBigInt,
+          policyBigInt,
+          epochBigInt,
+        );
+      } catch (err) {
+        throw new Error(`Failed to compute Zcash nullifier: ${extractErrorMessage(err)}`);
+      }
       circuitInput.public.nullifier = bytesToHex(nullifierBytes);
 
       const attestationJson = JSON.stringify(circuitInput, null, 2);
@@ -579,8 +679,11 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         'Zcash wallet attestation ready. It will be bound to the selected verifier policy.',
       );
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to build Zcash wallet attestation JSON.';
+      const message = extractErrorMessage(err);
+      // Log the full error object for debugging in the browser console.
+      // This helps surface wasm-bindgen JsValue strings that would otherwise be swallowed.
+      // eslint-disable-next-line no-console
+      console.error('Failed to build Zcash wallet attestation JSON:', err);
       setError(message);
       updateStatus('error', message);
       onShowToast(message, 'error');
@@ -897,7 +1000,8 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
             (zcashBalanceZats === null &&
               snapshotHeight === null &&
               (derivedShieldedBalance === null || derivedSnapshotHeight === null)) ||
-            (!evmAccount && !isDemoSnapshot)
+            // Allow zero-balance attestations without EVM wallet (uses synthetic signing)
+            (!evmAccount && !isDemoSnapshot && zcashBalanceZats !== 0 && derivedShieldedBalance !== 0)
           }
         >
           {isBuilding ? 'Building Zcash attestation…' : 'Generate Zcash attestation JSON'}
@@ -908,13 +1012,18 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
             explicit threshold and scope.
           </p>
         )}
-        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && (
-          <p className="muted small">
-            Your balance is 0 ZEC. You can still generate an attestation — the proof will show
-            you do not meet the policy threshold, which is valid attestation data.
+        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && ufvk.trim() && (
+          <p className="muted small zero-balance-info">
+            ✓ Your balance is 0 ZEC. Click the button above to generate an empty wallet attestation — 
+            no EVM wallet needed. The proof will cryptographically confirm your wallet holds no shielded funds.
           </p>
         )}
-        {policy && !ufvk.trim() && (
+        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && !ufvk.trim() && (
+          <p className="muted small warning-text">
+            Your balance is 0 ZEC. Enter a UFVK above to generate an empty wallet attestation.
+          </p>
+        )}
+        {policy && !ufvk.trim() && derivedShieldedBalance !== 0 && zcashBalanceZats !== 0 && (
           <p className="muted small warning-text">
             UFVK is required. Create a wallet from seed, connect via MetaMask Snap, or paste a UFVK manually.
           </p>

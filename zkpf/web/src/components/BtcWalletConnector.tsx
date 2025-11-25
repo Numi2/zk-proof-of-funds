@@ -87,11 +87,12 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
     return value.trim().toLowerCase().replace(/^0x/, '');
   };
 
+  // Allow 0 for zero-balance attestations
   const parseBalance = (raw: string): number | null => {
     const cleaned = raw.replace(/[, _]/g, '');
-    if (!cleaned) return null;
+    if (cleaned === '' || cleaned === null || cleaned === undefined) return null;
     const parsed = Number(cleaned);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    if (!Number.isFinite(parsed) || parsed < 0) {
       return null;
     }
     return Math.floor(parsed);
@@ -113,8 +114,8 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
 
     const parsedBalance = parseBalance(balanceSats);
     if (parsedBalance === null) {
-      setError('Enter a positive BTC balance in satoshis.');
-      updateStatus('error', 'BTC balance (sats) must be a positive number.');
+      setError('Enter a BTC balance in satoshis (0 or positive).');
+      updateStatus('error', 'BTC balance (sats) must be zero or a positive number.');
       return;
     }
 
@@ -429,6 +430,12 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
           <p className="muted small">
             Choose a verifier policy first so the BTC attestation can be checked against an explicit threshold and
             scope.
+          </p>
+        )}
+        {policy && balanceSats.trim() === '0' && (
+          <p className="muted small zero-balance-info">
+            ✓ Balance is 0 sats. You can generate an empty wallet attestation — 
+            the proof will cryptographically confirm your BTC address holds no funds.
           </p>
         )}
       </div>

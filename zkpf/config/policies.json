@@ -87,6 +87,18 @@
     "category": "ZCASH_ORCHARD"
   },
   {
+    "policy_id": 100202,
+    "threshold_raw": 0,
+    "required_currency_code": 999001,
+    "verifier_scope_id": 302,
+    "rail_id": "ZCASH_ORCHARD",
+    "label": "Orchard = 0 ZEC (empty wallet)",
+    "category": "ZCASH_ORCHARD",
+    "options": {
+      "exact_zero": true
+    }
+  },
+  {
     "policy_id": 900003,
     "threshold_raw": 100000000000,
     "required_currency_code": 5915971,

@@ -47,6 +47,7 @@ export function PolicyComposer({ client, onComposed }: Props) {
   // Orchard options
   const [orchardThreshold, setOrchardThreshold] = useState('50');
   const [orchardScopeId, setOrchardScopeId] = useState('300');
+  const [orchardExactZero, setOrchardExactZero] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +98,20 @@ export function PolicyComposer({ client, onComposed }: Props) {
         ],
       };
     }
+    // For "exact zero" mode, we use threshold = 0 to prove empty wallet
+    if (orchardExactZero) {
+      const fallbackLabel = 'Orchard: = 0 ZEC (empty wallet)';
+      return {
+        title: 'Zcash Orchard policy (zero balance)',
+        summary: `Confirms wallet has exactly 0 ZEC shielded balance for scope ${orchardScopeId || '—'}.`,
+        details: [
+          { label: 'Label', value: withCustomLabel(fallbackLabel) },
+          { label: 'Threshold', value: '= 0 ZEC' },
+          { label: 'Mode', value: 'Exact zero (empty wallet)' },
+          { label: 'Scope', value: String(orchardScopeId || '—') },
+        ],
+      };
+    }
     const numeric = toPositiveNumber(orchardThreshold);
     const hasThreshold = numeric > 0;
     const human = hasThreshold
@@ -126,6 +141,7 @@ export function PolicyComposer({ client, onComposed }: Props) {
     onchainScopeId,
     orchardThreshold,
     orchardScopeId,
+    orchardExactZero,
     withCustomLabel,
   ]);
 
@@ -203,33 +219,56 @@ export function PolicyComposer({ client, onComposed }: Props) {
         };
       } else {
         // ZCASH_ORCHARD
-        const human = Number(orchardThreshold);
-        if (!Number.isFinite(human) || human <= 0) {
-          throw new Error('Enter a positive numeric threshold.');
-        }
-        const thresholdRaw = Math.round(human * 1e8); // zats
         const scopeId = Number(orchardScopeId);
         if (!Number.isFinite(scopeId) || scopeId < 0) {
           throw new Error('Enter a valid scope ID.');
         }
 
-        const effectiveLabel = withCustomLabel(`Orchard: ≥ ${human.toLocaleString()} ZEC`);
+        if (orchardExactZero) {
+          // "Exact zero" mode: prove wallet has 0 ZEC
+          const effectiveLabel = withCustomLabel('Orchard: = 0 ZEC (empty wallet)');
 
-        payload = {
-          category,
-          rail_id: 'ZCASH_ORCHARD',
-          label: effectiveLabel,
-          options: {
-            network: 'mainnet',
-            pool: 'orchard',
-            threshold_zec_display: human,
-            zec_decimals: 8,
-          },
-          threshold_raw: thresholdRaw,
-          // Synthetic code for ZEC; must match the Orchard rail configuration.
-          required_currency_code: 999001,
-          verifier_scope_id: scopeId,
-        };
+          payload = {
+            category,
+            rail_id: 'ZCASH_ORCHARD',
+            label: effectiveLabel,
+            options: {
+              network: 'mainnet',
+              pool: 'orchard',
+              threshold_zec_display: 0,
+              zec_decimals: 8,
+              exact_zero: true,
+            },
+            threshold_raw: 0,
+            // Synthetic code for ZEC; must match the Orchard rail configuration.
+            required_currency_code: 999001,
+            verifier_scope_id: scopeId,
+          };
+        } else {
+          const human = Number(orchardThreshold);
+          if (!Number.isFinite(human) || human <= 0) {
+            throw new Error('Enter a positive numeric threshold.');
+          }
+          const thresholdRaw = Math.round(human * 1e8); // zats
+
+          const effectiveLabel = withCustomLabel(`Orchard: ≥ ${human.toLocaleString()} ZEC`);
+
+          payload = {
+            category,
+            rail_id: 'ZCASH_ORCHARD',
+            label: effectiveLabel,
+            options: {
+              network: 'mainnet',
+              pool: 'orchard',
+              threshold_zec_display: human,
+              zec_decimals: 8,
+            },
+            threshold_raw: thresholdRaw,
+            // Synthetic code for ZEC; must match the Orchard rail configuration.
+            required_currency_code: 999001,
+            verifier_scope_id: scopeId,
+          };
+        }
       }
 
       setLoading(true);
@@ -375,16 +414,26 @@ export function PolicyComposer({ client, onComposed }: Props) {
 
         {category === 'ZCASH_ORCHARD' && (
           <>
-            <label className="field">
-              <span>Minimum balance (ZEC)</span>
+            <label className="field checkbox-field">
               <input
-                type="number"
-                min="0"
-                step="0.00000001"
-                value={orchardThreshold}
-                onChange={(event) => setOrchardThreshold(event.target.value)}
+                type="checkbox"
+                checked={orchardExactZero}
+                onChange={(event) => setOrchardExactZero(event.target.checked)}
               />
+              <span>Exact zero balance (empty wallet proof)</span>
             </label>
+            {!orchardExactZero && (
+              <label className="field">
+                <span>Minimum balance (ZEC)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.00000001"
+                  value={orchardThreshold}
+                  onChange={(event) => setOrchardThreshold(event.target.value)}
+                />
+              </label>
+            )}
             <label className="field">
               <span>Scope ID</span>
               <input

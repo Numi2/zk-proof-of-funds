@@ -15,6 +15,10 @@ const ZKPassportVerifier = lazy(() =>
   import('./ZKPassportVerifier').then((module) => ({ default: module.ZKPassportVerifier })),
 );
 
+const ZKPassportSharedProofVerifier = lazy(() =>
+  import('./ZKPassportSharedProofVerifier').then((module) => ({ default: module.ZKPassportSharedProofVerifier })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 
 export function ZKPassportApp() {
@@ -61,6 +65,12 @@ export function ZKPassportApp() {
             className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
           >
             Verify Identity
+          </NavLink>
+          <NavLink
+            to="verify/shared"
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+          >
+            Verify Proof
           </NavLink>
         </nav>
       </header>
@@ -111,6 +121,21 @@ export function ZKPassportApp() {
             </Suspense>
           )}
         />
+        <Route
+          path="verify/shared"
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Preparing proof verifier…</p>
+                </section>
+              )}
+            >
+              <ZKPassportSharedProofVerifier />
+            </Suspense>
+          )}
+        />
         <Route path="*" element={<Navigate to="/zkpassport" replace />} />
       </Routes>
 
@@ -119,6 +144,11 @@ export function ZKPassportApp() {
           <a href="/" style={{ color: '#94a3b8', textDecoration: 'none' }}>
             ← Back to ZKPF
           </a>
+        </p>
+        <p style={{ marginTop: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+          <code style={{ background: 'rgba(100, 116, 139, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>@zkpassport/sdk</code>
+          <br />
+          integrated by Numan Thabit.
         </p>
       </footer>
     </div>

@@ -66,15 +66,20 @@ export function formatPolicyThreshold(policy: PolicyDefinition): {
   numeric: number;
   decimals: number;
   currency: CurrencyMeta;
+  isExactZero: boolean;
 } {
   const currency = getCurrencyMeta(policy.required_currency_code);
   const divisor = currency.decimals > 0 ? 10 ** currency.decimals : 1;
   const numeric = divisor === 0 ? policy.threshold_raw : policy.threshold_raw / divisor;
+  const isExactZero = policy.threshold_raw === 0;
   const maxDigits = currency.decimals > 4 ? 4 : currency.decimals;
   const minDigits = numeric >= 1000 ? 0 : Math.min(2, maxDigits);
   const formatter = numberFormatter(maxDigits, minDigits);
-  const formatted = `${formatter.format(numeric)} ${currency.code}`;
-  return { formatted, numeric, decimals: currency.decimals, currency };
+  // For exact zero policies, show "= 0" instead of "≥ 0"
+  const formatted = isExactZero
+    ? `= 0 ${currency.code}`
+    : `${formatter.format(numeric)} ${currency.code}`;
+  return { formatted, numeric, decimals: currency.decimals, currency, isExactZero };
 }
 
 export function policyDisplayName(policy: PolicyDefinition): string {
@@ -102,10 +107,13 @@ export function policyShortSummary(policy: PolicyDefinition): string {
 
 export function policyNarrative(policy: PolicyDefinition): string {
   const displayName = policyDisplayName(policy);
-  const threshold = formatPolicyThreshold(policy).formatted;
+  const { formatted, isExactZero } = formatPolicyThreshold(policy);
   const scope = `scope ${policy.verifier_scope_id}`;
   const rail = policyRailLabel(policy);
-  return `${displayName} enforces ≥ ${threshold} for ${scope} via ${rail}.`;
+  if (isExactZero) {
+    return `${displayName} confirms exactly ${formatted} (empty wallet) for ${scope} via ${rail}.`;
+  }
+  return `${displayName} enforces ≥ ${formatted} for ${scope} via ${rail}.`;
 }
 
 export function matchesPolicyQuery(policy: PolicyDefinition, query: string): boolean {
