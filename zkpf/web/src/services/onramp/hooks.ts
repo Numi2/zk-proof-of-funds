@@ -2,14 +2,14 @@
  * On-Ramp React Hooks
  * 
  * Custom hooks for integrating on-ramp functionality into React components.
+ * Provides real integration with Coinbase and Transak providers.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   type OnRampProvider,
   type OnRampSession,
   type OnRampQuote,
-  type OnRampStatus,
   type StartOnRampRequest,
   type GetQuoteRequest,
   PROVIDER_CAPABILITIES,
@@ -18,14 +18,16 @@ import {
 import {
   USDC_CHAINS,
   getChainByKey,
-  getBestProviderForChain,
   type UsdcChainConfig,
 } from '../../config/usdc-chains';
-import { createCoinbaseAdapter, type CoinbaseOnrampConfig } from './providers/coinbase';
+import { createCoinbaseAdapter } from './providers/coinbase';
+import { createTransakAdapter } from './providers/transak';
 
 // Get config from environment
 const COINBASE_APP_ID = import.meta.env.VITE_COINBASE_ONRAMP_APP_ID || '';
 const TRANSAK_API_KEY = import.meta.env.VITE_TRANSAK_API_KEY || '';
+const TRANSAK_ENVIRONMENT = (import.meta.env.VITE_TRANSAK_ENVIRONMENT || 'STAGING') as 'STAGING' | 'PRODUCTION';
+const ONRAMP_API_BASE = import.meta.env.VITE_ONRAMP_API_BASE || '/api/onramp';
 
 /**
  * Hook state for on-ramp operations.
@@ -92,6 +94,14 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
     });
   }, []);
 
+  const transakAdapter = useMemo(() => {
+    if (!TRANSAK_API_KEY) return null;
+    return createTransakAdapter({
+      apiKey: TRANSAK_API_KEY,
+      environment: TRANSAK_ENVIRONMENT,
+    });
+  }, []);
+
   // Get available chains for current provider
   const availableChains = useMemo(() => {
     const capabilities = PROVIDER_CAPABILITIES[state.provider];
@@ -106,10 +116,10 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
       return !!COINBASE_APP_ID && coinbaseAdapter !== null;
     }
     if (provider === 'transak') {
-      return !!TRANSAK_API_KEY;
+      return !!TRANSAK_API_KEY && transakAdapter !== null;
     }
     return false;
-  }, [coinbaseAdapter]);
+  }, [coinbaseAdapter, transakAdapter]);
 
   // Set provider
   const setProvider = useCallback((provider: OnRampProvider) => {
@@ -150,24 +160,12 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
           chain: state.chain,
           amountUsd,
         });
-      } else if (state.provider === 'transak') {
-        // Transak quote (simplified - would need actual API call)
-        quote = {
-          provider: 'transak',
-          fiatAmountCents: Math.round(amountUsd * 100),
-          fiatCurrency: 'USD',
-          cryptoAmount: amountUsd * 0.99 * 1_000_000, // 1% fee
-          cryptoAsset: 'USDC',
-          exchangeRate: 0.99,
-          fees: {
-            provider: Math.round(amountUsd * 0.01 * 100),
-            network: 0,
-            total: Math.round(amountUsd * 0.01 * 100),
-          },
-          estimatedTimeSeconds: 600,
-          expiresAt: Date.now() + 300_000,
-          isZeroFee: false,
-        };
+      } else if (state.provider === 'transak' && transakAdapter) {
+        // Real Transak quote via adapter
+        quote = await transakAdapter.getQuote({
+          chain: state.chain,
+          amountUsd,
+        });
       } else {
         throw new Error(`Provider ${state.provider} not available`);
       }
@@ -179,7 +177,7 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
       setState(prev => ({ ...prev, error, loading: false }));
       throw err;
     }
-  }, [state.provider, state.chain, coinbaseAdapter]);
+  }, [state.provider, state.chain, coinbaseAdapter, transakAdapter]);
 
   // Get quotes from all available providers
   const getAllQuotes = useCallback(async (amountUsd: number): Promise<OnRampQuote[]> => {
@@ -195,29 +193,11 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
         );
       }
 
-      // Transak quote (if available)
-      if (TRANSAK_API_KEY) {
-        const transakCapabilities = PROVIDER_CAPABILITIES.transak;
-        if (transakCapabilities.supportedChains.includes(state.chain)) {
-          quotePromises.push(
-            Promise.resolve({
-              provider: 'transak' as const,
-              fiatAmountCents: Math.round(amountUsd * 100),
-              fiatCurrency: 'USD',
-              cryptoAmount: amountUsd * 0.99 * 1_000_000,
-              cryptoAsset: 'USDC',
-              exchangeRate: 0.99,
-              fees: {
-                provider: Math.round(amountUsd * 0.01 * 100),
-                network: 0,
-                total: Math.round(amountUsd * 0.01 * 100),
-              },
-              estimatedTimeSeconds: 600,
-              expiresAt: Date.now() + 300_000,
-              isZeroFee: false,
-            })
-          );
-        }
+      // Transak quote via real adapter
+      if (transakAdapter && transakAdapter.isAvailable(state.chain)) {
+        quotePromises.push(
+          transakAdapter.getQuote({ chain: state.chain, amountUsd }).catch(() => null)
+        );
       }
 
       const results = await Promise.all(quotePromises);
@@ -239,7 +219,7 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
       setState(prev => ({ ...prev, error, loading: false }));
       throw err;
     }
-  }, [state.chain, coinbaseAdapter]);
+  }, [state.chain, coinbaseAdapter, transakAdapter]);
 
   // Start on-ramp session
   const startOnRamp = useCallback(async (
@@ -260,23 +240,17 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
 
         // Open Coinbase widget in new window
         window.open(response.redirectUrl, '_blank', 'width=450,height=700');
-      } else if (state.provider === 'transak') {
-        // Transak widget integration
-        const sessionId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-        session = {
-          id: sessionId,
+      } else if (state.provider === 'transak' && transakAdapter) {
+        // Real Transak session
+        const response = await transakAdapter.startSession({
+          ...request,
           provider: 'transak',
-          status: 'pending',
-          fiatAmountCents: Math.round(request.amountUsd * 100),
-          fiatCurrency: 'USD',
-          cryptoAsset: 'USDC',
-          targetChain: state.chain,
-          targetAddress: request.address,
-          createdAt: Date.now(),
-        };
+          chain: state.chain,
+        });
+        session = response.session;
 
-        // Would open Transak widget here
-        // openTransakWidget({ apiKey: TRANSAK_API_KEY, ... });
+        // Open Transak widget in new window
+        window.open(response.redirectUrl, '_blank', 'width=500,height=700');
       } else {
         throw new Error(`Provider ${state.provider} not available`);
       }
@@ -288,7 +262,7 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
       setState(prev => ({ ...prev, error, loading: false }));
       throw err;
     }
-  }, [state.provider, state.chain, coinbaseAdapter]);
+  }, [state.provider, state.chain, coinbaseAdapter, transakAdapter]);
 
   // Reset state
   const reset = useCallback(() => {
@@ -318,11 +292,13 @@ export function useOnRamp(initialChain?: string): UseOnRampReturn {
 
 /**
  * Hook to track an active on-ramp session status.
+ * Polls the backend API or provider directly for status updates.
  */
-export function useOnRampSession(sessionId: string | null) {
+export function useOnRampSession(sessionId: string | null, provider?: OnRampProvider) {
   const [session, setSession] = useState<OnRampSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Poll for session status updates
   useEffect(() => {
@@ -332,40 +308,72 @@ export function useOnRampSession(sessionId: string | null) {
     }
 
     let cancelled = false;
+    abortControllerRef.current = new AbortController();
+
     const poll = async () => {
       if (cancelled) return;
       
       setLoading(true);
       try {
-        // In production, this would call the backend API
-        // const response = await fetch(`/api/onramp/session/${sessionId}`);
-        // const data = await response.json();
-        // setSession(data);
+        // Try backend API first
+        const response = await fetch(`${ONRAMP_API_BASE}/session/${sessionId}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+          signal: abortControllerRef.current?.signal,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (!cancelled) {
+            setSession(data);
+            setError(null);
+            
+            // Stop polling if session is complete or failed
+            if (['completed', 'failed', 'expired'].includes(data.status)) {
+              setLoading(false);
+              return;
+            }
+          }
+        } else if (response.status === 404) {
+          // Session not found in backend, might be local-only
+          setError(null);
+        } else {
+          throw new Error(`API returned ${response.status}`);
+        }
         
-        // For now, just maintain current state
         setLoading(false);
-      } catch (err) {
+        
+        // Continue polling every 5 seconds
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to fetch session');
+          setTimeout(poll, 5000);
+        }
+      } catch (err) {
+        if (!cancelled && err instanceof Error && err.name !== 'AbortError') {
+          console.warn('Session poll error:', err);
+          setError(err.message);
           setLoading(false);
+          // Retry after longer delay on error
+          setTimeout(poll, 10000);
         }
       }
     };
 
     poll();
-    const interval = setInterval(poll, 5000); // Poll every 5 seconds
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      abortControllerRef.current?.abort();
     };
-  }, [sessionId]);
+  }, [sessionId, provider]);
 
   return { session, loading, error };
 }
 
 /**
  * Hook to get USDC balance across multiple chains.
+ * Includes real Starknet balance fetching.
  */
 export function useUsdcBalance(address: string | null) {
   const [balances, setBalances] = useState<Map<string, bigint>>(new Map());
@@ -387,23 +395,31 @@ export function useUsdcBalance(address: string | null) {
       const newBalances = new Map<string, bigint>();
       let total = 0;
 
-      // Fetch balances from each supported chain
-      for (const [chainKey, config] of Object.entries(USDC_CHAINS)) {
+      // Fetch balances from each supported chain in parallel
+      const fetchPromises = Object.entries(USDC_CHAINS).map(async ([chainKey, config]) => {
         try {
-          // Skip Starknet for now (different RPC approach)
-          if (chainKey === 'starknet') continue;
-
-          const balance = await fetchErc20Balance(
-            config.rpcUrl,
-            config.usdcAddress,
-            address
-          );
-          newBalances.set(chainKey, balance);
-          total += Number(balance) / 1e6; // USDC has 6 decimals
-        } catch {
-          // Ignore individual chain errors
-          newBalances.set(chainKey, 0n);
+          let balance: bigint;
+          
+          if (chainKey === 'starknet') {
+            // Starknet uses different address format and RPC
+            balance = await fetchStarknetUsdcBalance(config.rpcUrl, config.usdcAddress, address);
+          } else {
+            // EVM chains use standard ERC20 balanceOf
+            balance = await fetchErc20Balance(config.rpcUrl, config.usdcAddress, address);
+          }
+          
+          return { chainKey, balance };
+        } catch (err) {
+          console.warn(`Failed to fetch balance for ${chainKey}:`, err);
+          return { chainKey, balance: 0n };
         }
+      });
+
+      const results = await Promise.all(fetchPromises);
+      
+      for (const { chainKey, balance } of results) {
+        newBalances.set(chainKey, balance);
+        total += Number(balance) / 1e6; // USDC has 6 decimals
       }
 
       setBalances(newBalances);
@@ -433,7 +449,7 @@ export function useUsdcBalance(address: string | null) {
 }
 
 /**
- * Fetch ERC-20 balance using JSON-RPC.
+ * Fetch ERC-20 balance using JSON-RPC (for EVM chains).
  */
 async function fetchErc20Balance(
   rpcUrl: string,
@@ -441,7 +457,7 @@ async function fetchErc20Balance(
   walletAddress: string
 ): Promise<bigint> {
   // balanceOf(address) selector: 0x70a08231
-  const data = `0x70a08231000000000000000000000000${walletAddress.slice(2).toLowerCase()}`;
+  const data = `0x70a08231000000000000000000000000${walletAddress.slice(2).toLowerCase().padStart(40, '0')}`;
 
   const response = await fetch(rpcUrl, {
     method: 'POST',
@@ -465,3 +481,119 @@ async function fetchErc20Balance(
   return BigInt(result.result || '0x0');
 }
 
+/**
+ * Fetch USDC balance from Starknet using Starknet JSON-RPC.
+ * Uses the ERC20 balance_of function.
+ */
+async function fetchStarknetUsdcBalance(
+  rpcUrl: string,
+  usdcAddress: string,
+  walletAddress: string
+): Promise<bigint> {
+  // Validate Starknet address format
+  if (!walletAddress.startsWith('0x') || walletAddress.length < 50) {
+    // Not a valid Starknet address, return 0
+    return 0n;
+  }
+
+  // balance_of entry point selector (starknet keccak of "balance_of")
+  const balanceOfSelector = '0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e';
+  
+  // Normalize addresses - Starknet expects addresses without leading zeros
+  const normalizedUsdcAddress = normalizeStarknetAddress(usdcAddress);
+  const normalizedWalletAddress = normalizeStarknetAddress(walletAddress);
+
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'starknet_call',
+      params: [
+        {
+          contract_address: normalizedUsdcAddress,
+          entry_point_selector: balanceOfSelector,
+          calldata: [normalizedWalletAddress],
+        },
+        'latest',
+      ],
+      id: 1,
+    }),
+  });
+
+  const result = await response.json();
+  
+  if (result.error) {
+    throw new Error(result.error.message || 'Starknet RPC error');
+  }
+
+  // Starknet returns u256 as two felts [low, high]
+  // For USDC balances, high is typically 0
+  const resultArray = result.result || [];
+  if (resultArray.length >= 1) {
+    const low = BigInt(resultArray[0] || '0x0');
+    const high = resultArray.length >= 2 ? BigInt(resultArray[1] || '0x0') : 0n;
+    // u256 = low + high * 2^128
+    return low + (high << 128n);
+  }
+
+  return 0n;
+}
+
+/**
+ * Normalize a Starknet address to the expected format.
+ * Removes leading zeros and ensures 0x prefix.
+ */
+function normalizeStarknetAddress(address: string): string {
+  if (!address.startsWith('0x')) {
+    address = '0x' + address;
+  }
+  // Remove leading zeros after 0x, but keep at least one character
+  const withoutPrefix = address.slice(2);
+  const normalized = withoutPrefix.replace(/^0+/, '') || '0';
+  return '0x' + normalized;
+}
+
+/**
+ * Hook for fetching the backend API URL for on-ramp operations.
+ */
+export function useOnRampApi() {
+  return {
+    baseUrl: ONRAMP_API_BASE,
+    
+    // Quote endpoint
+    async getQuote(request: GetQuoteRequest): Promise<OnRampQuote[]> {
+      const response = await fetch(`${ONRAMP_API_BASE}/quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(`Quote request failed: ${response.status}`);
+      }
+      return response.json();
+    },
+    
+    // Create session endpoint
+    async createSession(request: StartOnRampRequest): Promise<OnRampSession> {
+      const response = await fetch(`${ONRAMP_API_BASE}/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(`Session creation failed: ${response.status}`);
+      }
+      return response.json();
+    },
+    
+    // Get session status
+    async getSessionStatus(sessionId: string): Promise<OnRampSession> {
+      const response = await fetch(`${ONRAMP_API_BASE}/session/${sessionId}`);
+      if (!response.ok) {
+        throw new Error(`Session fetch failed: ${response.status}`);
+      }
+      return response.json();
+    },
+  };
+}

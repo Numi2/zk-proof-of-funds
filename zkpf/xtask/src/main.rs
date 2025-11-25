@@ -22,7 +22,6 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::{json, Value};
 use zkpf_circuit::{
-    custodians,
     gadgets::attestation::{AttestationWitness, EcdsaSignature, Secp256k1Pubkey},
     PublicInputs, ZkpfCircuitInput,
 };
@@ -259,7 +258,6 @@ fn verify_with_backend(
     let policy_entry = json!({
         "threshold_raw": verifier_inputs.threshold_raw,
         "required_currency_code": verifier_inputs.required_currency_code,
-        "required_custodian_id": verifier_inputs.required_custodian_id,
         "verifier_scope_id": verifier_inputs.verifier_scope_id,
         "policy_id": verifier_inputs.policy_id,
     });
@@ -456,13 +454,6 @@ fn generate_sample_input() -> Result<ZkpfCircuitInput> {
     let signing_key = sample_signing_key()?;
     let signature = sign_digest(&signing_key, &message_hash)?;
     let derived_pubkey = derive_pubkey(&signing_key)?;
-    let allowlisted_pubkey = *custodians::lookup_pubkey(CUSTODIAN_ID)
-        .ok_or_else(|| anyhow!("custodian {} is not allow-listed", CUSTODIAN_ID))?;
-    ensure!(
-        pubkey_eq(&derived_pubkey, &allowlisted_pubkey),
-        "sample signing key does not match allow-listed custodian {}",
-        CUSTODIAN_ID
-    );
 
     let attestation = AttestationWitness {
         balance_raw: BALANCE_RAW,
@@ -472,7 +463,7 @@ fn generate_sample_input() -> Result<ZkpfCircuitInput> {
         issued_at: ISSUED_AT,
         valid_until: VALID_UNTIL,
         account_id_hash,
-        custodian_pubkey: allowlisted_pubkey,
+        custodian_pubkey: derived_pubkey,
         signature,
         message_hash,
     };
@@ -483,17 +474,16 @@ fn generate_sample_input() -> Result<ZkpfCircuitInput> {
         Fr::from(POLICY_ID),
         Fr::from(CURRENT_EPOCH),
     ]);
-    let custodian_pubkey_hash = custodian_pubkey_hash(&allowlisted_pubkey);
+    let pubkey_hash = custodian_pubkey_hash(&derived_pubkey);
 
     let public = PublicInputs {
         threshold_raw: THRESHOLD_RAW,
         required_currency_code: CURRENCY_CODE,
-        required_custodian_id: CUSTODIAN_ID,
         current_epoch: CURRENT_EPOCH,
         verifier_scope_id: VERIFIER_SCOPE_ID,
         policy_id: POLICY_ID,
         nullifier,
-        custodian_pubkey_hash,
+        custodian_pubkey_hash: pubkey_hash,
     };
 
     Ok(ZkpfCircuitInput {
@@ -540,10 +530,6 @@ fn derive_pubkey(signing_key: &SigningKey) -> Result<Secp256k1Pubkey> {
     x.copy_from_slice(encoded.x().ok_or_else(|| anyhow!("missing x coordinate"))?);
     y.copy_from_slice(encoded.y().ok_or_else(|| anyhow!("missing y coordinate"))?);
     Ok(Secp256k1Pubkey { x, y })
-}
-
-fn pubkey_eq(a: &Secp256k1Pubkey, b: &Secp256k1Pubkey) -> bool {
-    a.x == b.x && a.y == b.y
 }
 
 #[derive(Clone, Copy, Debug)]

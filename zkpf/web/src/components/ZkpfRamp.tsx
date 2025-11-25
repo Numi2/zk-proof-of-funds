@@ -2,9 +2,10 @@
  * ZkpfRamp - Permissionless fiat-to-crypto on-ramp widget
  * 
  * Enables users to buy zkUSD/ZEC/STRK with credit card without KYC.
+ * Integrates with the RampEscrow smart contract for decentralized settlement.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import './ZkpfRamp.css';
 
 // Types
@@ -20,15 +21,18 @@ interface RampQuote {
   agentName: string;
   agentRating: number;
   estimatedTime: number; // seconds
+  expiresAt: number;
 }
 
-interface RampAgent {
-  id: string;
-  name: string;
-  rating: number;
-  spreadBps: number;
-  volume24h: number;
-  successRate: number;
+interface RampIntent {
+  intentId: string;
+  status: 'pending' | 'locked' | 'payment_sent' | 'confirmed' | 'released' | 'disputed' | 'cancelled' | 'expired';
+  cryptoAmount: number;
+  fiatAmountCents: number;
+  agentId: string;
+  txHash?: string;
+  createdAt: number;
+  expiresAt: number;
 }
 
 interface ZkpfRampProps {
@@ -42,61 +46,118 @@ interface ZkpfRampProps {
   onError?: (error: Error) => void;
   /** Custom class name */
   className?: string;
+  /** API base URL for ramp protocol */
+  apiBaseUrl?: string;
 }
 
 // Asset metadata
-const ASSET_META: Record<CryptoAsset, { icon: string; name: string; color: string }> = {
-  zkUSD: { icon: '💵', name: 'zkUSD', color: '#22c55e' },
+const ASSET_META: Record<CryptoAsset, { icon: string; name: string; color: string; tokenAddress?: string }> = {
+  zkUSD: { icon: '💵', name: 'zkUSD', color: '#22c55e', tokenAddress: undefined }, // Will be set from contract
   ZEC: { icon: '🛡️', name: 'Zcash', color: '#f4b728' },
   STRK: { icon: '⚡', name: 'Starknet', color: '#ec796b' },
 };
 
-// Mock API calls (replace with real implementation)
-async function fetchQuote(
+// Default API base URL
+const DEFAULT_API_BASE = import.meta.env.VITE_RAMP_API_BASE || '/api/ramp';
+
+/**
+ * Fetch quote from the ramp protocol API.
+ */
+async function fetchQuoteFromApi(
+  apiBase: string,
   fiatAmount: number,
-  asset: CryptoAsset
+  asset: CryptoAsset,
+  abortSignal?: AbortSignal
 ): Promise<RampQuote> {
-  // Simulate API delay
-  await new Promise(r => setTimeout(r, 500));
-  
-  // Mock quote
-  const rates: Record<CryptoAsset, number> = {
-    zkUSD: 1.0,
-    ZEC: 35.0, // $35 per ZEC
-    STRK: 1.2,  // $1.20 per STRK
-  };
-  
-  const feePct = 1.5; // 1.5% fee
-  const rate = rates[asset];
-  const netAmount = fiatAmount * (1 - feePct / 100);
-  const cryptoAmount = netAmount / rate;
+  const response = await fetch(`${apiBase}/quote`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fiatAmountCents: Math.round(fiatAmount * 100),
+      fiatCurrency: 'USD',
+      cryptoAsset: asset,
+    }),
+    signal: abortSignal,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Quote request failed' }));
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
   
   return {
-    cryptoAmount,
-    rate,
-    feePct,
-    agentId: 'agent-001',
-    agentName: 'ZkRamp Agent #1',
-    agentRating: 4.8,
-    estimatedTime: 300, // 5 minutes
+    cryptoAmount: data.cryptoAmount,
+    rate: data.rate,
+    feePct: data.feePct,
+    agentId: data.agent.id,
+    agentName: data.agent.name,
+    agentRating: data.agent.rating,
+    estimatedTime: data.estimatedTimeSeconds || 300,
+    expiresAt: data.expiresAt,
   };
 }
 
-async function createRampIntent(params: {
-  fiatAmount: number;
-  asset: CryptoAsset;
-  address: string;
-  paymentMethod: PaymentMethod;
-}): Promise<{ intentId: string; paymentUrl: string }> {
-  await new Promise(r => setTimeout(r, 800));
-  
-  // In production, this would:
-  // 1. Call the RampEscrow contract to create intent
-  // 2. Get payment URL from the matched agent
-  return {
-    intentId: `intent-${Date.now()}`,
-    paymentUrl: `https://pay.zkpf.dev/checkout/${Date.now()}`,
-  };
+/**
+ * Create a ramp intent via the protocol API.
+ */
+async function createRampIntentApi(
+  apiBase: string,
+  params: {
+    fiatAmount: number;
+    asset: CryptoAsset;
+    address: string;
+    paymentMethod: PaymentMethod;
+    agentId?: string;
+  }
+): Promise<{ intentId: string; paymentUrl: string; intent: RampIntent }> {
+  const response = await fetch(`${apiBase}/intent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fiatAmountCents: Math.round(params.fiatAmount * 100),
+      fiatCurrency: 'USD',
+      cryptoAsset: params.asset,
+      destinationAddress: params.address,
+      paymentMethod: params.paymentMethod,
+      preferredAgentId: params.agentId,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Intent creation failed' }));
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Poll for intent status updates.
+ */
+async function pollIntentStatus(
+  apiBase: string,
+  intentId: string,
+  abortSignal?: AbortSignal
+): Promise<RampIntent> {
+  const response = await fetch(`${apiBase}/intent/${intentId}/status`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+    signal: abortSignal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Status poll failed: HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export function ZkpfRamp({
@@ -105,6 +166,7 @@ export function ZkpfRamp({
   onSuccess,
   onError,
   className,
+  apiBaseUrl = DEFAULT_API_BASE,
 }: ZkpfRampProps) {
   // State
   const [amount, setAmount] = useState('100');
@@ -114,12 +176,29 @@ export function ZkpfRamp({
   const [status, setStatus] = useState<RampStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [intentId, setIntentId] = useState<string | null>(null);
+  const [intent, setIntent] = useState<RampIntent | null>(null);
+
+  // Refs for cleanup
+  const quoteAbortRef = useRef<AbortController | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Parse amount
   const fiatAmount = useMemo(() => {
     const parsed = parseFloat(amount.replace(/[^0-9.]/g, ''));
     return isNaN(parsed) ? 0 : parsed;
   }, [amount]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      quoteAbortRef.current?.abort();
+      pollAbortRef.current?.abort();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Fetch quote when amount/asset changes
   useEffect(() => {
@@ -128,25 +207,91 @@ export function ZkpfRamp({
       return;
     }
 
-    const controller = new AbortController();
+    // Abort previous request
+    quoteAbortRef.current?.abort();
+    quoteAbortRef.current = new AbortController();
+
     setStatus('quoting');
+    setError(null);
     
-    fetchQuote(fiatAmount, asset)
+    fetchQuoteFromApi(apiBaseUrl, fiatAmount, asset, quoteAbortRef.current.signal)
       .then(q => {
-        if (!controller.signal.aborted) {
-          setQuote(q);
-          setStatus('idle');
-        }
+        setQuote(q);
+        setStatus('idle');
       })
       .catch(err => {
-        if (!controller.signal.aborted) {
-          setError(err.message);
-          setStatus('error');
-        }
+        if (err.name === 'AbortError') return;
+        console.error('Quote fetch error:', err);
+        setError(err.message);
+        setStatus('error');
       });
 
-    return () => controller.abort();
-  }, [fiatAmount, asset]);
+    return () => {
+      quoteAbortRef.current?.abort();
+    };
+  }, [fiatAmount, asset, apiBaseUrl]);
+
+  // Poll for intent status when we have an active intent
+  useEffect(() => {
+    if (!intentId || status !== 'processing') {
+      return;
+    }
+
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = new AbortController();
+
+    const pollStatus = async () => {
+      try {
+        const updatedIntent = await pollIntentStatus(
+          apiBaseUrl,
+          intentId,
+          pollAbortRef.current?.signal
+        );
+        
+        setIntent(updatedIntent);
+
+        // Check for terminal states
+        if (updatedIntent.status === 'released') {
+          setStatus('complete');
+          onSuccess?.(
+            updatedIntent.txHash || '',
+            String(updatedIntent.cryptoAmount / 1_000_000), // Convert from 6 decimals
+            asset
+          );
+          // Stop polling
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        } else if (['disputed', 'cancelled', 'expired'].includes(updatedIntent.status)) {
+          setStatus('error');
+          setError(`Transaction ${updatedIntent.status}`);
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        console.warn('Status poll error:', err);
+        // Don't stop polling on transient errors
+      }
+    };
+
+    // Initial poll
+    pollStatus();
+
+    // Continue polling every 5 seconds
+    pollIntervalRef.current = setInterval(pollStatus, 5000);
+
+    return () => {
+      pollAbortRef.current?.abort();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [intentId, status, apiBaseUrl, asset, onSuccess]);
 
   // Handle buy
   const handleBuy = useCallback(async () => {
@@ -160,34 +305,52 @@ export function ZkpfRamp({
       return;
     }
 
+    if (!quote) {
+      setError('Please wait for quote');
+      return;
+    }
+
+    // Check quote expiration
+    if (Date.now() > quote.expiresAt) {
+      setError('Quote expired, please try again');
+      setQuote(null);
+      return;
+    }
+
     setStatus('pending');
     setError(null);
 
     try {
-      const { intentId, paymentUrl } = await createRampIntent({
+      const result = await createRampIntentApi(apiBaseUrl, {
         fiatAmount,
         asset,
         address: destinationAddress,
         paymentMethod,
+        agentId: quote.agentId,
       });
 
-      setIntentId(intentId);
+      setIntentId(result.intentId);
+      setIntent(result.intent);
 
       // Open payment window
       const paymentWindow = window.open(
-        paymentUrl,
+        result.paymentUrl,
         'zkpf-ramp-payment',
-        'width=450,height=650,left=100,top=100'
+        'width=500,height=700,left=100,top=100'
       );
 
-      // Poll for completion (in production, use webhooks)
+      // Start status polling
       setStatus('processing');
-      
-      // Simulate completion after 3 seconds
-      setTimeout(() => {
-        setStatus('complete');
-        onSuccess?.(`0x${Math.random().toString(16).slice(2)}`, String(quote?.cryptoAmount || 0), asset);
-      }, 3000);
+
+      // Monitor if payment window is closed
+      if (paymentWindow) {
+        const checkWindow = setInterval(() => {
+          if (paymentWindow.closed) {
+            clearInterval(checkWindow);
+            // Window closed, but don't cancel - user might have completed payment
+          }
+        }, 1000);
+      }
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Transaction failed';
@@ -195,7 +358,7 @@ export function ZkpfRamp({
       setStatus('error');
       onError?.(err instanceof Error ? err : new Error(message));
     }
-  }, [destinationAddress, fiatAmount, asset, paymentMethod, quote, onSuccess, onError]);
+  }, [destinationAddress, fiatAmount, asset, paymentMethod, quote, apiBaseUrl, onError]);
 
   // Format helpers
   const formatCrypto = (value: number, decimals = 4) => 
@@ -205,6 +368,32 @@ export function ZkpfRamp({
     if (seconds < 60) return `${seconds}s`;
     return `~${Math.round(seconds / 60)} min`;
   };
+
+  // Get status message
+  const getStatusMessage = useCallback(() => {
+    if (!intent) return null;
+    
+    switch (intent.status) {
+      case 'pending':
+        return 'Waiting for agent to accept...';
+      case 'locked':
+        return 'Crypto locked, complete payment...';
+      case 'payment_sent':
+        return 'Payment received, confirming...';
+      case 'confirmed':
+        return 'Payment confirmed, releasing crypto...';
+      case 'released':
+        return 'Complete!';
+      case 'disputed':
+        return 'Under dispute resolution';
+      case 'cancelled':
+        return 'Transaction cancelled';
+      case 'expired':
+        return 'Transaction expired';
+      default:
+        return 'Processing...';
+    }
+  }, [intent]);
 
   return (
     <div className={`zkpf-ramp ${className || ''}`}>
@@ -286,7 +475,7 @@ export function ZkpfRamp({
           <div className="quote-main">
             <span className="quote-label">You receive</span>
             <span className="quote-value">
-              {formatCrypto(quote.cryptoAmount)} {asset}
+              {formatCrypto(quote.cryptoAmount / 1_000_000)} {asset}
             </span>
           </div>
           <div className="quote-details">
@@ -297,7 +486,7 @@ export function ZkpfRamp({
             <div className="quote-row">
               <span>Fee</span>
               <span className={quote.feePct === 0 ? 'quote-free' : ''}>
-                {quote.feePct === 0 ? 'FREE ✨' : `${quote.feePct}%`}
+                {quote.feePct === 0 ? 'FREE ✨' : `${quote.feePct.toFixed(1)}%`}
               </span>
             </div>
             <div className="quote-row">
@@ -308,10 +497,16 @@ export function ZkpfRamp({
               <span>Via</span>
               <span>
                 {quote.agentName}
-                <span className="agent-rating">⭐ {quote.agentRating}</span>
+                <span className="agent-rating">⭐ {quote.agentRating.toFixed(1)}</span>
               </span>
             </div>
           </div>
+          {/* Quote expiration warning */}
+          {quote.expiresAt - Date.now() < 60000 && (
+            <div className="quote-expiring">
+              Quote expires in {Math.round((quote.expiresAt - Date.now()) / 1000)}s
+            </div>
+          )}
         </div>
       )}
 
@@ -363,7 +558,7 @@ export function ZkpfRamp({
       >
         {status === 'idle' && `Buy ${asset}`}
         {status === 'quoting' && 'Getting quote...'}
-        {status === 'pending' && 'Opening payment...'}
+        {status === 'pending' && 'Creating transaction...'}
         {status === 'processing' && (
           <>
             <span className="button-spinner" />
@@ -386,13 +581,23 @@ export function ZkpfRamp({
       </div>
 
       {/* Status Messages */}
-      {status === 'processing' && (
+      {status === 'processing' && intent && (
         <div className="ramp-status processing">
           <div className="status-icon">⏳</div>
           <div className="status-text">
-            <strong>Processing payment...</strong>
-            <span>Your {asset} will arrive in ~5 minutes</span>
+            <strong>{getStatusMessage()}</strong>
+            <span>Your {asset} will arrive in ~{formatTime(quote?.estimatedTime || 300)}</span>
           </div>
+          {intent.txHash && (
+            <a 
+              href={`https://basescan.org/tx/${intent.txHash}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="tx-link"
+            >
+              View transaction →
+            </a>
+          )}
         </div>
       )}
 
@@ -401,8 +606,18 @@ export function ZkpfRamp({
           <div className="status-icon">✅</div>
           <div className="status-text">
             <strong>Purchase complete!</strong>
-            <span>{formatCrypto(quote?.cryptoAmount || 0)} {asset} on the way</span>
+            <span>{formatCrypto((intent?.cryptoAmount || 0) / 1_000_000)} {asset} delivered</span>
           </div>
+          {intent?.txHash && (
+            <a 
+              href={`https://basescan.org/tx/${intent.txHash}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="tx-link"
+            >
+              View transaction →
+            </a>
+          )}
         </div>
       )}
 
@@ -441,4 +656,3 @@ export function ZkpfRamp({
 }
 
 export default ZkpfRamp;
-

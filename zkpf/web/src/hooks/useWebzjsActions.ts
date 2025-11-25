@@ -112,12 +112,16 @@ export function useWebzjsActions() {
     }
   }, [state.webWallet, dispatch]);
 
-  const connectWebZjsSnap = useCallback(async () => {
+  /**
+   * Connect to MetaMask Snap for Zcash wallet functionality.
+   * Returns the viewing key (UFVK) for use in attestations.
+   */
+  const connectWebZjsSnap = useCallback(async (): Promise<string | undefined> => {
     try {
       await requestSnap();
 
       if (!state.webWallet) {
-        return;
+        return undefined;
       }
 
       const latestBlockBigInt = await state.webWallet.get_latest_block();
@@ -166,6 +170,9 @@ export function useWebzjsActions() {
       dispatch({ type: 'set-active-account', payload: accountId });
       await syncStateWithWallet();
       await flushDbToStore();
+
+      // Return the viewing key so caller can use it for attestations
+      return viewingKey;
     } catch (error) {
       const message = extractErrorMessage(error);
       dispatch({

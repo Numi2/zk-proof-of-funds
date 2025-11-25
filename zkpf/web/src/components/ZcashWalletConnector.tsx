@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { blake3 } from '@noble/hashes/blake3.js';
 import { hmac } from '@noble/hashes/hmac.js';
+import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { sha512 } from '@noble/hashes/sha2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
 import * as secp256k1 from '@noble/secp256k1';
-import { generate_seed_phrase } from '@chainsafe/webzjs-keys';
+import { generate_seed_phrase, UnifiedSpendingKey } from '@chainsafe/webzjs-keys';
 import type { CircuitInput, PolicyDefinition } from '../types/zkpf';
 import {
   wasmComputeAttestationMessageHash,
@@ -63,6 +65,26 @@ const DEMO_UFVK_MAINNET =
   'uview1demo0f4zsc9qj0pdm3ntn7h0u4u2e9d4l7m0kqstt0a52f3a8q2t6sgv0p9mlc8v7ga8wdp3n2xk7m3c5qy8q2w0nh9gq2l8k0r0y0t0p0q';
 const DEMO_SNAPSHOT_HEIGHT = 2700000;
 const DEMO_BALANCE_ZATS = 50000000000;
+
+/**
+ * Derive a UFVK from a BIP39 mnemonic seed phrase using PBKDF2.
+ * This follows the BIP39 standard for converting mnemonic to seed.
+ */
+function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'): string {
+  // BIP39: Convert mnemonic to seed using PBKDF2 with "mnemonic" + passphrase as salt
+  // The passphrase is empty for standard use
+  const encoder = new TextEncoder();
+  const mnemonicBytes = encoder.encode(seedPhrase.normalize('NFKD'));
+  const saltBytes = encoder.encode('mnemonic'); // Empty passphrase
+
+  // PBKDF2-SHA512 with 2048 iterations (BIP39 standard)
+  const seed = pbkdf2(sha512, mnemonicBytes, saltBytes, { c: 2048, dkLen: 64 });
+
+  // Create a UnifiedSpendingKey from the seed (account index 0)
+  const usk = new UnifiedSpendingKey(network, seed, 0);
+  const ufvk = usk.to_unified_full_viewing_key();
+  return ufvk.encode(network);
+}
 
 export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
   const { state: walletState } = useWebZjsContext();
@@ -162,7 +184,11 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     setIsConnectingSnap(true);
     setError(null);
     try {
-      await connectWebZjsSnap();
+      const viewingKey = await connectWebZjsSnap();
+      // Auto-populate the UFVK field when we get it from the Snap
+      if (viewingKey) {
+        setUfvk(viewingKey);
+      }
       updateStatus(
         'success',
         'Connected Zcash WebWallet via MetaMask Snap. You can now sync and derive balances.',
@@ -242,6 +268,10 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     setIsCreatingFromSeed(true);
     setError(null);
     try {
+      // Derive UFVK from the seed phrase and auto-populate it
+      const derivedUfvk = deriveUfvkFromSeedPhrase(phrase, zcashNetwork);
+      setUfvk(derivedUfvk);
+
       await createAccountFromSeed(phrase, birthday);
       updateStatus(
         'success',
@@ -259,7 +289,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     } finally {
       setIsCreatingFromSeed(false);
     }
-  }, [seedPhraseInput, seedBirthdayInput, createAccountFromSeed, onShowToast, updateStatus]);
+  }, [seedPhraseInput, seedBirthdayInput, createAccountFromSeed, onShowToast, updateStatus, zcashNetwork]);
 
   const connectEvmWallet = useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -876,6 +906,23 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
           <p className="muted small">
             Choose a verifier policy first so the Zcash attestation can be checked against an
             explicit threshold and scope.
+          </p>
+        )}
+        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && (
+          <p className="muted small">
+            Your balance is 0 ZEC. You can still generate an attestation — the proof will show
+            you do not meet the policy threshold, which is valid attestation data.
+          </p>
+        )}
+        {policy && !ufvk.trim() && (
+          <p className="muted small warning-text">
+            UFVK is required. Create a wallet from seed, connect via MetaMask Snap, or paste a UFVK manually.
+          </p>
+        )}
+        {policy && ufvk.trim() && derivedShieldedBalance === null && derivedSnapshotHeight === null && 
+          zcashBalanceZats === null && snapshotHeight === null && (
+          <p className="muted small warning-text">
+            Sync your wallet first to get balance data, or enter a manual snapshot height and balance.
           </p>
         )}
       </div>

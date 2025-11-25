@@ -15,7 +15,6 @@ import {
   type OnRampSession,
   PROVIDER_CAPABILITIES,
 } from '../types';
-import { USDC_CHAINS } from '../../../config/usdc-chains';
 
 /**
  * Coinbase chain identifier mapping.

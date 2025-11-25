@@ -1,0 +1,29 @@
+[package]
+name = "zkpf_ramp_starknet"
+version = "0.1.0"
+edition = "2023_11"
+description = "zkpf Ramp Protocol contracts for Starknet - zkUSD stablecoin"
+authors = ["zkpf contributors"]
+license = "MIT"
+readme = "README.md"
+
+# See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
+
+[dependencies]
+starknet = ">=2.6.0"
+openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.14.0" }
+
+[lib]
+cairo-version = "2.6.0"
+
+[[target.starknet-contract]]
+casm = true
+sierra = true
+
+[tool.fmt]
+sort-module-level-items = true
+
+[scripts]
+test = "scarb cairo-test"
+build = "scarb build"
+

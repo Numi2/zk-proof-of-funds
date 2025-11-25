@@ -44,6 +44,12 @@ export function WalletLayout() {
             Dashboard
           </NavLink>
           <NavLink
+            to="/wallet/buy"
+            className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active wallet-nav-link-buy' : 'wallet-nav-link wallet-nav-link-buy')}
+          >
+            💵 Buy
+          </NavLink>
+          <NavLink
             to="/wallet/receive"
             className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active' : 'wallet-nav-link')}
           >

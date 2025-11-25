@@ -34,9 +34,10 @@ export {
   useOnRamp,
   useOnRampSession,
   useUsdcBalance,
+  useOnRampApi,
 } from './hooks';
 
-// Provider adapters
+// Provider adapters - Coinbase
 export {
   CoinbaseOnrampAdapter,
   createCoinbaseAdapter,
@@ -46,3 +47,13 @@ export {
   type CoinbaseWebhookEvent,
 } from './providers/coinbase';
 
+// Provider adapters - Transak
+export {
+  TransakOnrampAdapter,
+  createTransakAdapter,
+  validateTransakWebhook,
+  parseTransakWebhook,
+  mapTransakStatus,
+  type TransakConfig,
+  type TransakWebhookEvent,
+} from './providers/transak';

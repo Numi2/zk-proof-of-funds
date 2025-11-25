@@ -4,7 +4,10 @@
  * Type definitions for the USDC on-ramp integration.
  */
 
-import type { OnRampProvider } from '../../config/usdc-chains';
+import type { OnRampProvider as OnRampProviderType } from '../../config/usdc-chains';
+
+// Re-export OnRampProvider for convenience
+export type OnRampProvider = OnRampProviderType;
 
 /**
  * Status of an on-ramp session.

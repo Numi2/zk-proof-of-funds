@@ -38,6 +38,10 @@ const WalletSend = lazy(() =>
   import('./wallet/WalletSend').then((module) => ({ default: module.WalletSend })),
 );
 
+const WalletBuy = lazy(() =>
+  import('./wallet/WalletBuy').then((module) => ({ default: module.WalletBuy })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
@@ -422,6 +426,7 @@ export function ZKPFApp() {
           )}
         >
           <Route index element={<WalletDashboard />} />
+          <Route path="buy" element={<WalletBuy />} />
           <Route path="receive" element={<WalletReceive />} />
           <Route path="send" element={<WalletSend />} />
         </Route>

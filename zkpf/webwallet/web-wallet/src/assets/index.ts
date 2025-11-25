@@ -20,6 +20,7 @@ import EyeSvg from './icons/eye.svg';
 import EyeSlashSvg from './icons/eye-slash.svg';
 import CircleSvg from './icons/circle.svg';
 import CircleDashedSvg from './icons/circle-dashed.svg';
+import DollarSvg from './icons/dollar.svg';
 
 export {
   ChainsafePNG,
@@ -42,4 +43,5 @@ export {
   EyeSlashSvg,
   CircleSvg,
   CircleDashedSvg,
+  DollarSvg,
 };
