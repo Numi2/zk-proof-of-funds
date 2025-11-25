@@ -88,12 +88,12 @@ Before calling any snap methods, dapps **must** request permission using `wallet
 const result = await window.ethereum.request({
   method: 'wallet_requestSnaps',
   params: {
-    'npm:@zkpf/proof-of-funds-snap': {},
+    'npm:@numi2/proof-of-funds-snap': {},
   },
 });
 
 console.log('Snap installed:', result);
-// Returns: { 'npm:@zkpf/proof-of-funds-snap': { id, version, enabled, blocked } }
+// Returns: { 'npm:@numi2/proof-of-funds-snap': { id, version, enabled, blocked } }
 ```
 
 With a specific version:
@@ -102,7 +102,7 @@ With a specific version:
 await window.ethereum.request({
   method: 'wallet_requestSnaps',
   params: {
-    'npm:@zkpf/proof-of-funds-snap': {
+    'npm:@numi2/proof-of-funds-snap': {
       version: '^0.1.0',
     },
   },
@@ -127,7 +127,7 @@ console.log('Installed snaps:', snaps);
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'selectPolicy',
       params: {
@@ -151,7 +151,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'addEthereumSource',
     },
@@ -162,7 +162,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'addZcashSource',
     },
@@ -173,7 +173,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'addFundingSource',
       params: {
@@ -197,7 +197,7 @@ await window.ethereum.request({
 const binding = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'bindHolder',
       params: {
@@ -215,7 +215,7 @@ console.log('Signer:', binding.signerAddress);
 const bindingTyped = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'bindHolderTypedData',
       params: {
@@ -233,7 +233,7 @@ const bindingTyped = await window.ethereum.request({
 const proofRequest = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'createProof',
       params: {
@@ -257,7 +257,7 @@ const proofRequest = await window.ethereum.request({
 const bundle = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'exportProofBundle',
       params: {
@@ -278,7 +278,7 @@ console.log('Bundle JSON:', JSON.stringify(bundle));
 const result = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'verifyProofBundle',
       params: {
@@ -296,7 +296,7 @@ console.log('Details:', result.details);
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'verifyBundleInteractive',
     },
@@ -311,7 +311,7 @@ await window.ethereum.request({
 const history = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'listProofHistory',
     },
@@ -322,7 +322,7 @@ const history = await window.ethereum.request({
 const proof = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getProofFromHistory',
       params: {
@@ -336,7 +336,7 @@ const proof = await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'showProofHistory',
     },
@@ -347,7 +347,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'clearProofHistory',
     },
@@ -362,7 +362,7 @@ await window.ethereum.request({
 const fingerprint = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getHolderFingerprint',
     },
@@ -373,7 +373,7 @@ const fingerprint = await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'showHolderFingerprint',
     },
@@ -388,7 +388,7 @@ await window.ethereum.request({
 const network = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getCurrentNetwork',
     },
@@ -399,7 +399,7 @@ const network = await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'switchNetwork',
       params: {
@@ -413,7 +413,7 @@ await window.ethereum.request({
 const isMain = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'isMainnet',
     },
@@ -428,7 +428,7 @@ const isMain = await window.ethereum.request({
 const state = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getProofState',
     },
@@ -439,7 +439,7 @@ const state = await window.ethereum.request({
 const rawState = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getSnapState',
     },
@@ -450,7 +450,7 @@ const rawState = await window.ethereum.request({
 const sources = await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'getFundingSources',
     },
@@ -461,7 +461,7 @@ const sources = await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'clearFundingSources',
     },
@@ -472,7 +472,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'resetProofState',
     },
@@ -483,7 +483,7 @@ await window.ethereum.request({
 await window.ethereum.request({
   method: 'wallet_invokeSnap',
   params: {
-    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    snapId: 'npm:@numi2/proof-of-funds-snap',
     request: {
       method: 'clearSnapState',
     },

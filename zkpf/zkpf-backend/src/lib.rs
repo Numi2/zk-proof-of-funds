@@ -74,6 +74,7 @@ const CODE_SESSION_NOT_FOUND: &str = "SESSION_NOT_FOUND";
 const CODE_SESSION_STATE: &str = "SESSION_STATE_INVALID";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 const PROVIDER_BALANCE_RAIL_ID: &str = "PROVIDER_BALANCE_V2";
+const STARKNET_L2_RAIL_ID: &str = "STARKNET_L2";
 const PROVIDER_SESSION_TTL_SECS: u64 = 15 * 60;
 const PROVIDER_SESSION_RETENTION_SECS: u64 = 60 * 60;
 const DEFAULT_DEEP_LINK_SCHEME: &str = "zashi";
@@ -154,6 +155,7 @@ impl RailRegistry {
                 let layout = match rail.layout.as_str() {
                     "V1" => PublicInputLayout::V1,
                     "V2_ORCHARD" => PublicInputLayout::V2Orchard,
+                    "V3_STARKNET" => PublicInputLayout::V3Starknet,
                     other => panic!("unsupported public-input layout '{}'", other),
                 };
 

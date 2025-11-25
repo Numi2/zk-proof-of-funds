@@ -1,7 +1,7 @@
 import type { ProofBundle } from '../types';
 import { verifyBundleDialog, verifyResultDialog } from '../ui/dialogs';
 import { parseProofBundle } from './exportBundle';
-import { computeHolderTag, hashFundingSources } from '../utils/crypto';
+import { computeHolderTag } from '../utils/crypto';
 import { policyDisplayName, formatPolicyThreshold } from '../utils/policy';
 
 /**

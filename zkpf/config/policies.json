@@ -94,5 +94,68 @@
     "rail_id": "CUSTODIAL_ATTESTATION",
     "label": "Zashi ≥ 1,000 ZEC",
     "category": "ZASHI"
+  },
+  {
+    "policy_id": 200001,
+    "threshold_raw": 1000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 400,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ 1 ETH",
+    "category": "STARKNET"
+  },
+  {
+    "policy_id": 200002,
+    "threshold_raw": 10000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 401,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ 10 ETH",
+    "category": "STARKNET"
+  },
+  {
+    "policy_id": 200003,
+    "threshold_raw": 100000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 402,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ 100 ETH",
+    "category": "STARKNET"
+  },
+  {
+    "policy_id": 200010,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 22691,
+    "verifier_scope_id": 410,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ 1,000 STRK",
+    "category": "STARKNET"
+  },
+  {
+    "policy_id": 200011,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 22691,
+    "verifier_scope_id": 411,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ 10,000 STRK",
+    "category": "STARKNET"
+  },
+  {
+    "policy_id": 200020,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 420,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ $10,000 USD (total DeFi)",
+    "category": "STARKNET_DEFI"
+  },
+  {
+    "policy_id": 200021,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 421,
+    "rail_id": "STARKNET_L2",
+    "label": "Starknet ≥ $100,000 USD (total DeFi)",
+    "category": "STARKNET_DEFI"
   }
 ]

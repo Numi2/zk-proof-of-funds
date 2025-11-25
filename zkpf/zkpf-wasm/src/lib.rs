@@ -130,6 +130,7 @@ impl PublicInputsWasm {
                 snapshot_block_height: None,
                 snapshot_anchor_orchard: None,
                 holder_binding: None,
+                proven_sum: None,
             },
         })
     }

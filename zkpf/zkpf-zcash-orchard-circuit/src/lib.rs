@@ -149,6 +149,11 @@ pub struct OrchardPofCircuitInput {
 pub struct OrchardPofCircuit {
     pub input: Option<OrchardPofCircuitInput>,
     params: BaseCircuitParams,
+    /// Circuit builder stage. Determines optimization level during synthesis:
+    /// - `Keygen`: Used during proving key generation (no witness values)
+    /// - `Prover`: Optimized for real proof generation (witness-gen only, skips constraints)
+    /// - `Mock`: For MockProver tests (stores constraints for verification)
+    stage: CircuitBuilderStage,
 }
 
 impl Default for OrchardPofCircuit {
@@ -156,15 +161,40 @@ impl Default for OrchardPofCircuit {
         Self {
             input: None,
             params: orchard_default_params(),
+            stage: CircuitBuilderStage::Keygen,
         }
     }
 }
 
 impl OrchardPofCircuit {
+    /// Creates a new circuit for MockProver testing.
+    /// Use `new_prover` for production proof generation.
     pub fn new(input: Option<OrchardPofCircuitInput>) -> Self {
+        let stage = if input.is_some() {
+            CircuitBuilderStage::Mock
+        } else {
+            CircuitBuilderStage::Keygen
+        };
         Self {
             input,
             params: orchard_default_params(),
+            stage,
+        }
+    }
+
+    /// Creates a circuit optimized for production proof generation.
+    /// 
+    /// Uses `CircuitBuilderStage::Prover` which enables `witness_gen_only` mode,
+    /// skipping constraint storage since constraints are already in the proving key.
+    /// This provides better performance than `new()` which uses Mock stage.
+    ///
+    /// # Panics
+    /// Panics if `input` is `None` - prover stage requires witness data.
+    pub fn new_prover(input: OrchardPofCircuitInput) -> Self {
+        Self {
+            input: Some(input),
+            params: orchard_default_params(),
+            stage: CircuitBuilderStage::Prover,
         }
     }
 }
@@ -182,6 +212,7 @@ impl Circuit<Fr> for OrchardPofCircuit {
         Self {
             input: None,
             params: self.params.clone(),
+            stage: CircuitBuilderStage::Keygen,
         }
     }
 
@@ -197,18 +228,16 @@ impl Circuit<Fr> for OrchardPofCircuit {
     }
 
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<Fr>) -> Result<(), Error> {
-        let stage = if self.input.is_some() {
-            CircuitBuilderStage::Mock
-        } else {
-            CircuitBuilderStage::Keygen
-        };
-
+        // Use the pre-configured stage:
+        // - Keygen: Key generation phase, uses sample input with `unknown(true)`
+        // - Mock: MockProver testing, stores constraints for verification  
+        // - Prover: Production proving, `witness_gen_only(true)` for performance
         let input = self
             .input
             .as_ref()
             .expect("OrchardPofCircuit requires concrete input for synthesis");
 
-        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(stage)
+        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(self.stage)
             .use_params(self.params.clone())
             .use_instance_columns(self.params.num_instance_columns);
 
@@ -339,6 +368,7 @@ pub fn build_verifier_public_inputs(
         snapshot_block_height: None,
         snapshot_anchor_orchard: None,
         holder_binding: None,
+        proven_sum: None,
     };
 
     inputs.snapshot_block_height = Some(orchard_meta.block_height as u64);
@@ -377,6 +407,7 @@ pub fn map_inner_to_verifier_public_inputs(
         snapshot_block_height: Some(inner.height as u64),
         snapshot_anchor_orchard: Some(inner.anchor_orchard),
         holder_binding: Some(holder_binding),
+        proven_sum: None,
     }
 }
 
@@ -704,7 +735,10 @@ fn create_orchard_proof_with_public_inputs(
             .map_err(|e| OrchardRailError::InvalidInput(format!("{e}")))?;
 
     let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
-    let circuit = OrchardPofCircuit::new(Some(input.clone()));
+    
+    // Use new_prover for optimized production proof generation.
+    // This uses CircuitBuilderStage::Prover which enables witness_gen_only mode.
+    let circuit = OrchardPofCircuit::new_prover(input.clone());
 
     let mut transcript =
         halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);
@@ -768,7 +802,9 @@ pub fn create_orchard_proof_with_public_inputs_from_bytes(
             .map_err(|e| OrchardRailError::InvalidInput(format!("{e}")))?;
 
     let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
-    let circuit = OrchardPofCircuit::new(Some(input.clone()));
+    
+    // Use new_prover for optimized production proof generation.
+    let circuit = OrchardPofCircuit::new_prover(input.clone());
 
     let mut transcript =
         halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);

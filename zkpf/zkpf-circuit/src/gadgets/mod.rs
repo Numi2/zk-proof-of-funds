@@ -7,3 +7,6 @@ pub mod ecdsa;
 pub mod nullifier;
 pub mod policy;
 pub mod poseidon;
+
+// Re-export important constants
+pub use policy::CURRENCY_WILDCARD;

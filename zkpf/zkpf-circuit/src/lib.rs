@@ -92,6 +92,11 @@ pub struct ZkpfCircuitInput {
 pub struct ZkpfCircuit {
     pub input: Option<ZkpfCircuitInput>,
     params: BaseCircuitParams,
+    /// Circuit builder stage. Determines optimization level during synthesis:
+    /// - `Keygen`: Used during proving key generation (no witness values)
+    /// - `Prover`: Optimized for real proof generation (witness-gen only, skips constraints)
+    /// - `Mock`: For MockProver tests (stores constraints for verification)
+    stage: CircuitBuilderStage,
 }
 
 impl Default for ZkpfCircuit {
@@ -99,15 +104,40 @@ impl Default for ZkpfCircuit {
         Self {
             input: None,
             params: default_params(),
+            stage: CircuitBuilderStage::Keygen,
         }
     }
 }
 
 impl ZkpfCircuit {
+    /// Creates a new circuit for MockProver testing.
+    /// Use `new_prover` for production proof generation.
     pub fn new(input: Option<ZkpfCircuitInput>) -> Self {
+        let stage = if input.is_some() {
+            CircuitBuilderStage::Mock
+        } else {
+            CircuitBuilderStage::Keygen
+        };
         Self {
             input,
             params: default_params(),
+            stage,
+        }
+    }
+
+    /// Creates a circuit optimized for production proof generation.
+    /// 
+    /// Uses `CircuitBuilderStage::Prover` which enables `witness_gen_only` mode,
+    /// skipping constraint storage since constraints are already in the proving key.
+    /// This provides better performance than `new()` which uses Mock stage.
+    ///
+    /// # Panics
+    /// Panics if `input` is `None` - prover stage requires witness data.
+    pub fn new_prover(input: ZkpfCircuitInput) -> Self {
+        Self {
+            input: Some(input),
+            params: default_params(),
+            stage: CircuitBuilderStage::Prover,
         }
     }
 }
@@ -137,6 +167,7 @@ impl Circuit<Fr> for ZkpfCircuit {
         Self {
             input: None,
             params: self.params.clone(),
+            stage: CircuitBuilderStage::Keygen,
         }
     }
 
@@ -152,15 +183,13 @@ impl Circuit<Fr> for ZkpfCircuit {
     }
 
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<Fr>) -> Result<(), Error> {
-        let stage = if self.input.is_some() {
-            CircuitBuilderStage::Mock
-        } else {
-            CircuitBuilderStage::Keygen
-        };
-
+        // Use the pre-configured stage:
+        // - Keygen: Key generation phase, uses sample input with `unknown(true)`
+        // - Mock: MockProver testing, stores constraints for verification  
+        // - Prover: Production proving, `witness_gen_only(true)` for performance
         let input = self.input.as_ref().unwrap_or(&SAMPLE_INPUT);
 
-        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(stage)
+        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(self.stage)
             .use_params(self.params.clone())
             .use_instance_columns(self.params.num_instance_columns);
 

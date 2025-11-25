@@ -44,16 +44,17 @@ export async function switchNetwork(
     ethereumChainId: CHAIN_IDS[network],
   };
   
-  // Switch Ethereum network if possible
-  try {
-    await ethereum.request({
+  // Attempt to switch Ethereum network - this is optional and may fail
+  // if the user hasn't added the chain. We continue regardless since
+  // the snap's network config is separate from MetaMask's active chain.
+  await ethereum
+    .request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: config.ethereumChainId }],
+    })
+    .catch(() => {
+      // Expected: chain may not be added to user's MetaMask
     });
-  } catch (error) {
-    // Network switch might fail if chain not added, continue anyway
-    console.warn('Failed to switch Ethereum chain:', error);
-  }
   
   await setNetworkConfig(config);
   

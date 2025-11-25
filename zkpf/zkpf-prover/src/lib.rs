@@ -10,7 +10,7 @@ use halo2_proofs_axiom::{
     transcript::{Blake2bWrite, Challenge255, TranscriptWriterBuffer},
 };
 use halo2curves_axiom::bn256::{Bn256, Fr, G1Affine};
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 
 use zkpf_circuit::{ZkpfCircuit, ZkpfCircuitInput};
 use zkpf_common::{public_to_verifier_inputs, ProofBundle, VerifierPublicInputs};
@@ -57,15 +57,79 @@ pub fn prove_bundle(
     ProofBundle::new(proof, public_inputs)
 }
 
+// ============================================================
+// RNG-injectable proving functions for testing/debugging
+// ============================================================
+
+/// Proves with a custom RNG source.
+///
+/// This is useful for:
+/// - Deterministic testing with a seeded RNG
+/// - Debugging proof generation issues
+/// - Environments where `OsRng` may not be available (e.g., some WASM targets)
+///
+/// # Example
+/// ```ignore
+/// use rand::SeedableRng;
+/// use rand_chacha::ChaCha20Rng;
+///
+/// // Deterministic proof for testing
+/// let mut rng = ChaCha20Rng::seed_from_u64(12345);
+/// let proof = prove_with_rng(params, pk, input, &mut rng);
+/// ```
+pub fn prove_with_rng<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> Vec<u8> {
+    prove_with_public_inputs_and_rng(params, pk, input, rng).0
+}
+
+/// Proves with custom RNG and returns public inputs.
+pub fn prove_with_public_inputs_and_rng<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> (Vec<u8>, VerifierPublicInputs) {
+    let public_inputs = public_to_verifier_inputs(&input.public);
+    let proof = create_proof_bytes_with_rng(params, pk, input, rng);
+    (proof, public_inputs)
+}
+
+/// Proves and bundles with custom RNG.
+pub fn prove_bundle_with_rng<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> ProofBundle {
+    let (proof, public_inputs) = prove_with_public_inputs_and_rng(params, pk, input, rng);
+    ProofBundle::new(proof, public_inputs)
+}
+
 fn create_proof_bytes(
     params: &ParamsKZG<Bn256>,
     pk: &plonk::ProvingKey<G1Affine>,
     input: ZkpfCircuitInput,
 ) -> Vec<u8> {
+    create_proof_bytes_with_rng(params, pk, input, &mut OsRng)
+}
+
+fn create_proof_bytes_with_rng<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> Vec<u8> {
     let instance_slices = zkpf_circuit::public_instances(&input.public);
     let instance_refs: Vec<&[Fr]> = instance_slices.iter().map(|col| col.as_slice()).collect();
 
-    let circuit = ZkpfCircuit::new(Some(input));
+    // Use new_prover for optimized production proof generation.
+    // This uses CircuitBuilderStage::Prover which enables witness_gen_only mode,
+    // skipping constraint storage since constraints are already in the proving key.
+    let circuit = ZkpfCircuit::new_prover(input);
 
     let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
     create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<'_, Bn256>, _, _, _, _>(
@@ -73,7 +137,7 @@ fn create_proof_bytes(
         pk,
         &[circuit],
         &[instance_refs.as_slice()],
-        OsRng,
+        rng,
         &mut transcript,
     )
     .expect("proof gen");

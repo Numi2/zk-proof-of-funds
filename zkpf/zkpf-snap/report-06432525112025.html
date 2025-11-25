@@ -1,0 +1,390 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Findings Report</title>
+      <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+      font-weight: bold;
+      color: #333;
+    }
+    .even-row {
+      background-color: #f9f9f9;
+    }
+    .odd-row {
+      background-color: #fff;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+  </style>
+    </head>
+    <body>
+      <h1>Findings Report</h1>
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Description</th>
+            <th>File Path</th>
+            <th>Line Numbers</th>
+            <th>Risk Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+        <tr class="even-row">
+          <td>UnhandledPromiseRejection</td>
+          <td>Empty or ineffective catch block detected, which can lead to unhandled promise rejections.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/rpc/networkConfig.tsx</td>
+          <td>1266</td>
+          <td>High</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>UnusedImports</td>
+          <td>Import 'clearProofHistory' is declared but never used.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/rpc/proofHistory.tsx</td>
+          <td>3</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>UnusedImports</td>
+          <td>Import 'hashFundingSources' is declared but never used.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/rpc/verifyBundle.tsx</td>
+          <td>4</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>UnusedImports</td>
+          <td>Import 'Icon' is declared but never used.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/ui/dialogs.tsx</td>
+          <td>1</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Use a `type` instead of an `interface`.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>11</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Type Property name `policy_id` must match one of the following formats: camelCase</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>12</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Type Property name `verifier_scope_id` must match one of the following formats: camelCase</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>13</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Type Property name `threshold_raw` must match one of the following formats: camelCase</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>14</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Type Property name `required_currency_code` must match one of the following formats: camelCase</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>15</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Type Property name `rail_id` must match one of the following formats: camelCase</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>17</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Use a `type` instead of an `interface`.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/types.ts</td>
+          <td>30, 40, 53, 63, 73, 84, 98, 107, 119, 124, 128, 132, 140</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "signature" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>3</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>3</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "sources" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>21</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>21</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "hex" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>33</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>33</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "bytes" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>55</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/crypto.ts</td>
+          <td>55</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "code" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>4</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>4</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>15</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>15</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>31</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>31</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>42</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>42</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>50</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>50</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>58</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>58</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "policy" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>66</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/policy.ts</td>
+          <td>66</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>25</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "newState" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>45</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>45, 78</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "entry" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>86</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>109</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "config" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>117</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="odd-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @returns declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>126</td>
+          <td>Low</td>
+        </tr>
+      
+        <tr class="even-row">
+          <td>ESLinting</td>
+          <td>Missing JSDoc @param "fingerprint" declaration.</td>
+          <td>/Users/home/zk-proof-of-funds/zkpf/zkpf-snap/src/utils/state.ts</td>
+          <td>134</td>
+          <td>Low</td>
+        </tr>
+      
+        </tbody>
+      </table>
+    </body>
+    </html>
+  

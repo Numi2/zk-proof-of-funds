@@ -1,47 +1,31 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a1a2e"/>
-      <stop offset="100%" style="stop-color:#16213e"/>
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
     </linearGradient>
     <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#e94560"/>
-      <stop offset="100%" style="stop-color:#ff6b6b"/>
+      <stop offset="0%" stop-color="#e94560"/>
+      <stop offset="100%" stop-color="#ff6b6b"/>
     </linearGradient>
     <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f3460"/>
-      <stop offset="100%" style="stop-color:#533483"/>
+      <stop offset="0%" stop-color="#0f3460"/>
+      <stop offset="100%" stop-color="#533483"/>
     </linearGradient>
   </defs>
-  
-  <!-- Background circle -->
   <circle cx="256" cy="256" r="248" fill="url(#bgGrad)" stroke="url(#accentGrad)" stroke-width="8"/>
-  
-  <!-- Shield shape -->
-  <path d="M256 80 L400 140 L400 260 C400 340 340 400 256 440 C172 400 112 340 112 260 L112 140 Z" 
-        fill="url(#shieldGrad)" stroke="url(#accentGrad)" stroke-width="4"/>
-  
-  <!-- ZK letters stylized -->
+  <path d="M256 80 L400 140 L400 260 C400 340 340 400 256 440 C172 400 112 340 112 260 L112 140 Z" fill="url(#shieldGrad)" stroke="url(#accentGrad)" stroke-width="4"/>
   <g fill="#e94560">
-    <!-- Z -->
     <path d="M160 180 L220 180 L160 280 L220 280" stroke="#e94560" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    <!-- K -->
     <path d="M260 180 L260 280 M260 230 L300 180 M260 230 L300 280" stroke="#e94560" stroke-width="16" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  
-  <!-- Proof checkmark -->
   <path d="M220 340 L250 370 L340 280" stroke="#4ade80" stroke-width="20" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  
-  <!-- Circuit nodes -->
   <circle cx="140" cy="200" r="8" fill="#e94560"/>
   <circle cx="372" cy="200" r="8" fill="#e94560"/>
   <circle cx="256" cy="120" r="8" fill="#e94560"/>
   <circle cx="180" cy="380" r="8" fill="#4ade80"/>
   <circle cx="332" cy="380" r="8" fill="#4ade80"/>
-  
-  <!-- Connection lines -->
   <line x1="140" y1="200" x2="180" y2="200" stroke="#e94560" stroke-width="2" opacity="0.6"/>
   <line x1="340" y1="200" x2="372" y2="200" stroke="#e94560" stroke-width="2" opacity="0.6"/>
   <line x1="256" y1="120" x2="256" y2="160" stroke="#e94560" stroke-width="2" opacity="0.6"/>
 </svg>
-

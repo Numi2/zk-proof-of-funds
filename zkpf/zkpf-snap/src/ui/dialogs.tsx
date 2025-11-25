@@ -7,7 +7,6 @@ import {
   Bold,
   Row,
   Address,
-  Icon,
 } from '@metamask/snaps-sdk/jsx';
 import type { PolicyDefinition, FundingSource, ProofHistoryEntry, NetworkType } from '../types';
 import { policyDisplayName, formatPolicyThreshold, policyCategoryLabel } from '../utils/policy';

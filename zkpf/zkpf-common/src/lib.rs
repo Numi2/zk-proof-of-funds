@@ -27,6 +27,9 @@ use zkpf_circuit::{
 pub const PUBLIC_INPUT_COUNT: usize = 7;
 /// Number of public inputs in the Orchard layout (V2_ORCHARD): V1 prefix + 3 Orchard fields.
 pub const PUBLIC_INPUT_COUNT_V2_ORCHARD: usize = 10;
+/// Number of public inputs in the Starknet layout (V3_STARKNET): V1 prefix + 4 Starknet fields.
+/// Fields: chain_id_numeric, block_number, account_commitment, holder_binding
+pub const PUBLIC_INPUT_COUNT_V3_STARKNET: usize = 11;
 
 // Re-export Poseidon parameters from zkpf-circuit (the canonical source)
 // to maintain backward compatibility for crates that import from zkpf-common.
@@ -55,18 +58,25 @@ pub struct VerifierPublicInputs {
     /// Optional binding between holder identity and rail-specific key material.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub holder_binding: Option<[u8; 32]>,
+    /// Optional proven sum for transparency (Starknet rail).
+    /// The actual aggregated balance value that was proven to meet the threshold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proven_sum: Option<u128>,
 }
 
 /// Logical public-input layouts supported by the verifier.
 ///
 /// - `V1` – legacy custodial attestation rail (8 public inputs).
 /// - `V2Orchard` – Orchard rail layout: V1 prefix plus Orchard snapshot fields.
+/// - `V3Starknet` – Starknet L2 rail layout: V1 prefix plus Starknet-specific fields.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PublicInputLayout {
     #[serde(rename = "V1")]
     V1,
     #[serde(rename = "V2_ORCHARD")]
     V2Orchard,
+    #[serde(rename = "V3_STARKNET")]
+    V3Starknet,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -171,9 +181,54 @@ pub const CIRCUIT_VERSION: u32 = 3;
 pub const MANIFEST_VERSION: u32 = 1;
 pub const MANIFEST_FILE: &str = "manifest.json";
 
+// ============================================================
+// Artifact Integrity & Security Notes
+// ============================================================
+//
+// The artifact manifest system provides **integrity verification** through
+// BLAKE3 hashes: if any artifact file is corrupted or truncated, loading
+// will fail with a hash mismatch error.
+//
+// However, the manifest itself is NOT cryptographically signed. This means:
+//
+// **Threat Model Considerations:**
+//
+// 1. **Filesystem Access Attack**: An attacker with filesystem write access
+//    could replace both the manifest AND the artifact files consistently,
+//    potentially substituting malicious proving/verifying keys.
+//
+// 2. **Supply Chain Attack**: Artifacts distributed over insecure channels
+//    (HTTP, unverified CDN) could be replaced in transit.
+//
+// **Recommended Mitigations for High-Security Deployments:**
+//
+// 1. **Manifest Signing**: Sign the manifest with a long-term key (e.g., Ed25519)
+//    and verify the signature before loading artifacts.
+//
+// 2. **Embedded VK Commitment**: Embed the expected verifying key commitment
+//    (e.g., BLAKE3 hash of vk_bytes) directly in application code. This acts
+//    as a "trust anchor" that cannot be modified without recompiling.
+//
+//    ```ignore
+//    const EXPECTED_VK_HASH: &str = "abc123..."; // from trusted source
+//    assert_eq!(hash_bytes_hex(&vk_bytes), EXPECTED_VK_HASH);
+//    ```
+//
+// 3. **Content-Addressed Storage**: Distribute artifacts via IPFS or similar
+//    systems where the CID (content identifier) serves as an immutable reference.
+//
+// 4. **Reproducible Builds**: Publish build scripts that allow independent
+//    verification of artifact generation from source code.
+//
+// For most use cases, BLAKE3 hash verification is sufficient. The above
+// measures are recommended for deployments where artifact compromise would
+// have severe consequences (e.g., financial systems, regulatory compliance).
+
+/// Metadata for a single artifact file (params, vk, or pk).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArtifactFile {
     pub path: String,
+    /// BLAKE3 hash of the file contents (hex-encoded).
     pub blake3: String,
     pub size: u64,
 }
@@ -192,10 +247,16 @@ impl ArtifactFile {
     }
 }
 
+/// Circuit artifact manifest describing the params, verifying key, and proving key.
+///
+/// The manifest provides integrity verification via BLAKE3 hashes of each artifact.
+/// See the module-level security notes for discussion of manifest signing and
+/// additional protections for high-security deployments.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArtifactManifest {
     pub manifest_version: u32,
     pub circuit_version: u32,
+    /// Circuit size parameter (number of rows = 2^k).
     pub k: u32,
     pub created_at_unix: u64,
     pub params: ArtifactFile,
@@ -377,6 +438,7 @@ pub fn public_to_verifier_inputs(public: &PublicInputs) -> VerifierPublicInputs 
         snapshot_block_height: None,
         snapshot_anchor_orchard: None,
         holder_binding: None,
+        proven_sum: None,
     }
 }
 
@@ -420,6 +482,41 @@ pub fn public_inputs_to_instances_with_layout(
             cols.push(vec![snapshot_height_fr]);
             cols.push(vec![anchor_fr]);
             cols.push(vec![holder_binding_fr]);
+
+            Ok(cols)
+        }
+        PublicInputLayout::V3Starknet => {
+            // Starknet L2 layout: V1 prefix + 4 Starknet-specific fields = 11 columns total
+            let block_number = inputs.snapshot_block_height.ok_or_else(|| {
+                anyhow!("snapshot_block_height (block_number) is required for V3_STARKNET public-input layout")
+            })?;
+            // Reuse snapshot_anchor_orchard field for account_commitment
+            let account_commitment_bytes = inputs.snapshot_anchor_orchard.ok_or_else(|| {
+                anyhow!("snapshot_anchor_orchard (account_commitment) is required for V3_STARKNET public-input layout")
+            })?;
+            let holder_binding_bytes = inputs.holder_binding.unwrap_or([0u8; 32]);
+            // proven_sum is required for V3_STARKNET to match circuit's 11-column layout
+            let proven_sum = inputs.proven_sum.ok_or_else(|| {
+                anyhow!("proven_sum is required for V3_STARKNET public-input layout")
+            })?;
+
+            // Reuse the existing PublicInputs conversion for the V1 prefix (7 columns).
+            let public = verifier_inputs_to_public(inputs)?;
+            let mut cols = public_instances(&public);
+
+            // Starknet-specific trailing fields (4 columns: 7+4=11 total).
+            let block_number_fr = Fr::from(block_number);
+            let account_commitment_fr = reduce_be_bytes_to_fr(&account_commitment_bytes);
+            let holder_binding_fr = reduce_be_bytes_to_fr(&holder_binding_bytes);
+            // proven_sum as u128 -> split into two u64 limbs and pack into Fr
+            // For simplicity, we truncate to u64 here; full u128 support would need
+            // more complex encoding or multiple field elements
+            let proven_sum_fr = Fr::from(proven_sum as u64);
+
+            cols.push(vec![block_number_fr]);
+            cols.push(vec![account_commitment_fr]);
+            cols.push(vec![holder_binding_fr]);
+            cols.push(vec![proven_sum_fr]);
 
             Ok(cols)
         }

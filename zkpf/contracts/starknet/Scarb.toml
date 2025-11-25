@@ -1,0 +1,19 @@
+[package]
+name = "zkpf_starknet"
+version = "0.1.0"
+edition = "2023_11"
+description = "zkpf Starknet contracts - AttestationRegistry and Verifier"
+authors = ["zkpf contributors"]
+
+[dependencies]
+starknet = ">=2.6.0"
+
+[cairo]
+sierra-replace-ids = true
+
+[[target.starknet-contract]]
+casm = true
+
+[tool.fmt]
+sort-module-level-items = true
+

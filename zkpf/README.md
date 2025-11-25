@@ -465,6 +465,70 @@ real wallet backend**: the types, crate boundaries, HTTP surface, wallet sync, a
 witness/anchor plumbing are in place so that Zcash-specific work can focus on circuit design and
 artifact production without further surgery to the surrounding zkpf stack.
 
+### Starknet L2 rail (STARKNET_L2) – zk-friendly account abstraction
+
+The workspace includes a **Starknet L2 rail** that enables proof-of-funds over Starknet accounts,
+DeFi positions (vaults, LP tokens, lending), and leverages Starknet's native account abstraction
+for session keys and batched signatures.
+
+**Key components:**
+
+| Crate | Purpose |
+| --- | --- |
+| `zkpf-starknet-l2` | Core Starknet circuit, types, state reader, and AA wallet integration. |
+| `zkpf-rails-starknet` | HTTP service exposing `/rails/starknet/proof-of-funds` and related endpoints. |
+
+**Cairo contracts:**
+
+| Contract | Purpose |
+| --- | --- |
+| `AttestationRegistry.cairo` | On-chain attestation storage for Starknet dApps to trust zkpf PoF without going back to L1. |
+| `ZkpfVerifier.cairo` | Optional on-chain proof verification with epoch drift and nullifier replay protection. |
+| `ZkpfGatedLending.cairo` | Example DeFi integration showing how to gate lending based on PoF. |
+
+**Public input layout (V3_STARKNET):**
+
+The Starknet rail uses an 11-column public input layout:
+- Columns 0-6: Base zkpf fields (threshold, currency, epoch, scope, policy, nullifier, pubkey_hash)
+- Column 7: `block_number` – Starknet block at snapshot
+- Column 8: `account_commitment` – H(account_addresses)
+- Column 9: `holder_binding` – H(holder_id || account_commitment)
+- Column 10: `proven_sum` – Actual proven sum (optional)
+
+**Account abstraction features:**
+
+- **Session keys**: Sign proof binding messages with limited-scope session keys
+- **Batched signatures**: Efficiently sign for multiple accounts in one operation
+- **Wallet detection**: Auto-detect Argent, Braavos, and OpenZeppelin accounts
+
+**DeFi position support:**
+
+The rail can aggregate balances across:
+- Native ETH/STRK balances
+- ERC-20 tokens (USDC, USDT, DAI, WBTC, etc.)
+- DeFi positions: JediSwap LP, Nostra lending, zkLend deposits, Ekubo positions, Haiko vaults
+
+**Example policies:**
+
+```json
+{
+  "policy_id": 200001,
+  "threshold_raw": 1000000000000000000,
+  "required_currency_code": 1027,
+  "verifier_scope_id": 400,
+  "rail_id": "STARKNET_L2",
+  "label": "Starknet ≥ 1 ETH",
+  "category": "STARKNET"
+}
+```
+
+**Configuration:**
+
+- `ZKPF_STARKNET_RPC_URL` – Starknet JSON-RPC endpoint for state reading
+- `ZKPF_STARKNET_CHAIN_ID` – Chain identifier (`SN_MAIN` or `SN_SEPOLIA`)
+
+For detailed documentation, see [docs/starknet-rail.md](docs/starknet-rail.md).
+
 ### Provider-balance rail (PROVIDER_BALANCE_V2) – generic provider-attested proofs
 
 In addition to the custodial and Orchard rails, the backend exposes a **provider-balance rail**
@@ -637,29 +701,42 @@ Across the whole workspace, the remaining work can be grouped into a few major t
   - Implement the Orchard Halo2 circuit, generate artifacts, and wire `prove_orchard_pof` to produce real `ProofBundle`s for `RAIL_ID_ZCASH_ORCHARD`.
   - Harden error handling around wallet connectivity (lightwalletd failures, DB corruption, unknown anchors) and document operational runbooks for the Orchard rail.
 
-- **2. Multi-rail verifier and manifest**
-  - Continue evolving the multi-rail manifest and registry to cover additional rails (`ZCASH_ORCHARD`, future EVM/on-chain rails) with clear separation between verifier-only and prover-capable artifacts.
+- **2. Starknet L2 rail completion**
+  - Generate Halo2/bn256 circuit artifacts for the Starknet rail (`V3_STARKNET` layout).
+  - Deploy Cairo contracts (`AttestationRegistry.cairo`, `ZkpfVerifier.cairo`) to Starknet mainnet/sepolia.
+  - Integrate real Starknet RPC calls for balance and DeFi position fetching.
+  - Implement Cairo-native PoF circuit for native STARK verification (optional).
+  - Add end-to-end tests covering account abstraction (session keys, batched signatures).
+
+- **3. Multi-rail verifier and manifest**
+  - Continue evolving the multi-rail manifest and registry to cover additional rails (`ZCASH_ORCHARD`, `STARKNET_L2`, future EVM/on-chain rails) with clear separation between verifier-only and prover-capable artifacts.
   - Enforce strict `rail_id` and `circuit_version` matching to avoid cross-rail verification mistakes.
 
-- **3. Public-input evolution and circuit versioning**
-  - Finalize Orchard and future rail layouts on top of `PublicInputLayout` while keeping the existing custodial circuit on v1.
+- **4. Public-input evolution and circuit versioning**
+  - Finalize Orchard (V2_ORCHARD), Starknet (V3_STARKNET), and future rail layouts on top of `PublicInputLayout` while keeping the existing custodial circuit on V1.
   - Add helpers in `zkpf-common` and dedicated circuit crates to build and validate per-rail `VerifierPublicInputs` structs, and keep the backend + wasm bindings in sync.
 
-- **4. On-chain wallet PoF rail(s)**
+- **5. On-chain wallet PoF rail(s)**
   - Turn the `docs/onchain-proof-of-funds.md` design and `contracts/` into a working rail:
     - Implement a circuit that proves inclusion of wallet balances under on-chain Merkle snapshots.
     - Define a `rail_id` and manifest entry for the on-chain rail.
     - Add a dedicated rail HTTP service and UI configuration similar to the Orchard rail.
 
-- **5. UX, tooling, and docs**
-  - Extend the web dashboard’s rail awareness (per-rail filters, status/health panels, richer bundle inspection).
+- **6. Cross-L2 proofs**
+  - Enable aggregating proofs across multiple L2s (Starknet, zkSync, Scroll, etc.).
+  - Design a unified "L2 aggregation" circuit that can verify sub-proofs from different chains.
+  - Coordinate nullifier and epoch semantics across chains.
+
+- **7. UX, tooling, and docs**
+  - Extend the web dashboard's rail awareness (per-rail filters, status/health panels, richer bundle inspection).
   - Add operational docs for:
     - Running the backend + rails in production (env vars, ports, manifests, nullifier DB).
     - Provisioning Zcash wallets and syncing for the Orchard rail.
+    - Deploying and operating Starknet contracts.
     - Rotating artifacts and policies safely.
   - Tighten CI around:
     - Multi-rail regression tests.
-    - End-to-end flows (custodial and Orchard) using `zkpf-test-fixtures`-like harnesses.
+    - End-to-end flows (custodial, Orchard, Starknet) using `zkpf-test-fixtures`-like harnesses.
 
-This README will be updated as the Orchard rail, multi-rail verifier, and future rails progress from scaffold to production-ready status.
+This README will be updated as the Orchard rail, Starknet rail, multi-rail verifier, and future rails progress from scaffold to production-ready status.
 

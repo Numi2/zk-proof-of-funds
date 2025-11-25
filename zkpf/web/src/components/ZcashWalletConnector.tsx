@@ -738,7 +738,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
                 <textarea
                   value={ufvk}
                   onChange={(event) => setUfvk(event.target.value)}
-                  placeholder="uview1..."
+                  placeholder="Paste your UFVK here"
                   rows={3}
                 />
               </div>
@@ -748,7 +748,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
                   type="text"
                   value={snapshotHeightInput}
                   onChange={(event) => setSnapshotHeightInput(event.target.value)}
-                  placeholder="e.g. 2700000"
+                  placeholder=""
                 />
               </div>
               <div className="wallet-row">

@@ -201,6 +201,85 @@ fn test_invalid_message_hash_field_element_returns_error() {
     }
 }
 
+// ============================================================
+// Boundary Condition Tests
+// ============================================================
+
+/// Test that balance exactly equal to threshold passes.
+/// This is the critical edge case for the >= comparison.
+#[test]
+fn test_balance_equals_threshold_passes() {
+    let input = FixtureBuilder::new()
+        .with_att(|att| att.balance_raw = BASE_THRESHOLD)
+        .build();
+    run_mock_prover(input).assert_satisfied();
+}
+
+/// Test that balance one unit below threshold fails.
+/// Ensures the comparison is >= not >.
+#[test]
+fn test_balance_one_below_threshold_fails() {
+    let input = FixtureBuilder::new()
+        .with_att(|att| att.balance_raw = BASE_THRESHOLD - 1)
+        .build();
+    assert!(run_mock_prover(input).verify().is_err());
+}
+
+/// Test that current_epoch exactly equal to issued_at passes.
+/// This tests the lower bound of the validity window.
+#[test]
+fn test_epoch_equals_issued_at_passes() {
+    let input = FixtureBuilder::new()
+        .with_public(|public| public.current_epoch = BASE_ISSUED_AT)
+        .build();
+    run_mock_prover(input).assert_satisfied();
+}
+
+/// Test that current_epoch exactly equal to valid_until passes.
+/// This tests the upper bound of the validity window (inclusive).
+#[test]
+fn test_epoch_equals_valid_until_passes() {
+    let input = FixtureBuilder::new()
+        .with_public(|public| public.current_epoch = BASE_VALID_UNTIL)
+        .build();
+    run_mock_prover(input).assert_satisfied();
+}
+
+/// Test that current_epoch one unit after valid_until fails.
+/// Ensures the validity window upper bound is enforced.
+#[test]
+fn test_epoch_one_after_valid_until_fails() {
+    let input = FixtureBuilder::new()
+        .with_public(|public| public.current_epoch = BASE_VALID_UNTIL + 1)
+        .build();
+    assert!(run_mock_prover(input).verify().is_err());
+}
+
+/// Test that currency wildcard (u32::MAX) accepts any currency.
+#[test]
+fn test_currency_wildcard_accepts_any() {
+    use zkpf_circuit::gadgets::CURRENCY_WILDCARD;
+    
+    // Use wildcard as required currency, with any attestation currency
+    let input = FixtureBuilder::new()
+        .with_public(|public| public.required_currency_code = CURRENCY_WILDCARD)
+        .build();
+    run_mock_prover(input).assert_satisfied();
+}
+
+/// Test that currency wildcard works with different attestation currencies.
+#[test]
+fn test_currency_wildcard_accepts_different_currency() {
+    use zkpf_circuit::gadgets::CURRENCY_WILDCARD;
+    
+    // Change attestation currency to EUR (978), require wildcard
+    let input = FixtureBuilder::new()
+        .with_att(|att| att.currency_code_int = 978) // EUR
+        .with_public(|public| public.required_currency_code = CURRENCY_WILDCARD)
+        .build();
+    run_mock_prover(input).assert_satisfied();
+}
+
 fn valid_input() -> ZkpfCircuitInput {
     FixtureBuilder::new().build()
 }
