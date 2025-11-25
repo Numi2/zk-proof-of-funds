@@ -7,10 +7,9 @@
 // going back to L1.
 
 use starknet::ContractAddress;
-use starknet::storage_access::StorageBaseAddress;
 
 #[starknet::interface]
-trait IAttestationRegistry<TContractState> {
+pub trait IAttestationRegistry<TContractState> {
     /// Record a new attestation.
     fn attest(
         ref self: TContractState,
@@ -51,56 +50,55 @@ trait IAttestationRegistry<TContractState> {
 }
 
 /// Attestation record struct.
-#[derive(Drop, Serde, starknet::Store)]
-struct Attestation {
-    holder_id: felt252,
-    policy_id: u64,
-    snapshot_id: felt252,
-    nullifier: felt252,
-    issued_at: u64,
-    attestor: ContractAddress,
+#[derive(Drop, Serde, starknet::Store, Copy)]
+pub struct Attestation {
+    pub holder_id: felt252,
+    pub policy_id: u64,
+    pub snapshot_id: felt252,
+    pub nullifier: felt252,
+    pub issued_at: u64,
+    pub attestor: ContractAddress,
 }
 
 /// Events emitted by the registry.
 #[derive(Drop, starknet::Event)]
-struct Attested {
+pub struct Attested {
     #[key]
-    attestation_id: felt252,
+    pub attestation_id: felt252,
     #[key]
-    holder_id: felt252,
+    pub holder_id: felt252,
     #[key]
-    policy_id: u64,
-    snapshot_id: felt252,
-    nullifier: felt252,
-    attestor: ContractAddress,
+    pub policy_id: u64,
+    pub snapshot_id: felt252,
+    pub nullifier: felt252,
+    pub attestor: ContractAddress,
 }
 
 #[derive(Drop, starknet::Event)]
-struct AttestorAdded {
+pub struct AttestorAdded {
     #[key]
-    attestor: ContractAddress,
+    pub attestor: ContractAddress,
 }
 
 #[derive(Drop, starknet::Event)]
-struct AttestorRemoved {
+pub struct AttestorRemoved {
     #[key]
-    attestor: ContractAddress,
+    pub attestor: ContractAddress,
 }
 
 #[derive(Drop, starknet::Event)]
-struct AdminTransferred {
-    old_admin: ContractAddress,
-    new_admin: ContractAddress,
+pub struct AdminTransferred {
+    pub old_admin: ContractAddress,
+    pub new_admin: ContractAddress,
 }
 
 #[starknet::contract]
-mod AttestationRegistry {
+pub mod AttestationRegistryContract {
     use super::{IAttestationRegistry, Attestation, Attested, AttestorAdded, AttestorRemoved, AdminTransferred};
     use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess, StoragePointerWriteAccess};
-    use core::pedersen::PedersenTrait;
-    use core::hash::{HashStateTrait, HashStateExTrait};
     use core::poseidon::PoseidonTrait;
+    use core::hash::HashStateTrait;
 
     #[storage]
     struct Storage {
@@ -275,4 +273,3 @@ mod AttestationRegistry {
         }
     }
 }
-

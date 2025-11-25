@@ -20,3 +20,7 @@
 mod AttestationRegistry;
 mod ZkpfVerifier;
 
+// Re-export interfaces for external use
+pub use AttestationRegistry::{IAttestationRegistry, IAttestationRegistryDispatcher, IAttestationRegistryDispatcherTrait, Attestation};
+pub use ZkpfVerifier::{IZkpfVerifier, IZkpfVerifierDispatcher, IZkpfVerifierDispatcherTrait, ZkpfPublicInputs, VerificationResult};
+

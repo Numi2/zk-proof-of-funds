@@ -96,7 +96,7 @@ mod ZkpfVerifier {
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
 
     // Import AttestationRegistry interface
-    use super::super::AttestationRegistry::{IAttestationRegistryDispatcher, IAttestationRegistryDispatcherTrait};
+    use super::{IAttestationRegistryDispatcher, IAttestationRegistryDispatcherTrait};
 
     // Starknet chain IDs
     const SN_MAIN_CHAIN_ID: u64 = 0x534e5f4d41494e; // "SN_MAIN"

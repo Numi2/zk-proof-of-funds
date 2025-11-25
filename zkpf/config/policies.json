@@ -157,5 +157,236 @@
     "rail_id": "STARKNET_L2",
     "label": "Starknet ≥ $100,000 USD (total DeFi)",
     "category": "STARKNET_DEFI"
+  },
+  {
+    "policy_id": 300001,
+    "threshold_raw": 1000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 500,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain PoF ≥ 1 ETH (broadcasts to all)",
+    "category": "AXELAR_INTERCHAIN",
+    "axelar_config": {
+      "broadcast_chains": ["osmosis", "neutron", "arbitrum", "optimism"],
+      "validity_window_secs": 86400
+    }
+  },
+  {
+    "policy_id": 300002,
+    "threshold_raw": 10000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 501,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain PoF ≥ 10 ETH (broadcasts to all)",
+    "category": "AXELAR_INTERCHAIN",
+    "axelar_config": {
+      "broadcast_chains": ["osmosis", "neutron", "arbitrum", "optimism", "base"],
+      "validity_window_secs": 172800
+    }
+  },
+  {
+    "policy_id": 300010,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 510,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain PoF ≥ $100K USD (Cosmos broadcast)",
+    "category": "AXELAR_COSMOS",
+    "axelar_config": {
+      "broadcast_chains": ["osmosis", "neutron", "sei", "injective"],
+      "validity_window_secs": 86400
+    }
+  },
+  {
+    "policy_id": 300011,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 511,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain PoF ≥ $1M USD (Cosmos broadcast)",
+    "category": "AXELAR_COSMOS",
+    "axelar_config": {
+      "broadcast_chains": ["osmosis", "neutron", "sei", "injective", "dydx"],
+      "validity_window_secs": 259200
+    }
+  },
+  {
+    "policy_id": 300020,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 520,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain PoF ≥ $100K USD (L2 broadcast)",
+    "category": "AXELAR_L2",
+    "axelar_config": {
+      "broadcast_chains": ["arbitrum", "optimism", "base", "scroll", "linea"],
+      "validity_window_secs": 86400
+    }
+  },
+  {
+    "policy_id": 300100,
+    "threshold_raw": 1000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 600,
+    "rail_id": "AXELAR_GMP",
+    "label": "Interchain Credit Line ≥ 1 ETH",
+    "category": "AXELAR_CREDIT",
+    "axelar_config": {
+      "broadcast_chains": ["osmosis", "neutron"],
+      "validity_window_secs": 604800,
+      "action_type": "CREDIT_LINE",
+      "credit_params": {
+        "max_credit_multiplier": 0.5,
+        "interest_rate_bps": 500
+      }
+    }
+  },
+  {
+    "policy_id": 400001,
+    "threshold_raw": 1000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 700,
+    "rail_id": "MINA_RECURSIVE",
+    "label": "Cross-chain ≥ 1 ETH (via Mina)",
+    "category": "MINA_HUB",
+    "mina_config": {
+      "network": "testnet",
+      "validity_window_slots": 7200
+    }
+  },
+  {
+    "policy_id": 400002,
+    "threshold_raw": 10000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 701,
+    "rail_id": "MINA_RECURSIVE",
+    "label": "Cross-chain ≥ 10 ETH (via Mina)",
+    "category": "MINA_HUB",
+    "mina_config": {
+      "network": "testnet",
+      "validity_window_slots": 14400
+    }
+  },
+  {
+    "policy_id": 400010,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 710,
+    "rail_id": "MINA_RECURSIVE",
+    "label": "Cross-chain ≥ $100K USD (institutional)",
+    "category": "MINA_INSTITUTIONAL",
+    "mina_config": {
+      "network": "mainnet",
+      "validity_window_slots": 7200,
+      "allow_multi_rail_aggregation": true
+    }
+  },
+  {
+    "policy_id": 400011,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 840,
+    "verifier_scope_id": 711,
+    "rail_id": "MINA_RECURSIVE",
+    "label": "Cross-chain ≥ $1M USD (institutional)",
+    "category": "MINA_INSTITUTIONAL",
+    "mina_config": {
+      "network": "mainnet",
+      "validity_window_slots": 14400,
+      "allow_multi_rail_aggregation": true
+    }
+  },
+  {
+    "policy_id": 400020,
+    "threshold_raw": 1000000000000000000,
+    "required_currency_code": 1027,
+    "verifier_scope_id": 720,
+    "rail_id": "MINA_RECURSIVE",
+    "label": "Multi-chain aggregation ≥ 1 ETH (Starknet+Orchard+Custodial)",
+    "category": "MINA_AGGREGATED",
+    "mina_config": {
+      "network": "mainnet",
+      "validity_window_slots": 7200,
+      "allow_multi_rail_aggregation": true,
+      "allowed_source_rails": ["STARKNET_L2", "ZCASH_ORCHARD", "CUSTODIAL_ATTESTATION"]
+    }
+  },
+  {
+    "policy_id": 500001,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 800,
+    "rail_id": "ONCHAIN_WALLET",
+    "label": "USDC ≥ $1,000 (any EVM chain)",
+    "category": "USDC",
+    "usdc_config": {
+      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
+      "aggregate_cross_chain": true
+    }
+  },
+  {
+    "policy_id": 500002,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 801,
+    "rail_id": "ONCHAIN_WALLET",
+    "label": "USDC ≥ $10,000 (any EVM chain)",
+    "category": "USDC",
+    "usdc_config": {
+      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
+      "aggregate_cross_chain": true
+    }
+  },
+  {
+    "policy_id": 500003,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 802,
+    "rail_id": "ONCHAIN_WALLET",
+    "label": "USDC ≥ $100,000 (any EVM chain)",
+    "category": "USDC",
+    "usdc_config": {
+      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
+      "aggregate_cross_chain": true
+    }
+  },
+  {
+    "policy_id": 500010,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 810,
+    "rail_id": "STARKNET_L2",
+    "label": "USDC ≥ $1,000 (Starknet)",
+    "category": "USDC_STARKNET",
+    "usdc_config": {
+      "allowed_chains": ["starknet"],
+      "aggregate_cross_chain": false
+    }
+  },
+  {
+    "policy_id": 500011,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 811,
+    "rail_id": "STARKNET_L2",
+    "label": "USDC ≥ $10,000 (Starknet)",
+    "category": "USDC_STARKNET",
+    "usdc_config": {
+      "allowed_chains": ["starknet"],
+      "aggregate_cross_chain": false
+    }
+  },
+  {
+    "policy_id": 500020,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 2001,
+    "verifier_scope_id": 820,
+    "rail_id": "ONCHAIN_WALLET",
+    "label": "USDC ≥ $1,000 (Base only - low fees)",
+    "category": "USDC",
+    "usdc_config": {
+      "allowed_chains": ["base"],
+      "aggregate_cross_chain": false,
+      "recommended_onramp": "coinbase"
+    }
   }
 ]

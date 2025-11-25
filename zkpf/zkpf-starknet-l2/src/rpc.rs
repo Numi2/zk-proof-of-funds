@@ -9,12 +9,13 @@ use starknet::{
     providers::{jsonrpc::HttpTransport, JsonRpcClient, Provider},
 };
 use std::sync::Arc;
+use url::Url;
 
 use crate::{
     error::StarknetRailError,
     types::{StarknetChainConfig, known_tokens},
     state::get_token_metadata,
-    DefiPosition, PositionType, StarknetAccountSnapshot, StarknetSnapshot, TokenBalance,
+    StarknetAccountSnapshot, StarknetSnapshot, TokenBalance,
 };
 
 /// Starknet RPC client wrapper.
@@ -26,9 +27,10 @@ pub struct StarknetRpcClient {
 impl StarknetRpcClient {
     /// Create a new RPC client.
     pub fn new(config: StarknetChainConfig) -> Result<Self, StarknetRailError> {
-        let transport = HttpTransport::new(config.rpc_url.parse().map_err(|e| {
+        let url: Url = config.rpc_url.parse().map_err(|e: url::ParseError| {
             StarknetRailError::Rpc(format!("invalid RPC URL: {}", e))
-        })?);
+        })?;
+        let transport = HttpTransport::new(url);
         let provider = Arc::new(JsonRpcClient::new(transport));
         
         Ok(Self { provider, config })

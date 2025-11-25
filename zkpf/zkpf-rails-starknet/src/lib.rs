@@ -2,7 +2,7 @@
 //!
 //! Axum-based HTTP service for Starknet proof-of-funds.
 
-use std::{env, sync::Arc};
+use std::env;
 
 use axum::{
     extract::{Json, State},
@@ -13,7 +13,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
-use uuid::Uuid;
 
 use zkpf_common::ProofBundle;
 use zkpf_starknet_l2::{
@@ -30,14 +29,14 @@ const DEFAULT_CHAIN_ID: &str = "SN_SEPOLIA";
 #[derive(Clone)]
 pub struct AppState {
     pub chain_id: String,
-    pub chain_id_numeric: u64,
+    pub chain_id_numeric: u128,
     pub rpc_url: Option<String>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         let chain_id = env::var(STARKNET_CHAIN_ID_ENV).unwrap_or_else(|_| DEFAULT_CHAIN_ID.to_string());
-        let chain_id_numeric = match chain_id.as_str() {
+        let chain_id_numeric: u128 = match chain_id.as_str() {
             "SN_MAIN" => 0x534e5f4d41494e,
             "SN_SEPOLIA" => 0x534e5f5345504f4c4941,
             _ => 0,
@@ -84,7 +83,7 @@ async fn info(State(state): State<AppState>) -> impl IntoResponse {
     Json(serde_json::json!({
         "rail_id": RAIL_ID_STARKNET_L2,
         "chain_id": state.chain_id,
-        "chain_id_numeric": state.chain_id_numeric,
+        "chain_id_numeric": format!("0x{:x}", state.chain_id_numeric),
         "rpc_configured": state.rpc_url.is_some(),
         "features": {
             "account_abstraction": true,

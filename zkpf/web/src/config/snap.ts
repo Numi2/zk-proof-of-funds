@@ -13,14 +13,13 @@ const getDefaultSnapOrigin = (): string => {
     return envOrigin;
   }
 
-  // In development mode, use local snap server
+  // In development mode, use local snap server (requires `mm-snap serve` running)
+  // Regular MetaMask doesn't allow npm snaps that aren't on the allowlist
   if (import.meta.env.DEV) {
     return 'local:http://localhost:8080';
   }
 
   // Production: use npm-published snap
-  // NOTE: The snap must be published to npm for this to work.
-  // Until then, run locally with: VITE_ZKPF_SNAP_ORIGIN=local:http://localhost:8080
   return 'npm:@numi2/proof-of-funds-snap';
 };
 

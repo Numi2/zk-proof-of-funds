@@ -27,6 +27,10 @@ This workspace hosts an end-to-end proving stack for custodial proof-of-funds at
 | `zkpf-zcash-orchard-circuit` | Public API for the `ZCASH_ORCHARD` rail circuit, including Orchard-specific public metadata and a `prove_orchard_pof` entrypoint. It builds `VerifierPublicInputs` in the V2_ORCHARD layout and wraps a bn256 circuit that will eventually act as an **outer recursive verifier** of an inner Orchard PoF circuit. |
 | `zkpf-orchard-inner` | Defines the data model and prover interface for the **inner Orchard proof-of-funds circuit** over the Pallas/Vesta fields. This circuit is expected to use Orchard’s own Halo2 gadgets (MerkleChip, Sinsemilla `MerklePath::calculate_root`, etc.) to enforce consensus-compatible Orchard semantics. |
 | `zkpf-rails-zcash-orchard` | Axum-based rail service exposing `POST /rails/zcash-orchard/proof-of-funds`. On startup it initializes the global Orchard wallet from env and spawns a background sync loop; each request builds a snapshot via `build_snapshot_for_fvk`, derives Orchard + policy metadata, and calls `prove_orchard_pof` to obtain a `ProofBundle` for the Orchard rail (currently still unimplemented at the circuit level). |
+| `zkpf-axelar-gmp` | Types, encoding, chain configurations, and utilities for Axelar General Message Passing integration. Defines `PoFReceipt`, `PoFRevocation`, `GmpMessage`, and chain subscription management for interchain PoF broadcasting. |
+| `zkpf-rails-axelar` | Axum-based rail service exposing `/rails/axelar/*` endpoints for Axelar GMP integration. Manages chain subscriptions, broadcasts PoF receipts to connected chains, and provides gas estimation for cross-chain messages. |
+| `zkpf-mina` | Core Mina recursive proof hub rail: circuit implementation, types, zkApp interaction helpers, state management, and optional GraphQL client. Wraps zkpf ProofBundles into Mina-native recursive proofs for cross-chain attestations. |
+| `zkpf-rails-mina` | Axum-based rail service exposing `/rails/mina/*` endpoints for Mina recursive proof wrapping. Handles multi-rail aggregation, attestation submission to zkApps, and bridge message generation. |
 
 ### Public Input Vector (custodial rail, v1)
 
@@ -529,6 +533,163 @@ The rail can aggregate balances across:
 
 For detailed documentation, see [docs/starknet-rail.md](docs/starknet-rail.md).
 
+### Axelar GMP rail (AXELAR_GMP) – interchain PoF receipts
+
+The workspace includes an **Axelar GMP rail** that enables zkpf attestations to be broadcast across
+chains via Axelar's **General Message Passing (GMP)** protocol. This transforms zkpf into interchain
+middleware, allowing dApps on any Axelar-connected chain to trust PoF status without custom bridges.
+
+**What Axelar GMP gives you:**
+
+- **General Message Passing**: Arbitrary data/function calls across EVM and Cosmos chains
+- **Unified Security**: Re-uses Axelar's existing security model and validator set
+- **Broad Connectivity**: 50+ chains including Ethereum, L2s, and Cosmos ecosystem
+- **Programmable Actions**: Trigger remote contract calls based on PoF receipts
+
+**Key components:**
+
+| Crate | Purpose |
+| --- | --- |
+| `zkpf-axelar-gmp` | Types, encoding, and chain configurations for Axelar GMP. |
+| `zkpf-rails-axelar` | HTTP service exposing `/rails/axelar/*` endpoints for broadcasting. |
+
+**Solidity contracts:**
+
+| Contract | Purpose |
+| --- | --- |
+| `AttestationBridge.sol` | Broadcasts PoF receipts via GMP to subscribed chains. |
+| `PoFReceiver.sol` | Receives and stores PoF receipts on destination EVM chains. |
+| `pof_receiver.rs` | CosmWasm contract for Cosmos chains (Osmosis, Neutron, etc.). |
+
+**PoF receipt format:**
+
+```rust
+struct PoFReceipt {
+    holder_id: [u8; 32],         // Pseudonymous holder identifier
+    policy_id: u64,              // Policy under which proof was verified
+    snapshot_id: [u8; 32],       // Snapshot identifier
+    chain_id_origin: u64,        // Chain where attestation was recorded
+    attestation_hash: [u8; 32],  // Hash of the full attestation
+    validity_window: u64,        // Seconds until receipt expires
+    issued_at: u64,              // Timestamp when attestation was issued
+}
+```
+
+**Interchain action examples:**
+
+- **Interchain credit lines**: User proves solvency on Ethereum, obtains credit on Osmosis solely
+  based on the GMP PoF receipt—no collateral required on the destination chain.
+- **Undercollateralized lending**: DeFi protocols on Chain B can whitelist holders with valid
+  PoF receipts from Chain A for higher LTV ratios.
+- **Cross-chain gating**: DEXs, NFT marketplaces, or DAOs can gate high-value operations behind
+  PoF verification from any Axelar-connected chain.
+
+**Supported chains:**
+
+| Type | Chains |
+| --- | --- |
+| EVM | Ethereum, Arbitrum, Optimism, Base, Polygon, Avalanche, Scroll, zkSync, Linea, Blast |
+| Cosmos | Osmosis, Neutron, Sei, Injective, Celestia, dYdX |
+
+**Example policies:**
+
+```json
+{
+  "policy_id": 300001,
+  "threshold_raw": 1000000000000000000,
+  "required_currency_code": 1027,
+  "verifier_scope_id": 500,
+  "rail_id": "AXELAR_GMP",
+  "label": "Interchain PoF ≥ 1 ETH (broadcasts to all)",
+  "category": "AXELAR_INTERCHAIN",
+  "axelar_config": {
+    "broadcast_chains": ["osmosis", "neutron", "arbitrum", "optimism"],
+    "validity_window_secs": 86400
+  }
+}
+```
+
+**Configuration:**
+
+- `ZKPF_AXELAR_GATEWAY` – Axelar Gateway contract address
+- `ZKPF_AXELAR_GAS_SERVICE` – Axelar Gas Service contract address
+- `ZKPF_ORIGIN_CHAIN_ID` – Origin chain ID (e.g., 1 for Ethereum)
+- `ZKPF_ORIGIN_CHAIN_NAME` – Axelar chain identifier (e.g., "ethereum")
+- `ZKPF_AXELAR_VALIDITY_WINDOW` – Default receipt validity in seconds (default: 86400)
+
+For detailed documentation, see [docs/axelar-gmp.md](docs/axelar-gmp.md).
+
+### Mina recursive proof hub rail (MINA_RECURSIVE) – cross-chain compliance layer
+
+The workspace includes a **Mina recursive proof hub rail** that enables zkpf to serve as a
+cross-chain compliance layer by wrapping ProofBundles into Mina-native recursive proofs.
+
+**Key insight:** *PoF verified once in a privacy-preserving way; many chains can reuse it.*
+
+Mina's ~22KB light client footprint makes it realistic for institutional verifiers to self-verify
+proofs cheaply without running full nodes.
+
+**Key components:**
+
+| Crate | Purpose |
+| --- | --- |
+| `zkpf-mina` | Core circuit, types, zkApp helpers, state management, and optional GraphQL client. |
+| `zkpf-rails-mina` | HTTP service exposing `/rails/mina/*` endpoints for proof wrapping and bridge messages. |
+
+**How it works:**
+
+1. **ProofBundle wrapping**: Existing zkpf proofs from any rail (Starknet, Orchard, custodial, etc.)
+   are wrapped into Mina-native recursive proofs.
+2. **Cross-chain attestations**: The Mina zkApp emits attestations that other chains can query via
+   zkBridges.
+3. **Privacy preservation**: Original proofs and addresses remain hidden; only the attestation bit
+   `has_PoF(holder, policy) = true` is propagated.
+
+**Public input layout (V4_MINA):**
+
+The Mina rail uses an 11-column public input layout:
+- Columns 0-6: Base zkpf fields (threshold, currency, epoch, scope, policy, nullifier, pubkey_hash)
+- Column 7: `mina_slot` – Global slot at proof creation
+- Column 8: `recursive_proof_commitment` – Hash of wrapped recursive proof
+- Column 9: `zkapp_commitment` – Commitment to the verifier zkApp
+- Column 10: `proven_sum` – Aggregated proven sum
+
+**Multi-rail aggregation:**
+
+```json
+{
+  "source_proofs": [
+    { "bundle": { "rail_id": "STARKNET_L2", ... } },
+    { "bundle": { "rail_id": "ZCASH_ORCHARD", ... } },
+    { "bundle": { "rail_id": "CUSTODIAL_ATTESTATION", ... } }
+  ]
+}
+```
+
+This creates a single Mina attestation covering all source proofs, queryable by any target chain.
+
+**Example policies:**
+
+```json
+{
+  "policy_id": 400001,
+  "threshold_raw": 1000000000000000000,
+  "required_currency_code": 1027,
+  "verifier_scope_id": 700,
+  "rail_id": "MINA_RECURSIVE",
+  "label": "Cross-chain ≥ 1 ETH (via Mina)",
+  "category": "MINA_HUB"
+}
+```
+
+**Configuration:**
+
+- `ZKPF_MINA_NETWORK` – Mina network (mainnet/testnet/berkeley)
+- `ZKPF_MINA_GRAPHQL_URL` – Mina GraphQL endpoint
+- `ZKPF_MINA_ZKAPP_ADDRESS` – zkApp verifier address
+
+For detailed documentation, see [docs/mina-rail.md](docs/mina-rail.md) and [docs/mina-roadmap.md](docs/mina-roadmap.md).
+
 ### Provider-balance rail (PROVIDER_BALANCE_V2) – generic provider-attested proofs
 
 In addition to the custodial and Orchard rails, the backend exposes a **provider-balance rail**
@@ -722,12 +883,29 @@ Across the whole workspace, the remaining work can be grouped into a few major t
     - Define a `rail_id` and manifest entry for the on-chain rail.
     - Add a dedicated rail HTTP service and UI configuration similar to the Orchard rail.
 
-- **6. Cross-L2 proofs**
+- **6. Axelar GMP rail completion**
+  - Deploy `AttestationBridge.sol` and `PoFReceiver.sol` to mainnet EVM chains.
+  - Deploy `pof_receiver.rs` CosmWasm contracts to Osmosis, Neutron, and other Cosmos chains.
+  - Wire automatic GMP broadcasts when attestations are recorded in `AttestationRegistry`.
+  - Implement gas estimation and payment flows via Axelar Gas Service.
+  - Add pull-based query support via GMP callbacks.
+  - Build example DeFi integrations: interchain credit lines, undercollateralized lending.
+
+- **7. Mina recursive proof hub completion**
+  - Deploy Mina zkApp contracts (`ZkpfVerifier`, `AttestationRegistry`, `ZkBridge`) to Berkeley testnet and mainnet.
+  - Implement EVM light client bridge for Mina state verification (`MinaLightClient.sol`).
+  - Build relayer infrastructure for propagating attestations from Mina to target chains.
+  - Create Mina light client SDK for institutional self-verification (~22KB state).
+  - Solve Kimchi→BN254 recursion for trustless EVM verification.
+  - Deploy Starknet bridge for Mina attestation reception.
+
+- **8. Cross-L2 proofs**
   - Enable aggregating proofs across multiple L2s (Starknet, zkSync, Scroll, etc.).
   - Design a unified "L2 aggregation" circuit that can verify sub-proofs from different chains.
   - Coordinate nullifier and epoch semantics across chains.
+  - Leverage Axelar GMP for broadcasting aggregated proofs to all connected chains.
 
-- **7. UX, tooling, and docs**
+- **9. UX, tooling, and docs**
   - Extend the web dashboard's rail awareness (per-rail filters, status/health panels, richer bundle inspection).
   - Add operational docs for:
     - Running the backend + rails in production (env vars, ports, manifests, nullifier DB).
@@ -738,5 +916,5 @@ Across the whole workspace, the remaining work can be grouped into a few major t
     - Multi-rail regression tests.
     - End-to-end flows (custodial, Orchard, Starknet) using `zkpf-test-fixtures`-like harnesses.
 
-This README will be updated as the Orchard rail, Starknet rail, multi-rail verifier, and future rails progress from scaffold to production-ready status.
+This README will be updated as the Orchard rail, Starknet rail, Axelar GMP rail, Mina recursive proof hub, multi-rail verifier, and future rails progress from scaffold to production-ready status.
 

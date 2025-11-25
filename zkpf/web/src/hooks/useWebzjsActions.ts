@@ -142,7 +142,11 @@ export function useWebzjsActions() {
 
       const seedFingerprintHexString = (await invokeSnap({
         method: 'getSeedFingerprint',
-      })) as string;
+      })) as string | null;
+
+      if (!seedFingerprintHexString) {
+        throw new Error('Snap did not return a seed fingerprint. Make sure the snap is properly initialized.');
+      }
 
       const cleanHex = seedFingerprintHexString.trim().replace(/^0x/, '');
       const seedFingerprintBytes = new Uint8Array(cleanHex.length / 2);

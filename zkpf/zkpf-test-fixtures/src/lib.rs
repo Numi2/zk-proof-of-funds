@@ -26,6 +26,12 @@ use zkpf_common::{
 };
 use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
 
+// Starknet fixture support
+pub mod starknet;
+
+// Mina fixture support
+pub mod mina;
+
 const TEST_K: u32 = 19;
 const CREATED_AT_UNIX: u64 = 1_700_000_000;
 const POSEIDON_CAPACITY: u128 = 1u128 << 64;

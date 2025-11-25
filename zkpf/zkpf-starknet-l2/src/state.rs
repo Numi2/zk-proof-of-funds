@@ -5,8 +5,8 @@
 
 use crate::{
     error::StarknetRailError,
-    types::{known_tokens, TokenMetadata, WalletType},
-    DefiPosition, PositionType, StarknetAccountSnapshot, StarknetSnapshot, TokenBalance,
+    types::{known_tokens, TokenMetadata},
+    StarknetAccountSnapshot, StarknetSnapshot,
 };
 
 /// Build a snapshot for a single account address.
@@ -197,6 +197,7 @@ pub fn calculate_usd_value(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TokenBalance;
 
     #[test]
     fn test_parse_address() {

@@ -40,15 +40,30 @@ pub mod wallet;
 #[cfg(feature = "starknet-rpc")]
 pub mod rpc;
 
-use std::sync::Arc;
-
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
 
-pub use circuit::{StarknetPofCircuit, StarknetPofCircuitInput};
+pub use circuit::{
+    create_starknet_proof, create_starknet_proof_with_artifacts,
+    deserialize_starknet_proving_key, deserialize_starknet_verifying_key,
+    load_starknet_prover_artifacts, load_starknet_prover_artifacts_from_path,
+    load_starknet_verifier_artifacts, load_starknet_verifier_artifacts_from_path,
+    serialize_starknet_proving_key, serialize_starknet_verifying_key, starknet_default_params,
+    starknet_keygen, starknet_public_inputs_to_instances,
+    verify_starknet_proof, verify_starknet_proof_detailed, verify_starknet_proof_with_loaded_artifacts,
+    StarknetPofCircuit, StarknetPofCircuitInput, StarknetProverArtifacts, StarknetProverParams,
+    StarknetVerificationResult, StarknetVerifierArtifacts,
+    STARKNET_DEFAULT_K, STARKNET_INSTANCE_COLUMNS,
+};
 pub use error::StarknetRailError;
 pub use types::*;
+pub use wallet::{
+    create_session_binding, hash_proof_binding_poseidon, pedersen_hash, poseidon_hash_many,
+    prepare_batch_request, validate_session_config, verify_proof_binding_signature,
+    verify_session_key_signature, verify_stark_signature, ProofBindingMessage, SessionKeyManager,
+    SignatureVerification, StarkSignature,
+};
 
 /// Constant rail identifier for the Starknet L2 rail.
 pub const RAIL_ID_STARKNET_L2: &str = "STARKNET_L2";

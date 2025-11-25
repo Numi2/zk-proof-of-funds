@@ -11,6 +11,12 @@ const CURRENCY_META: Record<number, CurrencyMeta> = {
   978: { code: 'EUR', label: 'Euro', decimals: 2 },
   999001: { code: 'ZEC', label: 'Zcash (Orchard)', decimals: 8 },
   5915971: { code: 'ZEC', label: 'Zashi (custodial)', decimals: 8 },
+  // Crypto assets
+  1027: { code: 'ETH', label: 'Ethereum', decimals: 18 },
+  22691: { code: 'STRK', label: 'Starknet Token', decimals: 18 },
+  2001: { code: 'USDC', label: 'USD Coin', decimals: 6 },
+  2002: { code: 'USDT', label: 'Tether USD', decimals: 6 },
+  2003: { code: 'DAI', label: 'Dai Stablecoin', decimals: 18 },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -18,12 +24,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   ONCHAIN: 'On-chain proof',
   ZCASH_ORCHARD: 'Zcash Orchard PoF',
   ZASHI: 'Zashi provider session',
+  STARKNET: 'Starknet L2 proof',
+  STARKNET_DEFI: 'Starknet DeFi proof',
+  AXELAR_INTERCHAIN: 'Interchain PoF (Axelar)',
+  AXELAR_COSMOS: 'Cosmos broadcast PoF',
+  AXELAR_L2: 'L2 broadcast PoF',
+  AXELAR_CREDIT: 'Interchain credit line',
+  MINA_HUB: 'Mina recursive hub',
+  MINA_INSTITUTIONAL: 'Institutional cross-chain',
+  MINA_AGGREGATED: 'Multi-chain aggregated',
+  USDC: 'USDC stablecoin proof',
+  USDC_STARKNET: 'USDC on Starknet',
 };
 
 const RAIL_LABELS: Record<string, string> = {
   CUSTODIAL_ATTESTATION: 'Custodial attestation',
   ONCHAIN_WALLET: 'On-chain wallet',
   ZCASH_ORCHARD: 'Zcash Orchard rail',
+  STARKNET_L2: 'Starknet L2 rail',
+  AXELAR_GMP: 'Axelar GMP rail',
+  MINA_RECURSIVE: 'Mina recursive rail',
+  PROVIDER_BALANCE_V2: 'Provider balance rail',
 };
 
 const numberFormatter = (maximumFractionDigits: number, minimumFractionDigits: number) =>

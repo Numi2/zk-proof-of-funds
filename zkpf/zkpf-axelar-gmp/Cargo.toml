@@ -1,0 +1,22 @@
+[package]
+name = "zkpf-axelar-gmp"
+version = "0.1.0"
+edition = "2021"
+description = "Axelar GMP types and utilities for zkpf interchain proof-of-funds"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+thiserror = "1.0"
+sha3 = "0.10"
+ethers-core = { version = "2.0", optional = true }
+
+[features]
+default = []
+ethers = ["ethers-core"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+

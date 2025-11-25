@@ -19,11 +19,18 @@ members = [
     # Starknet L2 rail
     "zkpf-starknet-l2",
     "zkpf-rails-starknet",
+    # Axelar GMP rail (interchain PoF receipts)
+    "zkpf-axelar-gmp",
+    "zkpf-rails-axelar",
+    # Mina recursive proof hub rail
+    "zkpf-mina",
+    "zkpf-rails-mina",
+    # Mina Proof of State Kimchi wrapper (BN254 circuit for Mina state verification)
+    "zkpf-mina-kimchi-wrapper",
+    # Mina state relayer
+    "zkpf-mina-relayer",
 ]
 
 [patch.crates-io]
 base64ct = { git = "https://github.com/RustCrypto/formats.git", rev = "0ebdd64122a6dc5f0461140a91c7f2cdcec8e015", package = "base64ct" }
 halo2-base = { path = "vendor/halo2-base" }
-# Pin lambdaworks-math to 0.10.0 to avoid unstable feature usage in 0.13.0
-# See: https://github.com/lambdaclass/lambdaworks/issues/1028
-lambdaworks-math = { git = "https://github.com/lambdaclass/lambdaworks.git", tag = "v0.10.0", package = "lambdaworks-math" }

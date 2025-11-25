@@ -1,0 +1,505 @@
+/**
+ * ZkpfRamp Component Styles
+ * 
+ * A modern, clean design for the permissionless on-ramp widget.
+ */
+
+.zkpf-ramp {
+  --ramp-bg: #0a0a0a;
+  --ramp-surface: #141414;
+  --ramp-surface-hover: #1a1a1a;
+  --ramp-border: #262626;
+  --ramp-text: #fafafa;
+  --ramp-text-muted: #737373;
+  --ramp-primary: #22c55e;
+  --ramp-primary-hover: #16a34a;
+  --ramp-error: #ef4444;
+  --ramp-warning: #f59e0b;
+  --ramp-success: #22c55e;
+  --ramp-radius: 12px;
+  --ramp-radius-sm: 8px;
+  
+  background: var(--ramp-bg);
+  border: 1px solid var(--ramp-border);
+  border-radius: var(--ramp-radius);
+  padding: 1.5rem;
+  max-width: 420px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--ramp-text);
+}
+
+/* Header */
+.ramp-header {
+  margin-bottom: 1.5rem;
+}
+
+.ramp-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.ramp-title h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.ramp-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--ramp-primary);
+  color: #000;
+}
+
+.ramp-badge.permissionless {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+.ramp-subtitle {
+  font-size: 0.85rem;
+  color: var(--ramp-text-muted);
+}
+
+/* Sections */
+.ramp-section {
+  margin-bottom: 1.25rem;
+}
+
+.ramp-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ramp-text-muted);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Amount Input */
+.ramp-input-container {
+  display: flex;
+  align-items: center;
+  background: var(--ramp-surface);
+  border: 1px solid var(--ramp-border);
+  border-radius: var(--ramp-radius-sm);
+  padding: 0 1rem;
+  transition: border-color 0.2s;
+}
+
+.ramp-input-container:focus-within {
+  border-color: var(--ramp-primary);
+}
+
+.ramp-input-prefix,
+.ramp-input-suffix {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--ramp-text-muted);
+}
+
+.ramp-input {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 1rem 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ramp-text);
+  outline: none;
+  text-align: center;
+  min-width: 0;
+}
+
+.ramp-input::placeholder {
+  color: var(--ramp-text-muted);
+}
+
+/* Quick Amounts */
+.ramp-quick-amounts {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.quick-amount {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: var(--ramp-surface);
+  border: 1px solid var(--ramp-border);
+  border-radius: var(--ramp-radius-sm);
+  color: var(--ramp-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-amount:hover {
+  background: var(--ramp-surface-hover);
+  color: var(--ramp-text);
+}
+
+.quick-amount.active {
+  background: var(--ramp-primary);
+  border-color: var(--ramp-primary);
+  color: #000;
+}
+
+/* Asset Selection */
+.ramp-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.ramp-asset-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1rem 0.5rem;
+  background: var(--ramp-surface);
+  border: 2px solid var(--ramp-border);
+  border-radius: var(--ramp-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ramp-asset-option:hover {
+  background: var(--ramp-surface-hover);
+  border-color: var(--asset-color, var(--ramp-text-muted));
+}
+
+.ramp-asset-option.active {
+  border-color: var(--asset-color, var(--ramp-primary));
+  background: color-mix(in srgb, var(--asset-color, var(--ramp-primary)) 10%, transparent);
+}
+
+.asset-icon {
+  font-size: 1.5rem;
+}
+
+.asset-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.asset-tag {
+  font-size: 0.65rem;
+  color: var(--ramp-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Quote Display */
+.ramp-quote {
+  background: var(--ramp-surface);
+  border: 1px solid var(--ramp-border);
+  border-radius: var(--ramp-radius-sm);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.ramp-quote.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--ramp-text-muted);
+  padding: 1.5rem;
+}
+
+.quote-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ramp-border);
+  border-top-color: var(--ramp-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.quote-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--ramp-border);
+}
+
+.quote-label {
+  font-size: 0.85rem;
+  color: var(--ramp-text-muted);
+}
+
+.quote-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ramp-primary);
+}
+
+.quote-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quote-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.quote-row span:first-child {
+  color: var(--ramp-text-muted);
+}
+
+.quote-free {
+  color: var(--ramp-success);
+  font-weight: 600;
+}
+
+.quote-agent {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--ramp-border);
+}
+
+.agent-rating {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ramp-warning);
+}
+
+/* Payment Methods */
+.ramp-payment-methods {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.payment-method {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  background: var(--ramp-surface);
+  border: 1px solid var(--ramp-border);
+  border-radius: var(--ramp-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.8rem;
+  color: var(--ramp-text-muted);
+}
+
+.payment-method:hover {
+  background: var(--ramp-surface-hover);
+  color: var(--ramp-text);
+}
+
+.payment-method.active {
+  border-color: var(--ramp-primary);
+  color: var(--ramp-text);
+}
+
+.payment-icon {
+  font-size: 1.25rem;
+}
+
+/* Buy Button */
+.ramp-buy-button {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--ramp-primary);
+  color: #000;
+  border: none;
+  border-radius: var(--ramp-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.ramp-buy-button:hover:not(:disabled) {
+  background: var(--ramp-primary-hover);
+  transform: translateY(-1px);
+}
+
+.ramp-buy-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ramp-buy-button.processing {
+  background: var(--ramp-surface);
+  color: var(--ramp-text);
+}
+
+.ramp-buy-button.complete {
+  background: var(--ramp-success);
+}
+
+.ramp-buy-button.error {
+  background: var(--ramp-error);
+  color: white;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ramp-border);
+  border-top-color: var(--ramp-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Destination */
+.ramp-destination {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--ramp-text-muted);
+}
+
+.destination-address {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Status */
+.ramp-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  background: var(--ramp-surface);
+  border-radius: var(--ramp-radius-sm);
+  border-left: 3px solid var(--ramp-primary);
+}
+
+.ramp-status.processing {
+  border-left-color: var(--ramp-warning);
+}
+
+.ramp-status.complete {
+  border-left-color: var(--ramp-success);
+}
+
+.status-icon {
+  font-size: 1.25rem;
+}
+
+.status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.status-text strong {
+  font-size: 0.9rem;
+}
+
+.status-text span {
+  font-size: 0.8rem;
+  color: var(--ramp-text-muted);
+}
+
+/* Error */
+.ramp-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  background: color-mix(in srgb, var(--ramp-error) 15%, transparent);
+  border: 1px solid var(--ramp-error);
+  border-radius: var(--ramp-radius-sm);
+  font-size: 0.85rem;
+  color: var(--ramp-error);
+}
+
+.error-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--ramp-error);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Trust Indicators */
+.ramp-trust {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ramp-border);
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--ramp-text-muted);
+}
+
+.trust-icon {
+  font-size: 0.9rem;
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .zkpf-ramp {
+    padding: 1rem;
+    border-radius: var(--ramp-radius-sm);
+  }
+  
+  .ramp-asset-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  
+  .ramp-asset-option {
+    padding: 0.75rem 0.25rem;
+  }
+  
+  .ramp-quick-amounts {
+    flex-wrap: wrap;
+  }
+  
+  .quick-amount {
+    flex: 0 0 calc(33.33% - 0.33rem);
+  }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  .zkpf-ramp {
+    --ramp-bg: #050505;
+  }
+}
+
