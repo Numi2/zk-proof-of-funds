@@ -28,6 +28,8 @@ use zkpf_circuit::{
 };
 use zkpf_common::{
     custodian_pubkey_hash, read_manifest, ArtifactManifest, VerifierPublicInputs, CIRCUIT_VERSION,
+    // Poseidon parameters from canonical source (zkpf-circuit)
+    POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE, POSEIDON_T,
 };
 
 const DEFAULT_OUTPUT_DIR: &str = "artifacts/ci";
@@ -45,11 +47,6 @@ const BACKEND_POLICIES_FILENAME: &str = "backend.policies.json";
 const BACKEND_NULLIFIER_DB_FILENAME: &str = "backend.nullifiers.db";
 const SAMPLE_SK_HEX: &str = "2ec8d8d86fe5a4f4c5db0f826bea4722b8d2535d991a8f8a27c4b31c6d6cf3ce";
 const BACKEND_DEFAULT_PORT: u16 = 3000;
-
-const POSEIDON_T: usize = 6;
-const POSEIDON_RATE: usize = 5;
-const POSEIDON_FULL_ROUNDS: usize = 8;
-const POSEIDON_PARTIAL_ROUNDS: usize = 57;
 
 #[derive(Parser)]
 #[command(author, version, about)]

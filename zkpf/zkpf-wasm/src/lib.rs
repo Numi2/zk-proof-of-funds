@@ -16,14 +16,11 @@ use zkpf_common::{
     custodian_pubkey_hash, deserialize_params, deserialize_proving_key,
     deserialize_verifier_public_inputs, deserialize_verifying_key, public_inputs_to_instances,
     serialize_verifier_public_inputs, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
+    // Poseidon parameters imported from canonical source (zkpf-circuit via zkpf-common)
+    POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE, POSEIDON_T,
 };
 use zkpf_prover::{prove, prove_bundle, prove_with_public_inputs};
 use zkpf_verifier::verify;
-
-const POSEIDON_T: usize = 6;
-const POSEIDON_RATE: usize = 5;
-const POSEIDON_FULL_ROUNDS: usize = 8;
-const POSEIDON_PARTIAL_ROUNDS: usize = 57;
 
 #[wasm_bindgen]
 pub struct VerifyingKeyWasm {

@@ -51,6 +51,10 @@ export async function bindHolder(
   }
   
   const signerAddress = accounts[0];
+  if (!signerAddress) {
+    throw new Error('No signer address available');
+  }
+  
   const timestamp = timestampOverride ?? Math.floor(Date.now() / 1000);
   
   // Create the message to sign
@@ -152,6 +156,10 @@ export async function bindHolderTypedData(
   }
   
   const signerAddress = accounts[0];
+  if (!signerAddress) {
+    throw new Error('No signer address available');
+  }
+  
   const timestamp = timestampOverride ?? Math.floor(Date.now() / 1000);
   
   // Create typed data

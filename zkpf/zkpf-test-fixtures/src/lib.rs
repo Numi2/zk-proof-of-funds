@@ -20,15 +20,14 @@ use zkpf_common::{
     custodian_pubkey_hash, serialize_params, serialize_proving_key,
     serialize_verifier_public_inputs, serialize_verifying_key, ArtifactFile, ArtifactManifest,
     ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
+    // Poseidon parameters from canonical source (zkpf-circuit)
+    POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE,
+    POSEIDON_T as POSEIDON_WIDTH, // alias for compatibility
 };
 use zkpf_prover::{prove_with_public_inputs, setup, ProverParams};
 
 const TEST_K: u32 = 19;
 const CREATED_AT_UNIX: u64 = 1_700_000_000;
-const POSEIDON_WIDTH: usize = 6;
-const POSEIDON_RATE: usize = 5;
-const POSEIDON_FULL_ROUNDS: usize = 8;
-const POSEIDON_PARTIAL_ROUNDS: usize = 57;
 const POSEIDON_CAPACITY: u128 = 1u128 << 64;
 
 static FIXTURES: OnceCell<TestFixtures> = OnceCell::new();

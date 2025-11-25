@@ -7,6 +7,12 @@ module.exports = async function handler(req, res) {
   if (handleCors(req, res)) {
     return;
   }
+
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return sendJson(res, 405, { error: 'Method Not Allowed' });
+  }
+
   try {
     const response = await fetch(`${BACKEND_BASE}/zkpf/policies`);
     const payload = await response.json();

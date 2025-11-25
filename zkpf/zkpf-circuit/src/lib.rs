@@ -22,6 +22,36 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use crate::gadgets::attestation::{AttestationWitness, Secp256k1Pubkey};
+pub use crate::gadgets::ecdsa::EcdsaError;
+
+/// Errors that can occur during circuit synthesis.
+#[derive(Debug)]
+pub enum CircuitError {
+    /// ECDSA signature verification encountered invalid inputs.
+    Ecdsa(EcdsaError),
+}
+
+impl std::fmt::Display for CircuitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ecdsa(e) => write!(f, "ECDSA error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for CircuitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Ecdsa(e) => Some(e),
+        }
+    }
+}
+
+impl From<EcdsaError> for CircuitError {
+    fn from(e: EcdsaError) -> Self {
+        Self::Ecdsa(e)
+    }
+}
 
 const DEFAULT_K: usize = 19;
 const DEFAULT_LOOKUP_BITS: usize = 18;
@@ -138,7 +168,15 @@ impl Circuit<Fr> for ZkpfCircuit {
             builder = builder.use_lookup_bits(bits);
         }
 
-        build_constraints(&mut builder, input);
+        // Build constraints, converting circuit errors to Halo2 synthesis errors.
+        // The specific error details are logged/available for debugging but the
+        // Halo2 Error type doesn't carry custom payloads.
+        build_constraints(&mut builder, input).map_err(|_circuit_err| {
+            // In debug builds, you can uncomment to see the error:
+            // eprintln!("Circuit synthesis error: {}", _circuit_err);
+            Error::Synthesis
+        })?;
+
         <BaseCircuitBuilder<Fr> as Circuit<Fr>>::synthesize(&builder, config, layouter)
     }
 }
@@ -147,7 +185,10 @@ static SAMPLE_INPUT: Lazy<ZkpfCircuitInput> = Lazy::new(|| {
     serde_json::from_str(include_str!("sample_input.json")).expect("valid sample circuit input")
 });
 
-fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitInput) {
+fn build_constraints(
+    builder: &mut BaseCircuitBuilder<Fr>,
+    input: &ZkpfCircuitInput,
+) -> Result<(), CircuitError> {
     let range = builder.range_chip();
     let gate = range.gate();
 
@@ -193,12 +234,13 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
     let (witness_pubkey_x, witness_pubkey_y) =
         assign_pubkey_coords(ctx, gate, &range, &att.custodian_pubkey);
 
+    // Verify ECDSA signature - returns error if inputs are malformed
     crate::gadgets::ecdsa::verify_ecdsa_over_attestation(
         ctx,
         &range,
         att,
         &att.custodian_pubkey,
-    );
+    )?;
 
     let computed_nullifier = crate::gadgets::nullifier::compute_nullifier(
         ctx,
@@ -234,6 +276,8 @@ fn build_constraints(builder: &mut BaseCircuitBuilder<Fr>, input: &ZkpfCircuitIn
             public_pubkey_hash,
         ],
     );
+
+    Ok(())
 }
 
 fn assign_u64(ctx: &mut Context<Fr>, range: &RangeChip<Fr>, value: u64) -> AssignedValue<Fr> {

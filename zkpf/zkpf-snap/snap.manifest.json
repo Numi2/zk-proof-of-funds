@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "description": "zkpf Snap for generating zero-knowledge proof-of-funds attestations",
+  "description": "zkpf MetaMask Snap for generating zero-knowledge proof-of-funds attestations. Prove your assets meet a threshold without revealing your actual balance.",
   "proposedName": "zkpf Proof of Funds",
   "repository": {
     "type": "git",
@@ -23,7 +23,11 @@
     "endowment:rpc": {
       "allowedOrigins": [
         "https://zkpf.dev",
-        "https://www.zkpf.dev"
+        "https://www.zkpf.dev",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000"
       ]
     },
     "snap_manageState": {},

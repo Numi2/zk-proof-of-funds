@@ -193,19 +193,23 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
 
   const applySelectedPolicy = useCallback(
     (input: CircuitInput): CircuitInput => {
-      if (!selectedPolicyId) {
+      // Only apply policy overrides when we have the full policy object.
+      // During race conditions, selectedPolicyId may be set while selectedPolicy
+      // is still null. Applying partial overrides would create an inconsistent
+      // circuit input where policy_id doesn't match the other policy fields.
+      if (!selectedPolicy) {
         return input;
       }
       const next = { ...input, public: { ...input.public } };
-      next.public.policy_id = selectedPolicyId;
-      if (selectedPolicy) {
-        next.public.threshold_raw = selectedPolicy.threshold_raw;
-        next.public.required_currency_code = selectedPolicy.required_currency_code;
-        next.public.verifier_scope_id = selectedPolicy.verifier_scope_id;
-      }
+      next.public.policy_id = selectedPolicy.policy_id;
+      next.public.threshold_raw = selectedPolicy.threshold_raw;
+      next.public.required_currency_code = selectedPolicy.required_currency_code;
+      next.public.verifier_scope_id = selectedPolicy.verifier_scope_id;
+      // Non-custodial rails (Zcash Orchard, on-chain wallets) default to 0
+      next.public.required_custodian_id = selectedPolicy.required_custodian_id ?? 0;
       return next;
     },
-    [selectedPolicy, selectedPolicyId],
+    [selectedPolicy],
   );
 
   const generateFromNormalizedJson = useCallback(

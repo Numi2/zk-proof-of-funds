@@ -20,13 +20,22 @@ export async function getConnectedEthereumAccount(): Promise<EthereumFundingSour
     throw new Error('No Ethereum accounts connected');
   }
   
+  const address = accounts[0];
+  if (!address) {
+    throw new Error('No account address available');
+  }
+  
   const chainId = await ethereum.request({
     method: 'eth_chainId',
   }) as string;
   
+  if (!chainId) {
+    throw new Error('Failed to get chain ID');
+  }
+  
   return {
     type: 'ethereum',
-    address: accounts[0],
+    address,
     chainId,
   };
 }
@@ -103,7 +112,8 @@ export async function addFundingSource(
   
   // Store updated sources
   await setSnapState({
-    fundingSources: updatedSources as unknown as import("@metamask/snaps-sdk").Json[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fundingSources: updatedSources as any,
   });
   
   return {

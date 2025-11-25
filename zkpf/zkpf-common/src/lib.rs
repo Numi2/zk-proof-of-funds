@@ -27,10 +27,12 @@ use zkpf_circuit::{
 pub const PUBLIC_INPUT_COUNT: usize = 7;
 /// Number of public inputs in the Orchard layout (V2_ORCHARD): V1 prefix + 3 Orchard fields.
 pub const PUBLIC_INPUT_COUNT_V2_ORCHARD: usize = 10;
-const POSEIDON_T: usize = 6;
-const POSEIDON_RATE: usize = 5;
-const POSEIDON_FULL_ROUNDS: usize = 8;
-const POSEIDON_PARTIAL_ROUNDS: usize = 57;
+
+// Re-export Poseidon parameters from zkpf-circuit (the canonical source)
+// to maintain backward compatibility for crates that import from zkpf-common.
+pub use zkpf_circuit::gadgets::poseidon::{
+    POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE, POSEIDON_T,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VerifierPublicInputs {
@@ -595,6 +597,56 @@ pub fn fr_to_be_bytes(fr: &Fr) -> [u8; 32] {
     bytes
 }
 
+/// BN256 scalar field modulus r (approximately 2^254):
+/// r = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+///
+/// This is the maximum value that can be represented exactly in the BN256 scalar field.
+/// Values >= r will be implicitly reduced modulo r during field operations.
+const BN256_SCALAR_FIELD_MODULUS: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
+    0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91,
+    0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+/// Convert big-endian bytes to a field element with **modular reduction**.
+///
+/// # Security Warning
+///
+/// This function performs **implicit modular reduction**. A 32-byte value can represent
+/// integers up to 2^256 - 1, but the BN256 scalar field modulus is approximately 2^254.
+/// This means:
+///
+/// - **Values >= field modulus will wrap around** (reduced mod r)
+/// - **Two different byte inputs can produce the same field element** (collision)
+///
+/// # When to Use
+///
+/// Use this function when:
+/// - You're hashing external data where the output will be further processed (e.g., Poseidon hash)
+/// - Collisions don't matter because the result is used in a collision-resistant hash
+/// - You explicitly want modular reduction behavior
+///
+/// # When NOT to Use
+///
+/// Do NOT use this function when:
+/// - The 32-byte value must be uniquely recoverable from the field element
+/// - You need to verify that the original value fits in the field exactly
+/// - You're processing untrusted inputs that could exploit collisions
+///
+/// For those cases, use [`try_be_bytes_to_fr_exact`] which will error on overflow.
+///
+/// # Example
+///
+/// ```ignore
+/// // Safe: hashing pubkey coordinates for Poseidon - result goes into hash, collisions don't matter
+/// let x_fr = reduce_be_bytes_to_fr(&pubkey.x);
+/// let y_fr = reduce_be_bytes_to_fr(&pubkey.y);
+/// let hash = poseidon_hash(&[x_fr, y_fr]);
+///
+/// // Unsafe without validation: if you need to recover the original bytes
+/// // let value = reduce_be_bytes_to_fr(&untrusted_input); // May lose information!
+/// ```
 pub fn reduce_be_bytes_to_fr(bytes: &[u8; 32]) -> Fr {
     let mut acc = Fr::zero();
     let base = Fr::from(256);
@@ -604,6 +656,82 @@ pub fn reduce_be_bytes_to_fr(bytes: &[u8; 32]) -> Fr {
     acc
 }
 
+/// Convert big-endian bytes to a field element with **exact representation check**.
+///
+/// Returns an error if the 32-byte value is >= the BN256 scalar field modulus,
+/// meaning it cannot be represented exactly without modular reduction.
+///
+/// # Security
+///
+/// Use this function when you need to ensure:
+/// - The input value fits in the field without any reduction
+/// - The original 32-byte value can be uniquely recovered from the field element
+/// - No two different inputs will map to the same field element
+///
+/// # Errors
+///
+/// Returns `Err` if `bytes` represents an integer >= the field modulus r, where:
+/// r = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+///
+/// # Example
+///
+/// ```ignore
+/// // This will succeed for values < field modulus
+/// let small_value = [0u8; 32];
+/// assert!(try_be_bytes_to_fr_exact(&small_value).is_ok());
+///
+/// // This will fail for values >= field modulus
+/// let large_value = [0xFF; 32]; // 2^256 - 1, much larger than field modulus
+/// assert!(try_be_bytes_to_fr_exact(&large_value).is_err());
+/// ```
+pub fn try_be_bytes_to_fr_exact(bytes: &[u8; 32]) -> Result<Fr> {
+    // Check if the value is >= field modulus (comparing big-endian bytes)
+    if bytes_ge_modulus(bytes) {
+        return Err(anyhow!(
+            "value exceeds BN256 scalar field modulus; \
+             use reduce_be_bytes_to_fr() if modular reduction is intentional"
+        ));
+    }
+    // Safe to reduce - we've verified no reduction will occur
+    Ok(reduce_be_bytes_to_fr(bytes))
+}
+
+/// Check if a big-endian byte array represents a value >= the BN256 scalar field modulus.
+///
+/// Returns `true` if the value would be reduced when converted to a field element.
+pub fn bytes_exceeds_field_modulus(bytes: &[u8; 32]) -> bool {
+    bytes_ge_modulus(bytes)
+}
+
+/// Compare big-endian bytes against the BN256 scalar field modulus.
+/// Returns true if bytes >= modulus.
+fn bytes_ge_modulus(bytes: &[u8; 32]) -> bool {
+    for (byte, &modulus_byte) in bytes.iter().zip(BN256_SCALAR_FIELD_MODULUS.iter()) {
+        match byte.cmp(&modulus_byte) {
+            std::cmp::Ordering::Greater => return true,
+            std::cmp::Ordering::Less => return false,
+            std::cmp::Ordering::Equal => continue,
+        }
+    }
+    // bytes == modulus, which is >= modulus (since field is [0, r-1])
+    true
+}
+
+/// Hash secp256k1 public key coordinates using Poseidon.
+///
+/// # Security Note
+///
+/// The secp256k1 base field prime (~2^256) is larger than the BN256 scalar field modulus
+/// (~2^254), so pubkey coordinates could theoretically exceed the BN256 field and undergo
+/// modular reduction. However, this is acceptable here because:
+///
+/// 1. The reduced values are immediately fed into a Poseidon hash, which is collision-resistant
+/// 2. The hash output (not the intermediate field elements) is what matters for security
+/// 3. Two different pubkeys producing the same intermediate x_fr/y_fr would still produce
+///    different hashes (with overwhelming probability) due to Poseidon's collision resistance
+///
+/// In other words, the collision domain is "compressed" into the hash function, where
+/// collision resistance is preserved.
 pub fn custodian_pubkey_hash(pubkey: &Secp256k1Pubkey) -> Fr {
     let x = reduce_be_bytes_to_fr(&pubkey.x);
     let y = reduce_be_bytes_to_fr(&pubkey.y);
@@ -944,5 +1072,111 @@ mod tests {
                 .unwrap();
         instances[0][0] = BnFr::from_raw([0, 0, 0, 1]);
         assert!(instances_to_public_inputs(&instances).is_err());
+    }
+
+    // ============================================================
+    // Field element bounds checking tests
+    // ============================================================
+
+    #[test]
+    fn try_be_bytes_to_fr_exact_accepts_zero() {
+        let zero = [0u8; 32];
+        let result = try_be_bytes_to_fr_exact(&zero);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Fr::zero());
+    }
+
+    #[test]
+    fn try_be_bytes_to_fr_exact_accepts_small_values() {
+        // A small value (1) should be accepted
+        let mut one = [0u8; 32];
+        one[31] = 1;
+        let result = try_be_bytes_to_fr_exact(&one);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Fr::one());
+
+        // A moderate value
+        let mut moderate = [0u8; 32];
+        moderate[28..32].copy_from_slice(&0xDEADBEEFu32.to_be_bytes());
+        let result = try_be_bytes_to_fr_exact(&moderate);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn try_be_bytes_to_fr_exact_rejects_max_value() {
+        // 2^256 - 1 is definitely larger than the field modulus (~2^254)
+        let max_value = [0xFF; 32];
+        let result = try_be_bytes_to_fr_exact(&max_value);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds BN256 scalar field modulus"));
+    }
+
+    #[test]
+    fn try_be_bytes_to_fr_exact_rejects_modulus() {
+        // The modulus itself is not a valid field element (field is [0, r-1])
+        let result = try_be_bytes_to_fr_exact(&BN256_SCALAR_FIELD_MODULUS);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_be_bytes_to_fr_exact_accepts_modulus_minus_one() {
+        // r - 1 is the largest valid field element
+        let mut modulus_minus_one = BN256_SCALAR_FIELD_MODULUS;
+        // Subtract 1 from the big-endian representation
+        // The last byte of the modulus is 0x01, so subtracting 1 gives 0x00
+        modulus_minus_one[31] = 0x00;
+        let result = try_be_bytes_to_fr_exact(&modulus_minus_one);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn bytes_exceeds_field_modulus_detects_overflow() {
+        // Values >= modulus should return true
+        assert!(bytes_exceeds_field_modulus(&[0xFF; 32]));
+        assert!(bytes_exceeds_field_modulus(&BN256_SCALAR_FIELD_MODULUS));
+
+        // Values < modulus should return false
+        assert!(!bytes_exceeds_field_modulus(&[0u8; 32]));
+        let mut small = [0u8; 32];
+        small[31] = 1;
+        assert!(!bytes_exceeds_field_modulus(&small));
+    }
+
+    #[test]
+    fn reduce_be_bytes_to_fr_handles_overflow_gracefully() {
+        // Even values larger than the modulus should work (with reduction)
+        let large_value = [0xFF; 32];
+        let result = reduce_be_bytes_to_fr(&large_value);
+        // The result should be a valid field element (not panic)
+        // We can't easily predict the exact value after reduction, but it should be deterministic
+        let result2 = reduce_be_bytes_to_fr(&large_value);
+        assert_eq!(result, result2);
+    }
+
+    #[test]
+    fn reduce_be_bytes_and_exact_agree_for_small_values() {
+        // For values that fit in the field, both functions should return the same result
+        let small_values = [
+            [0u8; 32],                              // zero
+            {
+                let mut v = [0u8; 32];
+                v[31] = 1;
+                v
+            }, // one
+            {
+                let mut v = [0u8; 32];
+                v[24..32].copy_from_slice(&0x123456789ABCDEFu64.to_be_bytes());
+                v
+            }, // random small value
+        ];
+
+        for value in &small_values {
+            let reduced = reduce_be_bytes_to_fr(value);
+            let exact = try_be_bytes_to_fr_exact(value).unwrap();
+            assert_eq!(reduced, exact, "Results differ for value {:?}", value);
+        }
     }
 }

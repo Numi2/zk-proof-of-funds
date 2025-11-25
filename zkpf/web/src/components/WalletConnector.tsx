@@ -72,7 +72,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
     setPolicyId(policy.policy_id);
     setThreshold(policy.threshold_raw);
     setCurrencyCode(policy.required_currency_code);
-    setCustodianId(0);
+    setCustodianId(policy.required_custodian_id ?? 0);
     setScopeId(policy.verifier_scope_id);
   }, [policy]);
 
@@ -189,6 +189,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
         public: {
           threshold_raw: threshold,
           required_currency_code: currencyCode,
+          required_custodian_id: custodianId,
           current_epoch: nowEpoch,
           verifier_scope_id: scopeId,
           policy_id: policyId,

@@ -13,8 +13,14 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: 'Method Not Allowed' });
   }
 
+  let payload;
   try {
-    const payload = await readJsonBody(req);
+    payload = await readJsonBody(req);
+  } catch (err) {
+    return sendJson(res, 400, { error: `Invalid JSON body: ${err.message}` });
+  }
+
+  try {
     const response = await fetch(`${BACKEND_BASE}/zkpf/prove-bundle`, {
       method: 'POST',
       headers: {

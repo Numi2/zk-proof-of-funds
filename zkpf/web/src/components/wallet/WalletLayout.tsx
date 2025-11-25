@@ -32,7 +32,7 @@ export function WalletLayout() {
         </div>
         
         <p className="wallet-tagline">
-          Manage your shielded Zcash funds with full privacy via MetaMask Snap.
+          Manage your funds.
         </p>
         
         <nav className="wallet-nav">

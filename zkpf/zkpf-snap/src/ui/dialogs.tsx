@@ -7,9 +7,11 @@ import {
   Bold,
   Row,
   Address,
+  Icon,
 } from '@metamask/snaps-sdk/jsx';
-import type { PolicyDefinition, FundingSource } from '../types';
+import type { PolicyDefinition, FundingSource, ProofHistoryEntry, NetworkType } from '../types';
 import { policyDisplayName, formatPolicyThreshold, policyCategoryLabel } from '../utils/policy';
+import type { VerificationResult } from '../rpc/verifyBundle';
 
 /**
  * Installation welcome dialog
@@ -315,4 +317,271 @@ export const inputBalanceZatsDialog = async (): Promise<number | null> => {
     }
   }
   return null;
+};
+
+/**
+ * Export bundle dialog - shows the bundle JSON for copying
+ */
+export const exportBundleDialog = async (
+  bundleJson: string,
+  bundleId: string,
+): Promise<void> => {
+  await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'alert',
+      content: (
+        <Box>
+          <Heading>Proof Bundle Ready</Heading>
+          <Text>
+            Your proof bundle has been created. Copy the JSON below to share
+            with verifiers.
+          </Text>
+          <Divider />
+          <Row label="Bundle ID">
+            <Text>{bundleId}</Text>
+          </Row>
+          <Divider />
+          <Text>Bundle JSON:</Text>
+          <Copyable value={bundleJson} />
+          <Divider />
+          <Text>
+            <Bold>Important:</Bold> Share this bundle with the verifier.
+            They can confirm you meet the threshold without seeing your actual balance.
+          </Text>
+        </Box>
+      ),
+    },
+  });
+};
+
+/**
+ * Verify bundle input dialog - prompt for bundle JSON
+ */
+export const verifyBundleDialog = async (): Promise<string | null> => {
+  const result = await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'prompt',
+      content: (
+        <Box>
+          <Heading>Verify Proof Bundle</Heading>
+          <Text>
+            Paste a proof bundle JSON to verify its integrity and contents.
+          </Text>
+          <Divider />
+          <Text>
+            The verification will check the bundle format, holder signature,
+            and other validity criteria.
+          </Text>
+        </Box>
+      ),
+      placeholder: '{"version": "1.0.0", "proofRequest": {...}}',
+    },
+  });
+  
+  if (typeof result === 'string' && result.trim()) {
+    return result.trim();
+  }
+  return null;
+};
+
+/**
+ * Verification result dialog
+ */
+export const verifyResultDialog = async (
+  result: VerificationResult,
+): Promise<void> => {
+  const statusIcon = result.valid ? '✓' : '✗';
+  const statusText = result.valid ? 'Valid' : 'Invalid';
+  
+  const checksList = [
+    `Bundle Format: ${result.checks.bundleFormat ? '✓' : '✗'}`,
+    `Holder Tag: ${result.checks.holderTagValid ? '✓' : '✗'}`,
+    `Signature: ${result.checks.signaturePresent ? '✓' : '✗'}`,
+    `Policy: ${result.checks.policyPresent ? '✓' : '✗'}`,
+    `Sources: ${result.checks.fundingSourcesPresent ? '✓' : '✗'}`,
+    `Timestamp: ${result.checks.timestampValid ? '✓' : '✗'}`,
+  ].join('\n');
+  
+  await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'alert',
+      content: (
+        <Box>
+          <Heading>Verification Result: {statusIcon} {statusText}</Heading>
+          <Divider />
+          <Row label="Bundle ID">
+            <Text>{result.bundleId}</Text>
+          </Row>
+          <Row label="Policy">
+            <Text>{result.details.policyName}</Text>
+          </Row>
+          <Row label="Threshold">
+            <Text>{result.details.threshold}</Text>
+          </Row>
+          <Row label="Created">
+            <Text>{result.details.timestamp}</Text>
+          </Row>
+          <Row label="Funding Sources">
+            <Text>{String(result.details.fundingSourceCount)}</Text>
+          </Row>
+          <Divider />
+          <Text><Bold>Checks:</Bold></Text>
+          <Text>{checksList}</Text>
+          {result.errors.length > 0 && (
+            <Box>
+              <Divider />
+              <Text><Bold>Errors:</Bold></Text>
+              {result.errors.map((err) => <Text>• {err}</Text>)}
+            </Box>
+          )}
+        </Box>
+      ),
+    },
+  });
+};
+
+/**
+ * Proof history dialog
+ */
+export const proofHistoryDialog = async (
+  history: ProofHistoryEntry[],
+): Promise<void> => {
+  if (history.length === 0) {
+    await snap.request({
+      method: 'snap_dialog',
+      params: {
+        type: 'alert',
+        content: (
+          <Box>
+            <Heading>Proof History</Heading>
+            <Divider />
+            <Text>No proofs have been created yet.</Text>
+            <Text>
+              Create your first proof of funds to see it here.
+            </Text>
+          </Box>
+        ),
+      },
+    });
+    return;
+  }
+  
+  const historyEntries = history.slice(0, 10).map((entry, index) => {
+    const date = new Date(entry.timestamp * 1000).toLocaleDateString();
+    const verifiedIcon = entry.verified ? ' ✓' : '';
+    return `${index + 1}. ${entry.policyLabel} (${date})${verifiedIcon}`;
+  });
+  
+  await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'alert',
+      content: (
+        <Box>
+          <Heading>Proof History</Heading>
+          <Text>Recent proofs (showing up to 10):</Text>
+          <Divider />
+          {historyEntries.map((entry) => <Text>{entry}</Text>)}
+          <Divider />
+          <Text>Total proofs: {String(history.length)}</Text>
+        </Box>
+      ),
+    },
+  });
+};
+
+/**
+ * Confirm clear history dialog
+ */
+export const confirmClearHistoryDialog = async (): Promise<boolean> => {
+  const result = await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'confirmation',
+      content: (
+        <Box>
+          <Heading>Clear Proof History?</Heading>
+          <Divider />
+          <Text>
+            This will permanently delete all proof history from this snap.
+          </Text>
+          <Text>
+            <Bold>This action cannot be undone.</Bold>
+          </Text>
+        </Box>
+      ),
+    },
+  });
+  return result === true;
+};
+
+/**
+ * Network switch confirmation dialog
+ */
+export const confirmNetworkSwitchDialog = async (
+  network: NetworkType,
+): Promise<boolean> => {
+  const networkName = network === 'mainnet' ? 'Mainnet' : 'Testnet';
+  
+  const result = await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'confirmation',
+      content: (
+        <Box>
+          <Heading>Switch to {networkName}?</Heading>
+          <Divider />
+          <Text>
+            This will switch both Ethereum and Zcash networks to {networkName}.
+          </Text>
+          {network === 'testnet' && (
+            <Text>
+              <Bold>Note:</Bold> Testnet is for development purposes only.
+              Proofs created on testnet have no real value.
+            </Text>
+          )}
+        </Box>
+      ),
+    },
+  });
+  return result === true;
+};
+
+/**
+ * Show holder fingerprint dialog
+ */
+export const showFingerprintDialog = async (
+  fingerprint: string,
+): Promise<void> => {
+  const shortFingerprint = `${fingerprint.slice(0, 10)}...${fingerprint.slice(-8)}`;
+  
+  await snap.request({
+    method: 'snap_dialog',
+    params: {
+      type: 'alert',
+      content: (
+        <Box>
+          <Heading>Your Holder Fingerprint</Heading>
+          <Text>
+            This unique fingerprint identifies you across proofs without
+            revealing your actual wallet address.
+          </Text>
+          <Divider />
+          <Row label="Short">
+            <Text>{shortFingerprint}</Text>
+          </Row>
+          <Text>Full Fingerprint:</Text>
+          <Copyable value={fingerprint} />
+          <Divider />
+          <Text>
+            Verifiers can use this to correlate multiple proofs from you
+            without learning your MetaMask address.
+          </Text>
+        </Box>
+      ),
+    },
+  });
 };

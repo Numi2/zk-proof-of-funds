@@ -436,11 +436,14 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       const policyBigInt = BigInt(policy.policy_id);
       const epochBigInt = BigInt(nowEpoch);
 
+      // Use policy's required_custodian_id, defaulting to 0 for non-custodial rails
+      const custodianId = policy.required_custodian_id ?? 0;
+
       const circuitInput: CircuitInput = {
         attestation: {
           balance_raw: Math.floor(effectiveBalance),
           currency_code_int: policy.required_currency_code,
-          custodian_id: 0,
+          custodian_id: custodianId,
           attestation_id: attestationId,
           issued_at: issuedAtEpoch,
           valid_until: validUntilEpoch,
@@ -455,6 +458,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         public: {
           threshold_raw: policy.threshold_raw,
           required_currency_code: policy.required_currency_code,
+          required_custodian_id: custodianId,
           current_epoch: nowEpoch,
           verifier_scope_id: policy.verifier_scope_id,
           policy_id: policy.policy_id,
@@ -693,7 +697,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
                   <span className="warning-icon">⚠️</span>
                   <span>
                     WebWallet requires SharedArrayBuffer support. MetaMask Snap integration
-                    may not work in this browser environment.
+                    may not work in this browser environment (works in Chrome).
                   </span>
                 </div>
               )}

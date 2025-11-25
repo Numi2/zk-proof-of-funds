@@ -24,7 +24,7 @@ function sendJson(res, statusCode, payload) {
 async function readJsonBody(req) {
   if (req.body) {
     if (typeof req.body === 'string') {
-      return safeJsonParse(req.body);
+      return parseJson(req.body);
     }
     return req.body;
   }
@@ -35,17 +35,24 @@ async function readJsonBody(req) {
       data += chunk;
     });
     req.on('end', () => {
-      resolve(data ? safeJsonParse(data) : {});
+      if (!data) {
+        return resolve({});
+      }
+      try {
+        resolve(parseJson(data));
+      } catch (err) {
+        reject(err);
+      }
     });
     req.on('error', (err) => reject(err));
   });
 }
 
-function safeJsonParse(value) {
+function parseJson(value) {
   try {
     return JSON.parse(value);
-  } catch {
-    return null;
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${err.message}`);
   }
 }
 

@@ -58,6 +58,12 @@ export interface PolicyDefinition {
   verifier_scope_id: number;
   threshold_raw: number;
   required_currency_code: number;
+  /**
+   * Optional custodian ID when the policy restricts proofs to a specific
+   * custodian. Defaults to 0 (no custodian restriction) for non-custodial
+   * rails like Zcash Orchard.
+   */
+  required_custodian_id?: number;
   category?: string | null;
   rail_id?: string | null;
   label?: string | null;
@@ -154,6 +160,7 @@ export interface AttestationWitness {
 export interface CircuitPublicInputs {
   threshold_raw: number;
   required_currency_code: number;
+  required_custodian_id: number;
   current_epoch: number;
   verifier_scope_id: number;
   policy_id: number;

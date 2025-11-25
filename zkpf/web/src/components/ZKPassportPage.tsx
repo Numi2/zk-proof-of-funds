@@ -278,7 +278,7 @@ export function ZKPassportPage() {
           {verificationState.url && isVerifying && (
             <section className="card verification-qr-card">
               <div className="qr-code-section">
-                <h4>Scan with ZKPassport</h4>
+                <h4>th ZKPassport</h4>
                 <div className="qr-code-container">
                   <QRCode value={verificationState.url} size={280} />
                 </div>

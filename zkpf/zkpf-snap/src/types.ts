@@ -1,6 +1,11 @@
 import type { Json } from '@metamask/snaps-sdk';
 
 /**
+ * Network type for Zcash and Ethereum
+ */
+export type NetworkType = 'mainnet' | 'testnet';
+
+/**
  * Policy definition from zkpf backend
  */
 export interface PolicyDefinition {
@@ -63,12 +68,49 @@ export interface ProofRequest {
 }
 
 /**
+ * Exportable proof bundle for sharing
+ */
+export interface ProofBundle {
+  version: string;
+  proofRequest: ProofRequest;
+  createdAt: string;
+  expiresAt?: string;
+  bundleId: string;
+}
+
+/**
+ * Stored proof history entry
+ */
+export interface ProofHistoryEntry {
+  bundleId: string;
+  policyId: number;
+  policyLabel: string;
+  holderTag: string;
+  timestamp: number;
+  threshold: number;
+  currencyCode: number;
+  verified?: boolean;
+}
+
+/**
+ * Network configuration
+ */
+export interface NetworkConfig {
+  network: NetworkType;
+  zcashNetwork: 'main' | 'test';
+  ethereumChainId: string;
+}
+
+/**
  * Snap state persisted across sessions
  */
 export interface SnapState extends Record<string, Json> {
   selectedPolicyId: number | null;
   fundingSources: Json[];
   lastProofTimestamp: number | null;
+  proofHistory: Json[];
+  networkConfig: Json | null;
+  holderFingerprint: string | null;
 }
 
 /**

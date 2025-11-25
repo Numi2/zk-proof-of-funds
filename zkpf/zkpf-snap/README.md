@@ -250,6 +250,177 @@ const proofRequest = await window.ethereum.request({
 // - timestamp: when the proof was created
 ```
 
+### Export & Share Proofs
+
+```typescript
+// Export proof as shareable bundle
+const bundle = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'exportProofBundle',
+      params: {
+        proofRequest: proofRequest, // from createProof
+      },
+    },
+  },
+});
+
+console.log('Bundle ID:', bundle.bundleId);
+console.log('Bundle JSON:', JSON.stringify(bundle));
+```
+
+### Verify Proof Bundles
+
+```typescript
+// Verify a proof bundle
+const result = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'verifyProofBundle',
+      params: {
+        bundleJson: '{"version":"1.0.0",...}',
+      },
+    },
+  },
+});
+
+console.log('Valid:', result.valid);
+console.log('Checks:', result.checks);
+console.log('Details:', result.details);
+
+// Interactive verification (prompts user for bundle)
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'verifyBundleInteractive',
+    },
+  },
+});
+```
+
+### Proof History
+
+```typescript
+// List all proof history
+const history = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'listProofHistory',
+    },
+  },
+});
+
+// Get specific proof from history
+const proof = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'getProofFromHistory',
+      params: {
+        bundleId: 'zkpf-abc123...',
+      },
+    },
+  },
+});
+
+// Show history dialog to user
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'showProofHistory',
+    },
+  },
+});
+
+// Clear proof history
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'clearProofHistory',
+    },
+  },
+});
+```
+
+### Holder Fingerprint
+
+```typescript
+// Get or create a persistent holder fingerprint
+const fingerprint = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'getHolderFingerprint',
+    },
+  },
+});
+
+// Show fingerprint in a dialog
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'showHolderFingerprint',
+    },
+  },
+});
+```
+
+### Network Configuration
+
+```typescript
+// Get current network
+const network = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'getCurrentNetwork',
+    },
+  },
+});
+
+// Switch network (mainnet/testnet)
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'switchNetwork',
+      params: {
+        network: 'testnet', // or 'mainnet'
+      },
+    },
+  },
+});
+
+// Check if on mainnet
+const isMain = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'isMainnet',
+    },
+  },
+});
+```
+
 ### State Management
 
 ```typescript
@@ -260,6 +431,17 @@ const state = await window.ethereum.request({
     snapId: 'npm:@zkpf/proof-of-funds-snap',
     request: {
       method: 'getProofState',
+    },
+  },
+});
+
+// Get raw snap state
+const rawState = await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'getSnapState',
     },
   },
 });
@@ -296,9 +478,22 @@ await window.ethereum.request({
     },
   },
 });
+
+// Clear everything including history
+await window.ethereum.request({
+  method: 'wallet_invokeSnap',
+  params: {
+    snapId: 'npm:@zkpf/proof-of-funds-snap',
+    request: {
+      method: 'clearSnapState',
+    },
+  },
+});
 ```
 
 ## RPC Methods Reference
+
+### Policy & Sources
 
 | Method | Description | Parameters |
 |--------|-------------|------------|
@@ -308,11 +503,61 @@ await window.ethereum.request({
 | `addFundingSource` | Add a custom funding source | `{ source: FundingSource }` |
 | `getFundingSources` | Get current funding sources | None |
 | `clearFundingSources` | Clear all funding sources | None |
+
+### Holder Identity
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
 | `bindHolder` | Sign with personal_sign | `{ policy, fundingSources? }` |
 | `bindHolderTypedData` | Sign with EIP-712 | `{ policy, fundingSources? }` |
+| `getHolderFingerprint` | Get/create persistent fingerprint | None |
+| `showHolderFingerprint` | Display fingerprint in dialog | None |
+| `getExistingHolderFingerprint` | Get fingerprint without creating | None |
+
+### Proof Generation & Export
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
 | `createProof` | Complete proof generation | `{ policy }` |
-| `getProofState` | Get current state | None |
-| `resetProofState` | Clear all state | None |
+| `exportProofBundle` | Export as shareable bundle | `{ proofRequest }` |
+
+### Verification
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `verifyProofBundle` | Verify a proof bundle | `{ bundleJson: string }` |
+| `verifyBundleInteractive` | Prompt user and verify | None |
+| `parseProofBundle` | Parse bundle without verification | `{ bundleJson: string }` |
+
+### Proof History
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `listProofHistory` | Get all proof history | None |
+| `getProofFromHistory` | Get specific proof by ID | `{ bundleId: string }` |
+| `showProofHistory` | Display history dialog | None |
+| `clearProofHistory` | Clear history (with confirmation) | None |
+| `markProofVerified` | Mark proof as verified | `{ bundleId, verified? }` |
+
+### Network Configuration
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `getCurrentNetwork` | Get current network config | None |
+| `switchNetwork` | Switch to mainnet/testnet | `{ network: 'mainnet' \| 'testnet' }` |
+| `getZcashNetwork` | Get current Zcash network | None |
+| `getEthereumChainId` | Get current chain ID | None |
+| `isMainnet` | Check if on mainnet | None |
+
+### State Management
+
+| Method | Description | Parameters |
+|--------|-------------|------------|
+| `getProofState` | Get current proof state | None |
+| `resetProofState` | Clear proof state | None |
+| `getSnapState` | Get raw snap state | None |
+| `setSnapState` | Update snap state | Partial state object |
+| `clearSnapState` | Clear all state | None |
 
 ## Holder Tag
 
