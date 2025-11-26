@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { CircuitInput, ProofBundle, PolicyDefinition } from '../types/zkpf';
 import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
@@ -11,6 +12,12 @@ import { BtcWalletConnector } from './BtcWalletConnector';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
 import { ZashiSessionConnector } from './ZashiSessionConnector';
 import { prepareProverArtifacts, generateBundle } from '../wasm/prover';
+
+interface WalletNavigationState {
+  customPolicy?: PolicyDefinition;
+  fromWallet?: boolean;
+  walletBalance?: number;
+}
 
 interface Props {
   client: ZkpfClient;
@@ -51,6 +58,9 @@ const PROOF_PROGRESS_MESSAGES: Record<ProofProgress, string> = {
 };
 
 export function ProofBuilder({ client, connectionState, onBundleReady }: Props) {
+  const location = useLocation();
+  const navigationState = location.state as WalletNavigationState | null;
+  
   const [rawInput, setRawInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [proofProgress, setProofProgress] = useState<ProofProgress>('idle');
@@ -61,6 +71,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
   const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('zcash');
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
+  
+  // Track if we're using a custom policy from the wallet
+  const [customPolicy, setCustomPolicy] = useState<PolicyDefinition | null>(
+    navigationState?.customPolicy ?? null
+  );
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -75,9 +90,29 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
-  const policies = useMemo<PolicyDefinition[]>(() => policiesQuery.data ?? [], [policiesQuery.data]);
+  
+  // Merge custom policy with fetched policies (custom policy takes priority)
+  const policies = useMemo<PolicyDefinition[]>(() => {
+    const fetchedPolicies = policiesQuery.data ?? [];
+    if (customPolicy) {
+      // Put custom policy at the start of the list
+      return [customPolicy, ...fetchedPolicies];
+    }
+    return fetchedPolicies;
+  }, [policiesQuery.data, customPolicy]);
+
+  // Auto-select custom policy if it came from wallet navigation
+  useEffect(() => {
+    if (navigationState?.customPolicy && customPolicy) {
+      setSelectedPolicyId(customPolicy.policy_id);
+    }
+  }, [navigationState?.customPolicy, customPolicy]);
 
   useEffect(() => {
+    // Skip auto-selection if we have a custom policy already selected
+    if (customPolicy && selectedPolicyId === customPolicy.policy_id) {
+      return;
+    }
     if (!policies.length) {
       setSelectedPolicyId(null);
       return;
@@ -86,7 +121,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       setSelectedPolicyId(policies[0].policy_id);
       return;
     }
-  }, [policies, selectedPolicyId]);
+  }, [policies, selectedPolicyId, customPolicy]);
 
   const selectedPolicy = selectedPolicyId
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
@@ -380,6 +415,37 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         Generate a cryptographic proof that verifies you meet a balance requirement—without revealing your actual balance or wallet addresses.
       </p>
 
+      {/* Custom Policy Banner - shown when navigating from wallet */}
+      {customPolicy && navigationState?.fromWallet && (
+        <div className="custom-policy-banner">
+          <div className="custom-policy-banner-content">
+            <span className="custom-policy-banner-icon">✨</span>
+            <div className="custom-policy-banner-text">
+              <strong>Custom proof tailored to your balance</strong>
+              <p>
+                A policy was automatically created to prove your exact shielded balance of{' '}
+                <strong>{((navigationState.walletBalance ?? 0) / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} ZEC</strong>.
+                This removes the friction of selecting a policy manually.
+              </p>
+            </div>
+            <button 
+              type="button" 
+              className="ghost tiny-button"
+              onClick={() => {
+                setCustomPolicy(null);
+                // Reset to first fetched policy
+                const fetchedPolicies = policiesQuery.data ?? [];
+                if (fetchedPolicies.length > 0) {
+                  setSelectedPolicyId(fetchedPolicies[0].policy_id);
+                }
+              }}
+            >
+              Use standard policy instead
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* STEP 1: Policy Selection - FIRST */}
       <div className="builder-policy-panel builder-policy-panel-primary">
         <header className="policy-panel-header">
@@ -414,11 +480,12 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
                 <option value="">No policies available</option>
               ) : (
                 policies.map((policy) => {
+                  const isCustom = customPolicy && policy.policy_id === customPolicy.policy_id;
                   const label = policyDisplayName(policy);
                   const threshold = formatPolicyThreshold(policy).formatted;
                   return (
                     <option key={policy.policy_id} value={policy.policy_id}>
-                      {label} • {threshold} • Scope {policy.verifier_scope_id}
+                      {isCustom ? '✨ ' : ''}{label} • {threshold} • Scope {policy.verifier_scope_id}
                     </option>
                   );
                 })
@@ -428,9 +495,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         </label>
         
         {selectedPolicy && (
-          <div className="policy-selected-card">
+          <div className={`policy-selected-card ${customPolicy && selectedPolicy.policy_id === customPolicy.policy_id ? 'policy-selected-custom' : ''}`}>
             <div className="policy-selected-header">
-              <span className="policy-selected-badge">Selected Policy</span>
+              <span className="policy-selected-badge">
+                {customPolicy && selectedPolicy.policy_id === customPolicy.policy_id ? '✨ Custom Policy' : 'Selected Policy'}
+              </span>
               <span className="policy-id-badge">ID: {selectedPolicy.policy_id}</span>
             </div>
             <dl className="policy-details">

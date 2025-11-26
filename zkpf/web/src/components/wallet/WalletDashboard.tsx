@@ -3,12 +3,44 @@ import { useNavigate } from 'react-router-dom';
 import { generate_seed_phrase } from '@chainsafe/webzjs-keys';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { useWebzjsActions } from '../../hooks/useWebzjsActions';
+import type { PolicyDefinition } from '../../types/zkpf';
 
 function zatsToZec(zats: number): string {
   return (zats / 100_000_000).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 8,
   });
+}
+
+/**
+ * Creates a custom policy tailored to the user's exact balance.
+ * This removes friction from manually selecting a policy that fits.
+ */
+function createBalancePolicy(balanceZats: number): PolicyDefinition {
+  // ZEC currency code (Zcash uses 5915971 which is "ZEC" in ASCII)
+  const ZEC_CURRENCY_CODE = 5915971;
+  
+  // Generate a unique policy ID based on timestamp and balance
+  // Using a large number range to avoid collision with server-defined policies
+  const customPolicyId = 900000000 + Math.floor(Math.random() * 1000000);
+  
+  // Format the balance for the label
+  const zecAmount = balanceZats / 100_000_000;
+  const formattedAmount = zecAmount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  });
+  
+  return {
+    policy_id: customPolicyId,
+    verifier_scope_id: 314159265, // Standard Zcash scope
+    threshold_raw: balanceZats,
+    required_currency_code: ZEC_CURRENCY_CODE,
+    required_custodian_id: 0, // Non-custodial (Zcash Orchard)
+    category: 'ZCASH_ORCHARD',
+    rail_id: 'ZCASH_ORCHARD',
+    label: `Prove exactly ${formattedAmount} ZEC`,
+  };
 }
 
 type WalletMethod = 'seed' | 'snap';
@@ -368,12 +400,22 @@ export function WalletDashboard() {
       <div className="wallet-actions-grid">
         <button 
           className="wallet-action-card"
-          onClick={() => navigate('/build')}
+          onClick={() => {
+            // Create a custom policy tailored to the user's exact shielded balance
+            const customPolicy = createBalancePolicy(balances.shielded);
+            navigate('/build', { 
+              state: { 
+                customPolicy,
+                fromWallet: true,
+                walletBalance: balances.shielded,
+              } 
+            });
+          }}
         >
           <span className="wallet-action-icon">🔐</span>
           <span className="wallet-action-title">Build Proof</span>
           <span className="wallet-action-description">
-            Generate a zero-knowledge proof of your balance
+            Prove your exact balance of {zatsToZec(balances.shielded)} ZEC
           </span>
         </button>
         <button 
