@@ -6,7 +6,6 @@ import QRCode from 'react-qr-code';
 import type { ShareableProofBundle } from '../utils/shareable-proof';
 import {
   createShareableUrl,
-  encodeShareableProof,
   saveProofToStorage,
   formatProofAsJson,
   generateProofSummary,

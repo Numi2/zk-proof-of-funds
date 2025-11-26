@@ -62,12 +62,9 @@ export function WalletBuy() {
     loading,
     error,
     provider: currentProvider,
-    chain,
     setProvider,
-    setChain,
     getAllQuotes,
     startOnRamp,
-    availableChains,
     isProviderAvailable,
   } = useOnRamp(DEFAULT_ONRAMP_CONFIG.defaultChain);
 
@@ -130,7 +127,7 @@ export function WalletBuy() {
 
   const handleBuy = useCallback(async () => {
     if (!evmAddress) {
-      setEvmError('Connect an EVM wallet first.');
+      setEvmError('Connect a wallet first.');
       return;
     }
     if (fiatAmount < DEFAULT_ONRAMP_CONFIG.minAmountUsd) {
@@ -139,7 +136,6 @@ export function WalletBuy() {
     }
     try {
       await startOnRamp({
-        chain,
         address: evmAddress,
         amountUsd: fiatAmount,
         userCountry: country,
@@ -148,7 +144,7 @@ export function WalletBuy() {
       const message = err instanceof Error ? err.message : 'Failed to start on-ramp';
       setEvmError(message);
     }
-  }, [evmAddress, fiatAmount, chain, country, startOnRamp]);
+  }, [evmAddress, fiatAmount, country, startOnRamp]);
 
   const availableProviders: OnRampProvider[] = useMemo(
     () => DEFAULT_ONRAMP_CONFIG.enabledProviders.filter((p) => isProviderAvailable(p)),

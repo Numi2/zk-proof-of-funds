@@ -140,7 +140,7 @@ export async function verifyProofBundle(
     try {
       const zkPassport = new ZKPassport(domain);
       const result = await zkPassport.verify({
-        proofs: bundle.proofs,
+        proofs: bundle.proofs as Parameters<typeof zkPassport.verify>[0]['proofs'],
         queryResult: bundle.queryResult,
         scope: bundle.policy.scope,
         devMode: bundle.policy.devMode,
