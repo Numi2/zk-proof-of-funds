@@ -93,8 +93,8 @@ function OfferCard({ offer, onSelect }: { offer: P2POffer; onSelect: (offer: P2P
           <span className="method-primary" title={methodInfo.description}>
             {methodInfo.icon} {methodInfo.label}
           </span>
-          {offer.tradingMethods.length > 1 && (
-            <span className="method-more">+{offer.tradingMethods.length - 1}</span>
+          {(offer.tradingMethods?.length ?? 0) > 1 && (
+            <span className="method-more">+{(offer.tradingMethods?.length ?? 1) - 1}</span>
           )}
         </div>
         
@@ -293,19 +293,19 @@ export function P2PMarketplace() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       offers = offers.filter(o => 
-        o.exchangeCurrency.toLowerCase().includes(q) ||
+        o.exchangeCurrency?.toLowerCase().includes(q) ||
         o.exchangeDescription?.toLowerCase().includes(q) ||
-        o.makerProfile.displayName?.toLowerCase().includes(q) ||
+        o.makerProfile?.displayName?.toLowerCase().includes(q) ||
         o.location?.city?.toLowerCase().includes(q) ||
         o.location?.country?.toLowerCase().includes(q) ||
-        o.notes.toLowerCase().includes(q)
+        o.notes?.toLowerCase().includes(q)
       );
     }
     
     // Method filter
     if (selectedMethods.length > 0) {
       offers = offers.filter(o => 
-        o.tradingMethods.some(m => selectedMethods.includes(m))
+        o.tradingMethods?.some(m => selectedMethods.includes(m))
       );
     }
     

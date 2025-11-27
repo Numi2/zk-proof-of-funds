@@ -833,16 +833,18 @@ export function P2POfferDetail() {
             </div>
             
             {/* Trading Methods */}
-            <div className="offer-payment-section">
-              <h4>Trading Methods</h4>
-              <div className="payment-methods-list">
-                {offer.tradingMethods.map(tm => (
-                  <span key={tm} className="payment-tag">
-                    {TRADING_METHOD_INFO[tm]?.icon} {TRADING_METHOD_INFO[tm]?.label}
-                  </span>
-                ))}
+            {offer.tradingMethods && offer.tradingMethods.length > 0 && (
+              <div className="offer-payment-section">
+                <h4>Trading Methods</h4>
+                <div className="payment-methods-list">
+                  {offer.tradingMethods.map(tm => (
+                    <span key={tm} className="payment-tag">
+                      {TRADING_METHOD_INFO[tm]?.icon} {TRADING_METHOD_INFO[tm]?.label}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             
             {/* Payment Methods (if any) */}
             {offer.paymentMethods && offer.paymentMethods.length > 0 && (

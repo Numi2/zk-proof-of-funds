@@ -73,55 +73,74 @@ const CODE_TO_METHOD: Record<string, TradingMethod> = {
 };
 
 function toStoredFormat(offer: P2POffer): StoredOffer {
+  // Defensive: handle missing makerProfile
+  const makerProfile = offer.makerProfile ?? {
+    displayName: undefined,
+    totalTrades: 0,
+    successRate: 0,
+  };
+  
   return {
     id: offer.offerId,
     type: offer.offerType,
-    zec: offer.zecAmount,
-    value: offer.exchangeValue,
-    currency: offer.exchangeCurrency,
+    zec: offer.zecAmount ?? 0,
+    value: offer.exchangeValue ?? '0',
+    currency: offer.exchangeCurrency ?? 'USD',
     desc: offer.exchangeDescription?.slice(0, 200),
-    methods: offer.tradingMethods.map(m => METHOD_TO_CODE[m]).join(','),
+    methods: (offer.tradingMethods ?? ['other']).map(m => METHOD_TO_CODE[m] || 'x').join(','),
     city: offer.location?.city,
     country: offer.location?.country,
     notes: offer.notes?.slice(0, 300),
-    created: offer.createdAt,
+    created: offer.createdAt ?? Date.now(),
     expires: offer.expiresAt,
     maker: {
-      name: offer.makerProfile.displayName?.slice(0, 50),
-      trades: offer.makerProfile.totalTrades,
-      rate: offer.makerProfile.successRate,
-      addr: offer.maker.slice(0, 20),
+      name: makerProfile.displayName?.slice(0, 50),
+      trades: makerProfile.totalTrades ?? 0,
+      rate: makerProfile.successRate ?? 0,
+      addr: (offer.maker ?? 'unknown').slice(0, 20),
     },
   };
 }
 
 function fromStoredFormat(data: StoredOffer): P2POffer {
+  // Defensive: handle missing or malformed maker data
+  const maker = data.maker ?? { addr: 'unknown', name: undefined, trades: 0, rate: 0 };
+  const makerAddr = maker.addr ?? 'unknown';
+  const makerTrades = maker.trades ?? 0;
+  const makerRate = maker.rate ?? 0;
+  const createdAt = data.created ?? Date.now();
+  
   const makerProfile: P2PUserProfile = {
-    address: data.maker.addr,
-    displayName: data.maker.name,
-    totalTrades: data.maker.trades,
-    successfulTrades: Math.floor(data.maker.trades * (data.maker.rate / 100)),
+    address: makerAddr,
+    displayName: maker.name,
+    totalTrades: makerTrades,
+    successfulTrades: Math.floor(makerTrades * (makerRate / 100)),
     totalVolumeZec: 0,
-    successRate: data.maker.rate,
-    registeredAt: data.created,
-    lastActiveAt: data.created,
+    successRate: makerRate,
+    registeredAt: createdAt,
+    lastActiveAt: createdAt,
     isVerified: false,
   };
 
+  // Defensive: ensure tradingMethods is always an array with at least one item
+  const methodsStr = data.methods ?? '';
+  const parsedMethods: TradingMethod[] = methodsStr.split(',').filter(Boolean).map(c => CODE_TO_METHOD[c] || 'other');
+  const tradingMethods: TradingMethod[] = parsedMethods.length > 0 ? parsedMethods : ['other'];
+
   return {
-    offerId: data.id,
-    maker: data.maker.addr,
+    offerId: data.id ?? `offer-${Date.now()}`,
+    maker: makerAddr,
     makerProfile,
-    offerType: data.type,
-    zecAmount: data.zec,
-    exchangeValue: data.value,
-    exchangeCurrency: data.currency,
+    offerType: data.type ?? 'sell',
+    zecAmount: data.zec ?? 0,
+    exchangeValue: data.value ?? '0',
+    exchangeCurrency: data.currency ?? 'USD',
     exchangeDescription: data.desc,
-    tradingMethods: data.methods.split(',').filter(Boolean).map(c => CODE_TO_METHOD[c] || 'other'),
+    tradingMethods,
     location: data.city ? { city: data.city, country: data.country } : undefined,
     notes: data.notes || '',
     status: 'active',
-    createdAt: data.created,
+    createdAt,
     expiresAt: data.expires,
     completedTrades: 0,
     shieldedAddressCommitment: '',

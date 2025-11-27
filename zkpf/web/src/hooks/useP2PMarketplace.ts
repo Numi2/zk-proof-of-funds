@@ -218,7 +218,7 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     }
     if (filters.tradingMethods && filters.tradingMethods.length > 0) {
       result = result.filter(o => 
-        filters.tradingMethods!.some(m => o.tradingMethods.includes(m))
+        o.tradingMethods && filters.tradingMethods!.some(m => o.tradingMethods?.includes(m))
       );
     }
     if (filters.location) {
@@ -241,14 +241,17 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
       let comparison = 0;
       switch (sortBy) {
         case 'amount':
-          comparison = a.zecAmount - b.zecAmount;
+          comparison = (a.zecAmount ?? 0) - (b.zecAmount ?? 0);
           break;
         case 'reputation':
-          comparison = b.makerProfile.successRate - a.makerProfile.successRate;
+          // Defensive: handle missing makerProfile
+          const aRate = a.makerProfile?.successRate ?? 0;
+          const bRate = b.makerProfile?.successRate ?? 0;
+          comparison = bRate - aRate;
           break;
         case 'recent':
         default:
-          comparison = b.createdAt - a.createdAt;
+          comparison = (b.createdAt ?? 0) - (a.createdAt ?? 0);
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;

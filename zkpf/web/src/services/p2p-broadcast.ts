@@ -90,24 +90,31 @@ const CODE_TO_METHOD: Record<string, TradingMethod> = {
  * Convert P2POffer to compact broadcast format
  */
 function toBroadcastFormat(offer: P2POffer): BroadcastOffer {
+  // Defensive: handle missing makerProfile
+  const makerProfile = offer.makerProfile ?? {
+    displayName: undefined,
+    totalTrades: 0,
+    successRate: 0,
+  };
+  
   return {
     id: offer.offerId,
     type: offer.offerType,
-    zec: offer.zecAmount,
-    value: offer.exchangeValue,
-    currency: offer.exchangeCurrency,
+    zec: offer.zecAmount ?? 0,
+    value: offer.exchangeValue ?? '0',
+    currency: offer.exchangeCurrency ?? 'USD',
     desc: offer.exchangeDescription?.slice(0, 200),
-    methods: offer.tradingMethods.map(m => METHOD_TO_CODE[m]).join(','),
+    methods: (offer.tradingMethods ?? ['other']).map(m => METHOD_TO_CODE[m] || 'x').join(','),
     city: offer.location?.city,
     country: offer.location?.country,
     notes: offer.notes?.slice(0, 300),
-    created: offer.createdAt,
+    created: offer.createdAt ?? Date.now(),
     expires: offer.expiresAt,
     maker: {
-      name: offer.makerProfile.displayName?.slice(0, 50),
-      trades: offer.makerProfile.totalTrades,
-      rate: offer.makerProfile.successRate,
-      addr: offer.maker.slice(0, 20),
+      name: makerProfile.displayName?.slice(0, 50),
+      trades: makerProfile.totalTrades ?? 0,
+      rate: makerProfile.successRate ?? 0,
+      addr: (offer.maker ?? 'unknown').slice(0, 20),
     },
     active: offer.status === 'active',
     updatedAt: Date.now(),
@@ -136,6 +143,11 @@ function fromBroadcastFormat(data: BroadcastOffer): P2POffer {
     isVerified: false,
   };
 
+  // Defensive: ensure tradingMethods is always an array with at least one item
+  const methodsStr = typeof data.methods === 'string' ? data.methods : '';
+  const parsedMethods = methodsStr.split(',').filter(Boolean).map(c => CODE_TO_METHOD[c] || 'other');
+  const tradingMethods: TradingMethod[] = parsedMethods.length > 0 ? parsedMethods : ['other'];
+
   return {
     offerId: data.id || `offer-${Date.now()}`,
     maker: makerAddr,
@@ -145,7 +157,7 @@ function fromBroadcastFormat(data: BroadcastOffer): P2POffer {
     exchangeValue: data.value || '0',
     exchangeCurrency: data.currency || 'USD',
     exchangeDescription: data.desc,
-    tradingMethods: (data.methods || '').split(',').filter(Boolean).map(c => CODE_TO_METHOD[c] || 'other'),
+    tradingMethods,
     location: data.city ? { city: data.city, country: data.country } : undefined,
     notes: data.notes || '',
     status: data.active ? 'active' : 'cancelled',
