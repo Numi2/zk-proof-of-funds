@@ -5,8 +5,7 @@
 use std::{env, net::SocketAddr};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod lib;
-use lib::app_router;
+use zkpf_rails_starknet::app_router;
 
 #[tokio::main]
 async fn main() {

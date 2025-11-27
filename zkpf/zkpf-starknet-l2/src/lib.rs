@@ -40,6 +40,9 @@ pub mod wallet;
 #[cfg(feature = "starknet-rpc")]
 pub mod rpc;
 
+#[cfg(feature = "starknet-rpc")]
+pub mod defi;
+
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
@@ -58,6 +61,16 @@ pub use circuit::{
 };
 pub use error::StarknetRailError;
 pub use types::*;
+
+#[cfg(feature = "starknet-rpc")]
+pub use rpc::StarknetRpcClient;
+
+#[cfg(feature = "starknet-rpc")]
+pub use defi::{
+    DefiProtocol, DefiQueryError, DefiPositionQuery,
+    JediSwapQuery, NostraQuery, ZkLendQuery, EkuboQuery, HaikoQuery,
+};
+
 pub use wallet::{
     create_session_binding, hash_proof_binding_poseidon, pedersen_hash, poseidon_hash_many,
     prepare_batch_request, validate_session_config, verify_proof_binding_signature,

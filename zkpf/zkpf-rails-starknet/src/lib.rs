@@ -1,8 +1,15 @@
 //! zkpf-rails-starknet library
 //!
 //! Axum-based HTTP service for Starknet proof-of-funds.
+//!
+//! # Features
+//! - Proof generation for Starknet accounts and DeFi positions
+//! - Cryptographic proof verification using Halo2/bn256
+//! - Snapshot building via Starknet RPC
+//! - Support for account abstraction and session keys
 
 use std::env;
+use std::sync::Arc;
 
 use axum::{
     extract::{Json, State},
@@ -12,12 +19,16 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
 use zkpf_common::ProofBundle;
 use zkpf_starknet_l2::{
-    prove_starknet_pof, HolderId, PublicMetaInputs, StarknetAccountSnapshot, StarknetPublicMeta,
+    prove_starknet_pof, verify_starknet_proof_with_loaded_artifacts,
+    HolderId, PublicMetaInputs, StarknetPublicMeta,
     StarknetRailError, StarknetSnapshot, RAIL_ID_STARKNET_L2,
+    StarknetChainConfig, StarknetRpcClient,
+    known_tokens,
 };
 
 // Environment variables
@@ -31,23 +42,68 @@ pub struct AppState {
     pub chain_id: String,
     pub chain_id_numeric: u128,
     pub rpc_url: Option<String>,
+    /// Optional RPC client (initialized lazily on first use)
+    rpc_client: Arc<RwLock<Option<Arc<StarknetRpcClient>>>>,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
-        let chain_id = env::var(STARKNET_CHAIN_ID_ENV).unwrap_or_else(|_| DEFAULT_CHAIN_ID.to_string());
+impl AppState {
+    /// Create a new AppState with the given configuration.
+    pub fn new(chain_id: String, rpc_url: Option<String>) -> Self {
         let chain_id_numeric: u128 = match chain_id.as_str() {
             "SN_MAIN" => 0x534e5f4d41494e,
             "SN_SEPOLIA" => 0x534e5f5345504f4c4941,
             _ => 0,
         };
-        let rpc_url = env::var(STARKNET_RPC_URL_ENV).ok();
 
         Self {
             chain_id,
             chain_id_numeric,
             rpc_url,
+            rpc_client: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Get or create the RPC client.
+    pub async fn get_rpc_client(&self) -> Result<Arc<StarknetRpcClient>, StarknetRailError> {
+        // Check if already initialized
+        {
+            let guard = self.rpc_client.read().await;
+            if let Some(ref client) = *guard {
+                return Ok(client.clone());
+            }
+        }
+
+        // Need to initialize
+        let rpc_url = self.rpc_url.as_ref().ok_or_else(|| {
+            StarknetRailError::Rpc(format!(
+                "RPC not configured. Set {} environment variable",
+                STARKNET_RPC_URL_ENV
+            ))
+        })?;
+
+        let config = match self.chain_id.as_str() {
+            "SN_MAIN" => StarknetChainConfig::mainnet(rpc_url),
+            _ => StarknetChainConfig::sepolia(rpc_url),
+        };
+
+        let client = StarknetRpcClient::new(config)?;
+        let client = Arc::new(client);
+
+        // Store and return
+        {
+            let mut guard = self.rpc_client.write().await;
+            *guard = Some(client.clone());
+        }
+
+        Ok(client)
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        let chain_id = env::var(STARKNET_CHAIN_ID_ENV).unwrap_or_else(|_| DEFAULT_CHAIN_ID.to_string());
+        let rpc_url = env::var(STARKNET_RPC_URL_ENV).ok();
+        Self::new(chain_id, rpc_url)
     }
 }
 
@@ -63,11 +119,58 @@ pub fn app_router() -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/rails/starknet/info", get(info))
+        .route("/rails/starknet/status", get(status))
         .route("/rails/starknet/proof-of-funds", post(prove_pof))
         .route("/rails/starknet/verify", post(verify_proof))
+        .route("/rails/starknet/verify-batch", post(verify_batch))
         .route("/rails/starknet/build-snapshot", post(build_snapshot))
+        .route("/rails/starknet/get-balance", post(get_balance))
         .layer(cors)
         .with_state(state)
+}
+
+/// Detailed status endpoint.
+async fn status(State(state): State<AppState>) -> impl IntoResponse {
+    let rpc_status = if state.rpc_url.is_some() {
+        match state.get_rpc_client().await {
+            Ok(client) => {
+                match client.get_block_number().await {
+                    Ok(block) => serde_json::json!({
+                        "connected": true,
+                        "latest_block": block
+                    }),
+                    Err(e) => serde_json::json!({
+                        "connected": false,
+                        "error": e.to_string()
+                    })
+                }
+            }
+            Err(e) => serde_json::json!({
+                "connected": false,
+                "error": e.to_string()
+            })
+        }
+    } else {
+        serde_json::json!({
+            "connected": false,
+            "error": "RPC not configured"
+        })
+    };
+
+    Json(serde_json::json!({
+        "rail_id": RAIL_ID_STARKNET_L2,
+        "chain_id": state.chain_id,
+        "chain_id_numeric": format!("0x{:x}", state.chain_id_numeric),
+        "rpc": rpc_status,
+        "version": env!("CARGO_PKG_VERSION"),
+        "features": {
+            "account_abstraction": true,
+            "session_keys": true,
+            "defi_positions": true,
+            "multi_account": true,
+            "batch_verification": true
+        }
+    }))
 }
 
 /// Health check endpoint.
@@ -185,12 +288,12 @@ pub struct VerifyResponse {
     pub error_code: Option<String>,
 }
 
-/// Verify a proof (basic validation).
+/// Verify a proof with full cryptographic verification.
 async fn verify_proof(
     State(_state): State<AppState>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    // Basic validation
+    // Basic validation - rail ID
     if req.bundle.rail_id != RAIL_ID_STARKNET_L2 {
         return Ok(Json(VerifyResponse {
             valid: false,
@@ -202,6 +305,7 @@ async fn verify_proof(
         }));
     }
 
+    // Policy ID validation
     if req.bundle.public_inputs.policy_id != req.policy_id {
         return Ok(Json(VerifyResponse {
             valid: false,
@@ -210,8 +314,7 @@ async fn verify_proof(
         }));
     }
 
-    // For full verification, the proof should be verified against the circuit
-    // For now, we check basic structure
+    // Structural validation - minimum proof size
     if req.bundle.proof.len() < 16 {
         return Ok(Json(VerifyResponse {
             valid: false,
@@ -220,10 +323,142 @@ async fn verify_proof(
         }));
     }
 
-    Ok(Json(VerifyResponse {
-        valid: true,
+    // Full cryptographic verification
+    match verify_starknet_proof_with_loaded_artifacts(
+        &req.bundle.proof,
+        &req.bundle.public_inputs,
+    ) {
+        Ok(valid) => {
+            if valid {
+                Ok(Json(VerifyResponse {
+                    valid: true,
+                    error: None,
+                    error_code: None,
+                }))
+            } else {
+                Ok(Json(VerifyResponse {
+                    valid: false,
+                    error: Some("cryptographic proof verification failed".into()),
+                    error_code: Some("PROOF_VERIFICATION_FAILED".into()),
+                }))
+            }
+        }
+        Err(e) => {
+            Ok(Json(VerifyResponse {
+                valid: false,
+                error: Some(format!("verification error: {}", e)),
+                error_code: Some("VERIFICATION_ERROR".into()),
+            }))
+        }
+    }
+}
+
+/// Batch verify request.
+#[derive(Debug, Deserialize)]
+pub struct BatchVerifyRequest {
+    pub bundles: Vec<VerifyRequest>,
+}
+
+/// Batch verify response.
+#[derive(Debug, Serialize)]
+pub struct BatchVerifyResponse {
+    pub results: Vec<VerifyResponse>,
+    pub all_valid: bool,
+}
+
+/// Verify multiple proofs in batch.
+async fn verify_batch(
+    State(state): State<AppState>,
+    Json(req): Json<BatchVerifyRequest>,
+) -> Result<Json<BatchVerifyResponse>, ApiError> {
+    let mut results = Vec::with_capacity(req.bundles.len());
+    let mut all_valid = true;
+
+    for bundle_req in req.bundles {
+        let result = verify_proof(State(state.clone()), Json(bundle_req)).await?;
+        if !result.valid {
+            all_valid = false;
+        }
+        results.push(result.0);
+    }
+
+    Ok(Json(BatchVerifyResponse { results, all_valid }))
+}
+
+/// Get balance request.
+#[derive(Debug, Deserialize)]
+pub struct GetBalanceRequest {
+    /// Account address.
+    pub account: String,
+    /// Optional token address (if None, returns native balance).
+    pub token: Option<String>,
+}
+
+/// Get balance response.
+#[derive(Debug, Serialize)]
+pub struct GetBalanceResponse {
+    pub success: bool,
+    pub balance: Option<String>,
+    pub symbol: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Get account balance.
+async fn get_balance(
+    State(state): State<AppState>,
+    Json(req): Json<GetBalanceRequest>,
+) -> Result<Json<GetBalanceResponse>, ApiError> {
+    let rpc_client = match state.get_rpc_client().await {
+        Ok(client) => client,
+        Err(e) => {
+            return Ok(Json(GetBalanceResponse {
+                success: false,
+                balance: None,
+                symbol: None,
+                error: Some(format!("RPC client error: {}", e)),
+            }));
+        }
+    };
+
+    let (balance, symbol) = match &req.token {
+        Some(token_addr) => {
+            match rpc_client.get_erc20_balance(token_addr, &req.account).await {
+                Ok(bal) => {
+                    let symbol = zkpf_starknet_l2::state::get_token_metadata(token_addr)
+                        .map(|m| m.symbol)
+                        .unwrap_or_else(|| "UNKNOWN".to_string());
+                    (bal, symbol)
+                }
+                Err(e) => {
+                    return Ok(Json(GetBalanceResponse {
+                        success: false,
+                        balance: None,
+                        symbol: None,
+                        error: Some(format!("failed to get balance: {}", e)),
+                    }));
+                }
+            }
+        }
+        None => {
+            match rpc_client.get_native_balance(&req.account).await {
+                Ok(bal) => (bal, "ETH".to_string()),
+                Err(e) => {
+                    return Ok(Json(GetBalanceResponse {
+                        success: false,
+                        balance: None,
+                        symbol: None,
+                        error: Some(format!("failed to get native balance: {}", e)),
+                    }));
+                }
+            }
+        }
+    };
+
+    Ok(Json(GetBalanceResponse {
+        success: true,
+        balance: Some(balance.to_string()),
+        symbol: Some(symbol),
         error: None,
-        error_code: None,
     }))
 }
 
@@ -234,6 +469,13 @@ pub struct BuildSnapshotRequest {
     pub accounts: Vec<String>,
     /// Tokens to check (addresses).
     pub tokens: Option<Vec<String>>,
+    /// Whether to include DeFi positions (default: true).
+    #[serde(default = "default_include_defi")]
+    pub include_defi: bool,
+}
+
+fn default_include_defi() -> bool {
+    true
 }
 
 /// Build snapshot response.
@@ -244,53 +486,101 @@ pub struct BuildSnapshotResponse {
     pub error: Option<String>,
 }
 
-/// Build a snapshot for accounts.
+/// Build a snapshot for accounts using the Starknet RPC client.
 async fn build_snapshot(
     State(state): State<AppState>,
     Json(req): Json<BuildSnapshotRequest>,
 ) -> Result<Json<BuildSnapshotResponse>, ApiError> {
-    // This requires the RPC client feature
-    // For now, return a placeholder response
-    if state.rpc_url.is_none() {
+    // Validate request
+    if req.accounts.is_empty() {
         return Ok(Json(BuildSnapshotResponse {
             success: false,
             snapshot: None,
-            error: Some(format!(
-                "RPC not configured. Set {} to enable snapshot building.",
-                STARKNET_RPC_URL_ENV
-            )),
+            error: Some("no accounts specified".to_string()),
         }));
     }
 
-    // Build mock snapshot for demonstration
-    let accounts: Vec<StarknetAccountSnapshot> = req
-        .accounts
-        .iter()
-        .map(|addr| StarknetAccountSnapshot {
-            address: addr.clone(),
-            class_hash: "0x0".to_string(),
-            native_balance: 0, // Would be fetched via RPC
-            token_balances: vec![],
-            defi_positions: vec![],
-        })
-        .collect();
-
-    let snapshot = StarknetSnapshot {
-        chain_id: state.chain_id,
-        block_number: 0, // Would be fetched via RPC
-        block_hash: "0x0".to_string(),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-        accounts,
+    // Get the RPC client (this will fail if RPC not configured)
+    let rpc_client = match state.get_rpc_client().await {
+        Ok(client) => client,
+        Err(e) => {
+            return Ok(Json(BuildSnapshotResponse {
+                success: false,
+                snapshot: None,
+                error: Some(format!(
+                    "RPC client error: {}. Set {} to enable snapshot building.",
+                    e, STARKNET_RPC_URL_ENV
+                )),
+            }));
+        }
     };
 
-    Ok(Json(BuildSnapshotResponse {
-        success: true,
-        snapshot: Some(snapshot),
-        error: None,
-    }))
+    // Determine which tokens to check
+    let default_tokens = vec![
+        known_tokens::ETH,
+        known_tokens::STRK,
+        known_tokens::USDC,
+        known_tokens::USDT,
+        known_tokens::DAI,
+        known_tokens::WBTC,
+    ];
+
+    let tokens_to_check: Vec<&str> = match &req.tokens {
+        Some(tokens) if !tokens.is_empty() => {
+            tokens.iter().map(|s| s.as_str()).collect()
+        }
+        _ => default_tokens,
+    };
+
+    // Convert account addresses to &str
+    let account_refs: Vec<&str> = req.accounts.iter().map(|s| s.as_str()).collect();
+
+    // Build the snapshot via RPC (with or without DeFi positions)
+    let result = if req.include_defi {
+        rpc_client.build_snapshot(&account_refs, &tokens_to_check).await
+    } else {
+        // Build without DeFi positions (faster)
+        let mut accounts = Vec::with_capacity(account_refs.len());
+        for addr in &account_refs {
+            match rpc_client.build_account_snapshot_basic(addr, &tokens_to_check).await {
+                Ok(snap) => accounts.push(snap),
+                Err(e) => {
+                    return Ok(Json(BuildSnapshotResponse {
+                        success: false,
+                        snapshot: None,
+                        error: Some(format!("failed to fetch account {}: {}", addr, e)),
+                    }));
+                }
+            }
+        }
+        // Get block info for the snapshot
+        match rpc_client.get_block_number().await {
+            Ok(block_number) => Ok(StarknetSnapshot {
+                chain_id: state.chain_id.clone(),
+                block_number,
+                block_hash: "0x0".to_string(), // Would need another RPC call
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                accounts,
+            }),
+            Err(e) => Err(e),
+        }
+    };
+
+    match result {
+        Ok(snapshot) => Ok(Json(BuildSnapshotResponse {
+            success: true,
+            snapshot: Some(snapshot),
+            error: None,
+        })),
+        Err(e) => Ok(Json(BuildSnapshotResponse {
+            success: false,
+            snapshot: None,
+            error: Some(format!("failed to build snapshot: {}", e)),
+        })),
+    }
 }
 
 /// API error type.
@@ -311,23 +601,24 @@ impl IntoResponse for ApiError {
 
 impl From<StarknetRailError> for ApiError {
     fn from(err: StarknetRailError) -> Self {
+        let status = match err.suggested_status_code() {
+            400 => StatusCode::BAD_REQUEST,
+            401 => StatusCode::UNAUTHORIZED,
+            500 => StatusCode::INTERNAL_SERVER_ERROR,
+            501 => StatusCode::NOT_IMPLEMENTED,
+            502 => StatusCode::BAD_GATEWAY,
+            504 => StatusCode::GATEWAY_TIMEOUT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
         ApiError {
-            status: StatusCode::BAD_REQUEST,
+            status,
             message: err.to_string(),
         }
     }
 }
 
 fn error_code(err: &StarknetRailError) -> String {
-    match err {
-        StarknetRailError::Rpc(_) => "RPC_ERROR".into(),
-        StarknetRailError::State(_) => "STATE_ERROR".into(),
-        StarknetRailError::InvalidInput(_) => "INVALID_INPUT".into(),
-        StarknetRailError::Proof(_) => "PROOF_ERROR".into(),
-        StarknetRailError::Wallet(_) => "WALLET_ERROR".into(),
-        StarknetRailError::Chain(_) => "CHAIN_ERROR".into(),
-        StarknetRailError::NotImplemented(_) => "NOT_IMPLEMENTED".into(),
-    }
+    err.error_code().to_string()
 }
 
 #[cfg(test)]

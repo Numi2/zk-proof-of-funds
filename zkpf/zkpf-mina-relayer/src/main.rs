@@ -20,7 +20,7 @@ use tracing::{info, warn, error};
 use crate::config::RelayerConfig;
 use crate::mina_listener::MinaListener;
 use crate::queue::AttestationQueue;
-use crate::submitters::{EvmSubmitter, Submitter};
+use crate::submitters::{EvmSubmitter, StarknetSubmitter, Submitter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -67,7 +67,22 @@ async fn main() -> anyhow::Result<()> {
                     )?));
                 }
             }
-            // Add other chains here
+            "starknet" | "starknet_sepolia" | "starknet_mainnet" => {
+                if let Some(ref rpc) = config.starknet_rpc_url {
+                    info!("Enabling Starknet submitter");
+                    submitters.push(Box::new(StarknetSubmitter::new(
+                        rpc.clone(),
+                        config.starknet_bridge_address.clone().unwrap_or_default(),
+                        config.starknet_account_address.clone(),
+                        config.starknet_private_key.clone(),
+                        Some(if chain == "starknet_mainnet" { 
+                            "SN_MAIN".to_string() 
+                        } else { 
+                            "SN_SEPOLIA".to_string() 
+                        }),
+                    )?));
+                }
+            }
             _ => {
                 warn!("Unknown target chain: {}", chain);
             }
@@ -81,6 +96,22 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Spawn metrics logging task
+    let metrics_queue = Arc::clone(&queue);
+    let metrics_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let summary = metrics_queue.metrics.summary();
+            let queue_len = metrics_queue.len().await;
+            let dlq_len = metrics_queue.dead_letter_len().await;
+            info!(
+                "Relayer metrics: {} | retry_queue={} | dead_letter={}",
+                summary, queue_len, dlq_len
+            );
+        }
+    });
+
     // Spawn submitter tasks
     let submitter_handles: Vec<_> = submitters
         .into_iter()
@@ -89,22 +120,28 @@ async fn main() -> anyhow::Result<()> {
             tokio::spawn(async move {
                 loop {
                     if let Some(attestation) = queue_clone.pop().await {
+                        let attestation_id = hex::encode(&attestation.attestation_id[..8]);
+                        
                         match submitter.submit(&attestation).await {
                             Ok(tx_hash) => {
                                 info!(
-                                    "Submitted attestation to {}: {}",
+                                    "Submitted attestation {} to {}: {}",
+                                    attestation_id,
                                     submitter.chain_name(),
                                     tx_hash
                                 );
+                                queue_clone.record_success();
                             }
                             Err(e) => {
+                                let error_msg = e.to_string();
                                 error!(
-                                    "Failed to submit to {}: {}",
+                                    "Failed to submit {} to {}: {}",
+                                    attestation_id,
                                     submitter.chain_name(),
-                                    e
+                                    error_msg
                                 );
-                                // Re-queue for retry
-                                queue_clone.push(attestation).await;
+                                // Re-queue for retry with error message
+                                queue_clone.push_with_error(attestation, error_msg).await;
                             }
                         }
                     }
@@ -118,8 +155,13 @@ async fn main() -> anyhow::Result<()> {
     tokio::signal::ctrl_c().await?;
     info!("Shutting down relayer...");
 
+    // Log final metrics
+    let final_metrics = queue.metrics.summary();
+    info!("Final metrics: {}", final_metrics);
+
     // Cancel tasks
     listener_handle.abort();
+    metrics_handle.abort();
     for handle in submitter_handles {
         handle.abort();
     }

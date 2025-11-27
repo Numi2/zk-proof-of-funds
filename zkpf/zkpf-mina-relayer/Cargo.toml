@@ -37,6 +37,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Utilities
 futures = "0.3"
 async-trait = "0.1"
+rand = "0.8"
 
 # Config
 config = "0.14"

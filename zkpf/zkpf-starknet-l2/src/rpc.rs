@@ -1,6 +1,12 @@
 //! Starknet RPC client for reading account state.
 //!
 //! This module requires the `starknet-rpc` feature flag.
+//!
+//! # Features
+//! - Block and account state queries
+//! - ERC-20 token balance queries
+//! - DeFi position aggregation
+//! - Snapshot building for proof generation
 
 #![cfg(feature = "starknet-rpc")]
 
@@ -12,6 +18,7 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::{
+    defi::AggregatedDefiQuery,
     error::StarknetRailError,
     types::{StarknetChainConfig, known_tokens},
     state::get_token_metadata,
@@ -22,6 +29,7 @@ use crate::{
 pub struct StarknetRpcClient {
     provider: Arc<JsonRpcClient<HttpTransport>>,
     config: StarknetChainConfig,
+    defi_query: AggregatedDefiQuery,
 }
 
 impl StarknetRpcClient {
@@ -33,7 +41,18 @@ impl StarknetRpcClient {
         let transport = HttpTransport::new(url);
         let provider = Arc::new(JsonRpcClient::new(transport));
         
-        Ok(Self { provider, config })
+        // Create DeFi query based on chain
+        let defi_query = match config.chain_id.as_str() {
+            "SN_MAIN" => AggregatedDefiQuery::mainnet(),
+            _ => AggregatedDefiQuery::sepolia(),
+        };
+        
+        Ok(Self { provider, config, defi_query })
+    }
+    
+    /// Get the underlying provider for advanced queries.
+    pub fn provider(&self) -> Arc<JsonRpcClient<HttpTransport>> {
+        self.provider.clone()
     }
 
     /// Get the current block number.
@@ -107,7 +126,7 @@ impl StarknetRpcClient {
         Ok(format!("0x{:064x}", class_hash))
     }
 
-    /// Build a complete account snapshot.
+    /// Build a complete account snapshot including DeFi positions.
     pub async fn build_account_snapshot(
         &self,
         account_address: &str,
@@ -131,12 +150,54 @@ impl StarknetRpcClient {
             }
         }
 
+        // Fetch DeFi positions from all supported protocols
+        let defi_positions = self.defi_query
+            .get_all_positions(self.provider.clone(), account_address)
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: failed to fetch DeFi positions for {}: {}", account_address, e);
+                vec![]
+            });
+
         Ok(StarknetAccountSnapshot {
             address: account_address.to_string(),
             class_hash,
             native_balance,
             token_balances,
-            defi_positions: vec![], // DeFi positions require protocol-specific queries
+            defi_positions,
+        })
+    }
+    
+    /// Build account snapshot without DeFi positions (faster).
+    pub async fn build_account_snapshot_basic(
+        &self,
+        account_address: &str,
+        tokens_to_check: &[&str],
+    ) -> Result<StarknetAccountSnapshot, StarknetRailError> {
+        let class_hash = self.get_class_hash(account_address).await?;
+        let native_balance = self.get_native_balance(account_address).await?;
+
+        let mut token_balances = vec![];
+        for token_addr in tokens_to_check {
+            let balance = self.get_erc20_balance(token_addr, account_address).await?;
+            if balance > 0 {
+                if let Some(meta) = get_token_metadata(token_addr) {
+                    token_balances.push(TokenBalance {
+                        token_address: token_addr.to_string(),
+                        symbol: meta.symbol,
+                        balance,
+                        usd_value: None,
+                    });
+                }
+            }
+        }
+
+        Ok(StarknetAccountSnapshot {
+            address: account_address.to_string(),
+            class_hash,
+            native_balance,
+            token_balances,
+            defi_positions: vec![],
         })
     }
 

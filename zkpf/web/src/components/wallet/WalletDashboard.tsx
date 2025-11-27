@@ -6,7 +6,6 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { useWebzjsActions } from '../../hooks/useWebzjsActions';
-import { usePcdContext } from '../../context/PcdContext';
 import { TachyonStatePanel } from '../TachyonStatePanel';
 import type { PolicyDefinition } from '../../types/zkpf';
 import { 

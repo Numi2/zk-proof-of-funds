@@ -69,12 +69,17 @@
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
 
+pub mod accumulator;
 pub mod circuit;
 pub mod ec;
 pub mod error;
 pub mod ff;
+pub mod gates;
+pub mod ipa;
 pub mod kimchi_core;
+pub mod linearization;
 pub mod poseidon;
+pub mod proof_parser;
 pub mod types;
 pub mod verifier;
 

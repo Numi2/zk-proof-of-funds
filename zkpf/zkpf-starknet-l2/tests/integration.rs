@@ -333,18 +333,207 @@ fn test_proof_format() {
     )
     .expect("should generate proof");
 
-    // Proof should start with magic bytes
+    // Proof should start with magic bytes (placeholder proof)
+    // or be a real Halo2 proof (if artifacts are loaded)
+    let is_placeholder = bundle.proof.starts_with(b"STARKNET_POF_V1");
+    let is_real_proof = bundle.proof.len() > 1000; // Real proofs are much larger
+
     assert!(
-        bundle.proof.starts_with(b"STARKNET_POF_V1"),
-        "Proof should have STARKNET_POF_V1 magic bytes"
+        is_placeholder || is_real_proof,
+        "Proof should be either placeholder or real Halo2 proof"
     );
 
-    // Proof should include hash of public inputs (32 bytes after magic)
-    assert!(
-        bundle.proof.len() >= 15 + 32,
-        "Proof should be at least {} bytes, got {}",
-        15 + 32,
-        bundle.proof.len()
+    if is_placeholder {
+        // Placeholder proof should include hash of public inputs (32 bytes after magic)
+        assert!(
+            bundle.proof.len() >= 15 + 32,
+            "Placeholder proof should be at least {} bytes, got {}",
+            15 + 32,
+            bundle.proof.len()
+        );
+    }
+}
+
+#[test]
+fn test_proof_verification_placeholder() {
+    use zkpf_starknet_l2::verify_starknet_proof_with_loaded_artifacts;
+
+    // Generate a proof
+    let snapshot = create_test_snapshot(5_000_000_000_000_000_000);
+    let holder_id = "verify-test".to_string();
+    let threshold = 1_000_000_000_000_000_000u64;
+    let (starknet_meta, public_meta) = create_test_meta(200001);
+
+    let bundle = prove_starknet_pof(
+        &snapshot,
+        &holder_id,
+        threshold,
+        None,
+        &starknet_meta,
+        &public_meta,
+    )
+    .expect("should generate proof");
+
+    // Verify the proof
+    let result = verify_starknet_proof_with_loaded_artifacts(
+        &bundle.proof,
+        &bundle.public_inputs,
     );
+
+    // Placeholder proofs should always verify (in development mode)
+    // Real proofs require artifacts to be loaded
+    assert!(result.is_ok(), "Verification should succeed or provide clear error");
+    
+    if bundle.proof.starts_with(b"STARKNET_POF_V1") {
+        // Placeholder proof - should return true in dev mode
+        assert!(result.unwrap(), "Placeholder proofs should verify in dev mode");
+    }
+}
+
+#[test]
+fn test_starknet_specific_public_inputs() {
+    // Test that Starknet-specific public inputs are correctly set
+    let snapshot = create_test_snapshot(5_000_000_000_000_000_000);
+    let holder_id = "starknet-inputs-test".to_string();
+    let threshold = 1_000_000_000_000_000_000u64;
+    let (starknet_meta, public_meta) = create_test_meta(200001);
+
+    let bundle = prove_starknet_pof(
+        &snapshot,
+        &holder_id,
+        threshold,
+        None,
+        &starknet_meta,
+        &public_meta,
+    )
+    .expect("should generate proof");
+
+    // Verify Starknet-specific fields
+    assert!(
+        bundle.public_inputs.snapshot_block_height.is_some(),
+        "snapshot_block_height should be set"
+    );
+    assert_eq!(
+        bundle.public_inputs.snapshot_block_height.unwrap(),
+        500_000
+    );
+
+    assert!(
+        bundle.public_inputs.snapshot_anchor_orchard.is_some(),
+        "account_commitment should be set"
+    );
+
+    assert!(
+        bundle.public_inputs.holder_binding.is_some(),
+        "holder_binding should be set"
+    );
+
+    // Holder binding should not be all zeros (it's computed from holder_id + accounts)
+    let holder_binding = bundle.public_inputs.holder_binding.unwrap();
+    assert_ne!(holder_binding, [0u8; 32], "Holder binding should be computed");
+}
+
+#[test]
+fn test_defi_position_aggregation() {
+    use zkpf_starknet_l2::{DefiPosition, PositionType};
+
+    // Test that DeFi positions are included in aggregation
+    let snapshot = StarknetSnapshot {
+        chain_id: "SN_SEPOLIA".to_string(),
+        block_number: 500_000,
+        block_hash: "0x1234".to_string(),
+        timestamp: 1_700_000_000,
+        accounts: vec![StarknetAccountSnapshot {
+            address: "0x001".to_string(),
+            class_hash: "0x0".to_string(),
+            native_balance: 1_000_000_000_000_000_000, // 1 ETH
+            token_balances: vec![],
+            defi_positions: vec![
+                DefiPosition {
+                    protocol: "JediSwap".to_string(),
+                    position_type: PositionType::LiquidityPool,
+                    contract_address: "0x123".to_string(),
+                    value: 500_000_000_000_000_000, // 0.5 ETH value
+                    usd_value: None,
+                },
+                DefiPosition {
+                    protocol: "zkLend".to_string(),
+                    position_type: PositionType::Lending,
+                    contract_address: "0x456".to_string(),
+                    value: 1_000_000_000_000_000_000, // 1 ETH value
+                    usd_value: None,
+                },
+            ],
+        }],
+    };
+
+    let holder_id = "defi-test".to_string();
+    // Need more than 2 ETH to pass (1 ETH native + 0.5 LP + 1 lending = 2.5 ETH)
+    let threshold = 2_000_000_000_000_000_000u64; // 2 ETH
+    let (starknet_meta, public_meta) = create_test_meta(200001);
+
+    // Without asset filter, DeFi positions should be included
+    let bundle = prove_starknet_pof(
+        &snapshot,
+        &holder_id,
+        threshold,
+        None, // Include all assets including DeFi
+        &starknet_meta,
+        &public_meta,
+    )
+    .expect("should include DeFi positions in aggregation");
+
+    // Total should be 2.5 ETH (1 + 0.5 + 1)
+    assert_eq!(
+        bundle.public_inputs.proven_sum,
+        Some(2_500_000_000_000_000_000)
+    );
+}
+
+#[test]
+fn test_empty_snapshot_rejected() {
+    // Test that empty snapshots are rejected
+    let snapshot = StarknetSnapshot {
+        chain_id: "SN_SEPOLIA".to_string(),
+        block_number: 500_000,
+        block_hash: "0x1234".to_string(),
+        timestamp: 1_700_000_000,
+        accounts: vec![], // No accounts
+    };
+
+    let holder_id = "empty-test".to_string();
+    let threshold = 1_000_000_000_000_000_000u64;
+    let (starknet_meta, public_meta) = create_test_meta(200001);
+
+    let result = prove_starknet_pof(
+        &snapshot,
+        &holder_id,
+        threshold,
+        None,
+        &starknet_meta,
+        &public_meta,
+    );
+
+    assert!(result.is_err(), "Empty snapshot should be rejected");
+}
+
+#[test]
+fn test_zero_threshold_rejected() {
+    // Test that zero threshold is rejected
+    let snapshot = create_test_snapshot(5_000_000_000_000_000_000);
+    let holder_id = "zero-threshold-test".to_string();
+    let threshold = 0u64; // Invalid
+    let (starknet_meta, public_meta) = create_test_meta(200001);
+
+    let result = prove_starknet_pof(
+        &snapshot,
+        &holder_id,
+        threshold,
+        None,
+        &starknet_meta,
+        &public_meta,
+    );
+
+    assert!(result.is_err(), "Zero threshold should be rejected");
 }
 

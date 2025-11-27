@@ -68,7 +68,7 @@ const VERIFICATION_SCENARIOS: VerificationScenario[] = [
 export function ZKPassportPage() {
   const [zkPassport] = useState(() => new ZKPassport('zkpf.dev'));
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
-  const [devMode, setDevMode] = useState(false);
+  const [devMode, _setDevMode] = useState(false);
   const [verificationState, setVerificationState] = useState<VerificationState>({
     status: 'idle',
     requestId: null,
@@ -249,18 +249,6 @@ export function ZKPassportPage() {
                 <span className="scenario-desc">{scenario.description}</span>
               </button>
             ))}
-          </div>
-
-          <div className="dev-mode-toggle">
-            <label className="dev-mode-label">
-              <input
-                type="checkbox"
-                checked={devMode}
-                onChange={(e) => setDevMode(e.target.checked)}
-              />
-              <span>Dev Mode</span>
-              <span className="dev-mode-hint">Accept mock proofs for testing</span>
-            </label>
           </div>
         </>
       )}

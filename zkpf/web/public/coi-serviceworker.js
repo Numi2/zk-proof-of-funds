@@ -69,8 +69,6 @@ if (typeof window === 'undefined') {
             headers.set('Cross-Origin-Embedder-Policy', coepValue);
             headers.set('Cross-Origin-Opener-Policy', 'same-origin');
 
-            console.log(`🔧 COI-SW: Injecting headers (COEP: ${coepValue}) for ${request.url}`);
-
             return new Response(response.body, {
               status: response.status,
               statusText: response.statusText,
@@ -78,29 +76,18 @@ if (typeof window === 'undefined') {
             });
           })
           .catch((e) => {
-            console.error('COI-SW fetch error:', e);
-            return new Response('Network error', {
-              status: 503,
-              statusText: 'Service Unavailable',
-              headers: { 'Content-Type': 'text/plain' },
-            });
+            // IMPORTANT: Don't block navigation on errors - let the browser handle it
+            // This prevents the "UI disappearing" issue
+            console.warn('COI-SW: fetch error, falling back to network:', e);
+            // Return undefined to let the browser handle the request normally
+            return fetch(request);
           })
       );
       return;
     }
 
-    // For non-navigation requests in credentialless mode, strip credentials
-    // This helps avoid CORS issues with external resources
-    if (coepCredentialless && request.mode === 'no-cors') {
-      event.respondWith(
-        fetch(request, { credentials: 'omit' })
-          .catch((e) => {
-            console.error('COI-SW no-cors fetch error:', e);
-            return new Response(null, { status: 0, statusText: '' });
-          })
-      );
-      return;
-    }
+    // For all other requests, don't intercept - let them pass through normally
+    // This is more reliable and prevents the service worker from breaking things
   });
   
 } else {
@@ -117,125 +104,81 @@ if (typeof window === 'undefined') {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
-    // Diagnostic info
-    log(`Browser: ${isSafari ? 'Safari' : 'Other'}`);
-    log(`crossOriginIsolated: ${window.crossOriginIsolated}`);
-    log(`isSecureContext: ${window.isSecureContext}`);
-    log(`SharedArrayBuffer available: ${typeof SharedArrayBuffer !== 'undefined'}`);
-    log(`Host: ${window.location.hostname}`);
+    // Only log diagnostic info in development
+    if (isLocalhost) {
+      log(`Browser: ${isSafari ? 'Safari' : 'Other'}`);
+      log(`crossOriginIsolated: ${window.crossOriginIsolated}`);
+      log(`SharedArrayBuffer available: ${typeof SharedArrayBuffer !== 'undefined'}`);
+    }
 
     // Check if already cross-origin isolated
     if (window.crossOriginIsolated) {
-      log('Already cross-origin isolated (SharedArrayBuffer enabled) ✅');
+      if (isLocalhost) log('Already cross-origin isolated ✅');
       return;
     }
 
-    // Safari-specific handling
+    // Safari-specific handling - don't register, just warn once
     if (isSafari) {
-      warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      warn('Safari detected. Service worker header injection is NOT supported.');
-      warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      if (isLocalhost) {
-        warn('');
-        warn('📍 LOCAL DEVELOPMENT:');
-        warn('   Safari requires actual server headers for cross-origin isolation.');
-        warn('   The Vite dev server sends these headers, but Safari may be caching.');
-        warn('');
-        warn('   Try these steps:');
-        warn('   1. Clear Safari cache: Develop → Empty Caches (Cmd+Option+E)');
-        warn('   2. Hard refresh: Cmd+Shift+R');
-        warn('   3. If still not working, use Chrome or Firefox for local development');
-        warn('');
-        warn('   Alternative: Run "npm run build && npm run preview" for a production-like build');
-      } else {
-        warn('');
-        warn('📍 DEPLOYED SITE:');
-        warn('   Server should be sending COOP/COEP headers.');
-        warn('   If SharedArrayBuffer is still not available:');
-        warn('   1. Clear Safari cache: Develop → Empty Caches (Cmd+Option+E)');
-        warn('   2. Hard refresh: Cmd+Shift+R');
-        warn('   3. Check server headers in Safari Web Inspector → Network tab');
-        warn('');
-        warn('   Expected headers:');
-        warn('     Cross-Origin-Opener-Policy: same-origin');
-        warn('     Cross-Origin-Embedder-Policy: credentialless');
-      }
-      warn('');
-      warn('ℹ️  Wallet features are unavailable, but proof verification still works.');
-      warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      // Don't register the service worker on Safari - it won't help
+      warn('Safari: Service worker header injection not supported. Some wallet features may be limited.');
       return;
     }
 
     // Must be served over HTTPS (or localhost)
     if (!window.isSecureContext) {
-      warn('Not a secure context (needs HTTPS or localhost). SharedArrayBuffer unavailable.');
       return;
     }
 
     // Check if service workers are supported
     if (!navigator.serviceWorker) {
-      warn('Service workers not supported in this browser. SharedArrayBuffer unavailable.');
       return;
     }
 
-    // Get the service worker URL - prefer same path as the script
+    // Track if we've already reloaded to prevent reload loops
+    const reloadKey = 'coi-sw-reload-' + window.location.pathname;
+    const hasReloaded = sessionStorage.getItem(reloadKey);
+    
+    // Get the service worker URL
     const currentScript = document.currentScript;
     let serviceWorkerUrl = '/coi-serviceworker.js';
     
     if (currentScript && currentScript.src) {
-      // Use the same URL as the script tag
       const scriptUrl = new URL(currentScript.src);
       serviceWorkerUrl = scriptUrl.pathname;
     }
-
-    log(`Registering service worker from: ${serviceWorkerUrl}`);
 
     // Register the service worker
     navigator.serviceWorker
       .register(serviceWorkerUrl)
       .then((registration) => {
-        log('Service worker registered successfully');
-        
-        // Handle updates
-        registration.addEventListener('updatefound', () => {
-          log('Update found, installing new version...');
-        });
-
-        // If already controlling, we should be isolated - if not, something's wrong
+        // If already controlling and isolated, we're done
         if (registration.active && navigator.serviceWorker.controller) {
-          if (!window.crossOriginIsolated) {
-            warn('Service worker is controlling but not isolated. Try a hard refresh (Ctrl+Shift+R).');
-          } else {
-            log('Already controlling and isolated ✅');
+          if (window.crossOriginIsolated) {
+            if (isLocalhost) log('Cross-origin isolation active ✅');
           }
           return;
         }
 
-        // If active but not controlling, reload to enable
-        if (registration.active && !navigator.serviceWorker.controller) {
-          log('Active but not controlling - reloading to enable isolation...');
+        // If active but not controlling, reload ONCE to enable
+        if (registration.active && !navigator.serviceWorker.controller && !hasReloaded) {
+          sessionStorage.setItem(reloadKey, 'true');
           window.location.reload();
           return;
         }
 
-        // Wait for the service worker to become active
+        // Wait for the service worker to become active, then reload ONCE
         const worker = registration.installing || registration.waiting;
-        if (worker) {
-          log(`Waiting for service worker to activate (current state: ${worker.state})...`);
-          
+        if (worker && !hasReloaded) {
           worker.addEventListener('statechange', () => {
-            log(`Service worker state changed to: ${worker.state}`);
             if (worker.state === 'activated') {
-              log('Activated! Reloading to enable cross-origin isolation...');
+              sessionStorage.setItem(reloadKey, 'true');
               window.location.reload();
             }
           });
         }
       })
       .catch((err) => {
-        error('Failed to register service worker:', err);
+        // Silent fail - don't break the app if service worker fails
+        if (isLocalhost) error('Service worker registration failed:', err);
       });
   })();
 }

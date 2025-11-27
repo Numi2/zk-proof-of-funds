@@ -89,7 +89,7 @@ export function BoundIdentityVerifier({
   const [proof, setProof] = useState<BoundIdentityProof | null>(initialProof ?? null);
   const [result, setResult] = useState<BoundIdentityVerificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [_isVerifying, setIsVerifying] = useState(false);
   const [inputText, setInputText] = useState('');
   const [savedProofs, setSavedProofs] = useState<BoundIdentityProof[]>([]);
   

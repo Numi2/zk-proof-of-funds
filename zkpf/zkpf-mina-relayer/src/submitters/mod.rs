@@ -1,8 +1,10 @@
 //! Chain submitters for attestation relay.
 
 mod evm;
+mod starknet;
 
 pub use evm::EvmSubmitter;
+pub use starknet::StarknetSubmitter;
 
 use anyhow::Result;
 use async_trait::async_trait;

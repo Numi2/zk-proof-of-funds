@@ -68,7 +68,7 @@ export function WalletLayout() {
               to="/wallet/uri-payment"
               className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active wallet-nav-link-uri' : 'wallet-nav-link wallet-nav-link-uri')}
             >
-              Via Message
+              Links
             </NavLink>
           </nav>
         </header>

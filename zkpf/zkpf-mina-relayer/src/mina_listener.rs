@@ -52,6 +52,9 @@ impl MinaListener {
                             state_root: event.state_root,
                             merkle_proof: event.merkle_proof,
                             retries: 0,
+                            retry_after: 0,
+                            target_chain: None,
+                            last_error: None,
                         };
 
                         if let Err(e) = self.sender.send(attestation).await {

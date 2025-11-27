@@ -6,232 +6,168 @@ import { URIPaymentDeepLink } from './URIPaymentDeepLink';
 import type { UriPayment } from './types';
 import './URIPayment.css';
 
-type ActiveView = 'send' | 'receive' | 'history';
+type ActiveView = 'create' | 'redeem' | 'history';
 
 /**
- * Main page for URI-Encapsulated Payments
- * 
- * This component provides a unified interface for:
- * - Creating payment URIs to send via messaging apps
- * - Receiving payments by pasting URIs
- * - Viewing payment history
- * - Handling incoming deep links
+ * Payment Links - Create and redeem ZEC payment links
  */
 export function URIPaymentPage() {
-  const [activeView, setActiveView] = useState<ActiveView>('send');
+  const [activeView, setActiveView] = useState<ActiveView>('create');
   const [incomingPayment, setIncomingPayment] = useState<UriPayment | null>(null);
 
   const handlePaymentDetected = useCallback((payment: UriPayment) => {
     setIncomingPayment(payment);
-    setActiveView('receive');
+    setActiveView('redeem');
   }, []);
 
   return (
     <URIPaymentDeepLink onPaymentDetected={handlePaymentDetected}>
-      <div className="uri-payment-page">
-        <header className="uri-page-header">
-          <h1>Send via Message</h1>
-          <p className="uri-page-description muted">
-            Send ZEC to anyone via Signal, WhatsApp, or any secure messaging app.
-            No address needed — just share a link!
+      <div className="link-pay-page">
+        <header className="link-pay-header">
+          <div className="link-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          </div>
+          <h1>Payment Links</h1>
+          <p className="link-pay-subtitle">
+            Generate a link. Share it however you want. Done.
           </p>
         </header>
 
-        <nav className="uri-page-nav">
+        <nav className="link-pay-tabs">
           <button
-            className={`uri-nav-button ${activeView === 'send' ? 'active' : ''}`}
-            onClick={() => setActiveView('send')}
+            className={`link-tab ${activeView === 'create' ? 'active' : ''}`}
+            onClick={() => setActiveView('create')}
           >
-            <span className="uri-nav-icon">📤</span>
-            <span>Send</span>
+            Create
           </button>
           <button
-            className={`uri-nav-button ${activeView === 'receive' ? 'active' : ''}`}
-            onClick={() => setActiveView('receive')}
+            className={`link-tab ${activeView === 'redeem' ? 'active' : ''}`}
+            onClick={() => setActiveView('redeem')}
           >
-            <span className="uri-nav-icon">📥</span>
-            <span>Receive</span>
-            {incomingPayment && <span className="uri-nav-badge">1</span>}
+            Redeem
+            {incomingPayment && <span className="link-tab-dot" />}
           </button>
           <button
-            className={`uri-nav-button ${activeView === 'history' ? 'active' : ''}`}
+            className={`link-tab ${activeView === 'history' ? 'active' : ''}`}
             onClick={() => setActiveView('history')}
           >
-            <span className="uri-nav-icon">📋</span>
-            <span>History</span>
+            History
           </button>
         </nav>
 
-        <main className="uri-page-content">
-          {activeView === 'send' && <URIPaymentCreate />}
-          {activeView === 'receive' && <URIPaymentReceive />}
+        <main className="link-pay-content">
+          {activeView === 'create' && <URIPaymentCreate />}
+          {activeView === 'redeem' && <URIPaymentReceive />}
           {activeView === 'history' && <URIPaymentHistory />}
         </main>
-
-        <footer className="uri-page-footer">
-          <div className="uri-footer-info">
-            <h4>How it works</h4>
-            <ol className="uri-how-it-works">
-              <li>
-                <strong>Create:</strong> Enter the amount and generate a payment link
-              </li>
-              <li>
-                <strong>Share:</strong> Send the link via Signal, WhatsApp, or any secure messenger
-              </li>
-              <li>
-                <strong>Receive:</strong> The recipient clicks the link to claim the funds
-              </li>
-            </ol>
-          </div>
-
-          <div className="uri-security-note">
-            <h4>🔐 Security</h4>
-            <p className="muted small">
-              Payment links contain the spending key. Only share via end-to-end encrypted 
-              channels. The sender can cancel unclaimed payments at any time.
-            </p>
-          </div>
-        </footer>
       </div>
 
       <style>{`
-        .uri-payment-page {
-          max-width: 800px;
+        .link-pay-page {
+          max-width: 520px;
           margin: 0 auto;
           padding: 2rem 1rem;
         }
 
-        .uri-page-header {
+        .link-pay-header {
           text-align: center;
-          margin-bottom: 2rem;
+          margin-bottom: 2.5rem;
         }
 
-        .uri-page-header h1 {
-          font-size: 2rem;
-          margin-bottom: 0.5rem;
-          background: linear-gradient(135deg, #f4a261, #e76f51);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .uri-page-description {
-          max-width: 500px;
-          margin: 0 auto;
-          line-height: 1.5;
-        }
-
-        .uri-page-nav {
-          display: flex;
-          justify-content: center;
-          gap: 0.5rem;
-          margin-bottom: 2rem;
-          padding: 0.5rem;
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 12px;
-        }
-
-        .uri-nav-button {
+        .link-icon-wrap {
+          width: 56px;
+          height: 56px;
+          margin: 0 auto 1.25rem;
+          background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15));
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          border-radius: 16px;
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          padding: 0.75rem 1.5rem;
-          background: transparent;
-          border: none;
-          border-radius: 8px;
-          color: var(--text-secondary, #888);
-          cursor: pointer;
-          transition: all 0.2s;
-          position: relative;
+          justify-content: center;
+          color: #a78bfa;
         }
 
-        .uri-nav-button:hover {
-          color: var(--text-primary, #fff);
-          background: rgba(255, 255, 255, 0.05);
+        .link-icon-wrap svg {
+          width: 26px;
+          height: 26px;
         }
 
-        .uri-nav-button.active {
-          color: #f4a261;
-          background: rgba(244, 162, 97, 0.15);
-        }
-
-        .uri-nav-icon {
-          font-size: 1.25rem;
-        }
-
-        .uri-nav-badge {
-          position: absolute;
-          top: 4px;
-          right: 4px;
-          min-width: 18px;
-          height: 18px;
-          padding: 0 5px;
-          background: #e76f51;
-          color: white;
-          border-radius: 9px;
-          font-size: 0.7rem;
+        .link-pay-header h1 {
+          font-size: 1.75rem;
           font-weight: 600;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          margin: 0 0 0.5rem 0;
+          color: #fff;
+          letter-spacing: -0.02em;
         }
 
-        .uri-page-content {
-          margin-bottom: 3rem;
-        }
-
-        .uri-page-footer {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 2rem;
-          padding: 2rem;
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 12px;
-        }
-
-        .uri-footer-info h4,
-        .uri-security-note h4 {
-          font-size: 1rem;
-          margin-bottom: 1rem;
-          color: var(--text-primary, #fff);
-        }
-
-        .uri-how-it-works {
-          padding-left: 1.5rem;
+        .link-pay-subtitle {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.95rem;
           margin: 0;
         }
 
-        .uri-how-it-works li {
-          margin-bottom: 0.75rem;
-          color: var(--text-secondary, #aaa);
-          line-height: 1.4;
+        .link-pay-tabs {
+          display: flex;
+          gap: 4px;
+          padding: 4px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 10px;
+          margin-bottom: 2rem;
         }
 
-        .uri-how-it-works strong {
-          color: #f4a261;
+        .link-tab {
+          flex: 1;
+          padding: 0.65rem 1rem;
+          background: transparent;
+          border: none;
+          border-radius: 7px;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          position: relative;
         }
 
-        .uri-security-note p {
-          line-height: 1.5;
+        .link-tab:hover {
+          color: rgba(255, 255, 255, 0.8);
         }
 
-        @media (max-width: 600px) {
-          .uri-page-nav {
-            flex-wrap: wrap;
+        .link-tab.active {
+          background: rgba(99, 102, 241, 0.15);
+          color: #a78bfa;
+        }
+
+        .link-tab-dot {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          width: 6px;
+          height: 6px;
+          background: #f472b6;
+          border-radius: 50%;
+        }
+
+        .link-pay-content {
+          min-height: 300px;
+        }
+
+        @media (max-width: 480px) {
+          .link-pay-page {
+            padding: 1.5rem 1rem;
           }
 
-          .uri-nav-button {
-            flex: 1;
-            min-width: 100px;
-            justify-content: center;
-          }
-
-          .uri-page-footer {
-            grid-template-columns: 1fr;
-          }
-
-          .uri-page-header h1 {
+          .link-pay-header h1 {
             font-size: 1.5rem;
+          }
+
+          .link-tab {
+            padding: 0.6rem 0.75rem;
+            font-size: 0.8rem;
           }
         }
       `}</style>

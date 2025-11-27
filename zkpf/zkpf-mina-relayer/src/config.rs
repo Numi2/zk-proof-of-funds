@@ -16,10 +16,16 @@ pub struct RelayerConfig {
     pub ethereum_rpc_url: Option<String>,
     /// Bridge contract address on EVM.
     pub bridge_address: Option<String>,
-    /// Relayer private key for signing transactions.
+    /// Relayer private key for signing EVM transactions.
     pub relayer_private_key: Option<String>,
     /// Starknet RPC URL.
     pub starknet_rpc_url: Option<String>,
+    /// Starknet bridge contract address.
+    pub starknet_bridge_address: Option<String>,
+    /// Starknet account address for signing.
+    pub starknet_account_address: Option<String>,
+    /// Starknet private key (stark key).
+    pub starknet_private_key: Option<String>,
     /// Polling interval in seconds.
     pub poll_interval_secs: u64,
     /// Maximum retries per attestation.
@@ -41,10 +47,16 @@ impl RelayerConfig {
             .map(|s| s.trim().to_string())
             .collect();
 
+        // Ethereum/EVM config
         let ethereum_rpc_url = env::var("ETHEREUM_RPC_URL").ok();
         let bridge_address = env::var("BRIDGE_ADDRESS").ok();
         let relayer_private_key = env::var("RELAYER_PRIVATE_KEY").ok();
+        
+        // Starknet config
         let starknet_rpc_url = env::var("STARKNET_RPC_URL").ok();
+        let starknet_bridge_address = env::var("STARKNET_BRIDGE_ADDRESS").ok();
+        let starknet_account_address = env::var("STARKNET_ACCOUNT_ADDRESS").ok();
+        let starknet_private_key = env::var("STARKNET_PRIVATE_KEY").ok();
 
         let poll_interval_secs: u64 = env::var("POLL_INTERVAL_SECS")
             .ok()
@@ -64,6 +76,9 @@ impl RelayerConfig {
             bridge_address,
             relayer_private_key,
             starknet_rpc_url,
+            starknet_bridge_address,
+            starknet_account_address,
+            starknet_private_key,
             poll_interval_secs,
             max_retries,
         })

@@ -54,8 +54,14 @@ export default function () {
     },
     // Enable Cross-Origin Isolation headers for SharedArrayBuffer support
     headers: crossOriginIsolationHeaders,
-    // Proxy lightwalletd requests to avoid CORS issues in development
+    // Proxy API requests in development
     proxy: {
+      // Proxy zkpf API requests to the Rust backend
+      '/zkpf': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // Proxy lightwalletd requests to avoid CORS issues in development
       '/lightwalletd': {
         target: 'https://zcash-mainnet.chainsafe.dev',
         changeOrigin: true,

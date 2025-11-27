@@ -7,22 +7,15 @@ COPY . .
 # Build only the backend binary in release mode.
 RUN cargo build --release -p zkpf-backend
 
-# Build the MetaMask Snap (part of pnpm workspace)
+# Build the MetaMask Snap
 FROM node:20-slim as snap-builder
-RUN npm install -g pnpm
-WORKDIR /webwallet
-# Copy workspace config and lockfile
-COPY webwallet/pnpm-workspace.yaml webwallet/pnpm-lock.yaml webwallet/package.json ./
-# Copy ALL workspace packages - pnpm requires all declared packages to exist
-# even if they're not direct dependencies of the snap being built
-COPY webwallet/crates/webzjs-keys/pkg ./crates/webzjs-keys/pkg
-COPY webwallet/crates/webzjs-wallet/pkg ./crates/webzjs-wallet/pkg
-COPY webwallet/web-wallet ./web-wallet
-COPY webwallet/snap ./snap
-# Install dependencies (now all workspace packages are present)
-RUN pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
+WORKDIR /snap
+# Copy the snap directory from zkpf-snap
+COPY zkpf-snap/package.json zkpf-snap/package-lock.json ./
+RUN npm ci --legacy-peer-deps --ignore-scripts
+COPY zkpf-snap/ ./
 # Build the snap
-RUN cd snap && pnpm run build
+RUN npm run build
 
 FROM debian:bookworm-slim
 
@@ -32,9 +25,9 @@ WORKDIR /app
 COPY --from=builder /app/target/release/zkpf-backend /usr/local/bin/zkpf-backend
 
 # Copy the built snap files for serving
-COPY --from=snap-builder /webwallet/snap/dist ./snap/dist
-COPY --from=snap-builder /webwallet/snap/snap.manifest.json ./snap/snap.manifest.json
-COPY --from=snap-builder /webwallet/snap/images ./snap/images
+COPY --from=snap-builder /snap/dist ./snap/dist
+COPY --from=snap-builder /snap/snap.manifest.json ./snap/snap.manifest.json
+COPY --from=snap-builder /snap/images ./snap/images
 
 # Copy policy config and proving artifacts. For now we reuse the deterministic
 # fixtures from zkpf-test-fixtures; these can be swapped to production artifacts

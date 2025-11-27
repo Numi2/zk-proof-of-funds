@@ -46,6 +46,18 @@ const URIPaymentPage = lazy(() =>
   import('./uri-payment/URIPaymentPage').then((module) => ({ default: module.URIPaymentPage })),
 );
 
+const P2PMarketplace = lazy(() =>
+  import('./p2p/P2PMarketplace').then((module) => ({ default: module.P2PMarketplace })),
+);
+
+const P2POfferCreate = lazy(() =>
+  import('./p2p/P2POfferCreate').then((module) => ({ default: module.P2POfferCreate })),
+);
+
+const P2POfferDetail = lazy(() =>
+  import('./p2p/P2POfferDetail').then((module) => ({ default: module.P2POfferDetail })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
@@ -201,6 +213,7 @@ export function ZKPFApp() {
   const isWorkbenchRoute = location.pathname === '/workbench';
   const isWalletRoute = location.pathname.startsWith('/wallet');
   const isBoundIdentityRoute = location.pathname.startsWith('/bound-identity');
+  const isP2PRoute = location.pathname.startsWith('/p2p');
 
   return (
     <div className="app-shell">
@@ -214,8 +227,13 @@ export function ZKPFApp() {
           <span>ZKPassport</span>
         </NavLink>
       </div>
+      <div className="p2p-entry">
+        <NavLink to="/p2p" className="p2p-button">
+          <span>P2P Trade</span>
+        </NavLink>
+      </div>
       
-      {!isWalletRoute && !isBoundIdentityRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <header className="hero">
           <div className="header-top">
             <div className="brand">
@@ -223,7 +241,7 @@ export function ZKPFApp() {
                 <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
               </div>
               <div>
-                <p className="eyebrow">Institutional ZK </p>
+                <p className="eyebrow">ZK Stack</p>
                 <h1>Zero-knowledge proof-of-funds</h1>
               </div>
             </div>
@@ -269,7 +287,7 @@ export function ZKPFApp() {
         </header>
       )}
 
-      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && (
+      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <ProgressChecklist
           steps={checklistSteps}
           onStepClick={(id) => {
@@ -444,10 +462,57 @@ export function ZKPFApp() {
           <Route path="*" element={<Navigate to="/wallet" replace />} />
         </Route>
 
+        {/* P2P Marketplace Routes */}
+        <Route
+          path="/p2p"
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading marketplace</p>
+                  <p className="muted small">Preparing P2P trading platform…</p>
+                </section>
+              )}
+            >
+              <P2PMarketplace />
+            </Suspense>
+          )}
+        />
+        <Route
+          path="/p2p/create"
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Preparing offer creation…</p>
+                </section>
+              )}
+            >
+              <P2POfferCreate />
+            </Suspense>
+          )}
+        />
+        <Route
+          path="/p2p/offer/:offerId"
+          element={(
+            <Suspense
+              fallback={(
+                <section className="card">
+                  <p className="eyebrow">Loading</p>
+                  <p className="muted small">Preparing trade view…</p>
+                </section>
+              )}
+            >
+              <P2POfferDetail />
+            </Suspense>
+          )}
+        />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {!isWalletRoute && !isBoundIdentityRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
             <div key={item.title} className="hero-highlight">
