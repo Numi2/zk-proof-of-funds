@@ -3,6 +3,7 @@
 This workspace hosts an end-to-end proving stack for custodial proof-of-funds attestations. The Halo2 circuit enforces a Poseidon commitment over the attestation fields, verifies a secp256k1 ECDSA signature, derives a nullifier scoped to a verifier/policy pair, and now additionally exposes the hash of the custodian’s allow-listed public key as a public input. Deterministic fixtures and test witnesses make it possible to run consistent proofs in CI or locally without depending on external custody systems.
 
 ### What's New
+- **P2P Marketplace with shareable offers**: A full peer-to-peer trading interface at `/p2p` for buying/selling ZEC. Create offers with custom amounts, prices, and payment methods. Share offers via compact encoded URLs, QR codes, or social media—recipients can view and trade without the offer existing in their local storage. Offers persist in `localStorage` and can be imported via URL paste or direct navigation.
 - **URI-Encapsulated Payments (ZIP 324)**: Send Zcash via secure messaging (Signal, WhatsApp) without knowing the recipient's address. New `zkpf-uri-payment` crate handles ephemeral key derivation via ZIP 32, Bech32m key encoding, and URI parsing. React components provide create/receive/history UI at `/wallet/uri-payment`. Keys are recoverable from wallet backup using a gap limit scan.
 - **Deterministic witness generation**: `zkpf-circuit/tests/basic.rs` builds a fully valid attestation + signature fixture, allowing the MockProver to run with real data instead of `unimplemented!()`.
 - **Expanded public inputs**: An eighth instance column now commits to `custodian_pubkey_hash`, and the nullifier mixes `(account_id_hash, scope_id, policy_id, current_epoch)`.
@@ -956,6 +957,87 @@ Access via the wallet navigation: **📨 Via Message** → `/wallet/uri-payment`
 
 For the full specification, see [docs/uri-encapsulated-payments.md](docs/uri-encapsulated-payments.md).
 
+### P2P Marketplace – peer-to-peer ZEC trading
+
+The `web/` directory includes a **P2P Marketplace** for direct ZEC trading between users, accessible at `/p2p`. This enables trustless peer-to-peer trades with privacy-preserving proof-of-funds verification.
+
+**Key features:**
+
+| Feature | Description |
+| --- | --- |
+| **Offer creation** | Post buy/sell offers with custom amounts, prices, payment methods, and trading terms. |
+| **Shareable offers** | Share offers via compact encoded URLs, QR codes, or text—recipients can view and trade without the offer existing in their local storage. |
+| **Offer persistence** | Offers persist in `localStorage` across sessions and page reloads. |
+| **Import offers** | Import shared offers via URL paste or by navigating to a share link. |
+| **Payment links** | Generate URI-encapsulated payment links for instant ZEC transfers within trades. |
+| **Trade flow** | Step-by-step trade management with chat, payment confirmation, and escrow release. |
+
+**Offer sharing system:**
+
+The marketplace implements a URL-based sharing system that encodes complete offer data into compact, portable links:
+
+1. **Encoding**: Offers are serialized to JSON, compressed, and Base64url-encoded into the URL fragment (`?share=...`).
+2. **Sharing options**:
+   - **Link**: Copy a shareable URL to clipboard
+   - **QR Code**: Generate a scannable QR code for in-person sharing
+   - **Social**: Quick-share to X/Twitter, Telegram, WhatsApp, or email
+   - **Text**: Copy formatted offer details as plain text
+3. **Importing**: Recipients can:
+   - Navigate directly to a share link (offer auto-imports)
+   - Paste a share URL into the "Import Offer" modal
+   - Scan a QR code (mobile)
+
+**React components:**
+
+| Component | Purpose |
+| --- | --- |
+| `P2PMarketplace` | Main marketplace with offer grid, filters, search, and import modal |
+| `P2POfferCreate` | Multi-step offer creation flow |
+| `P2POfferDetail` | Offer detail page with trade initiation and sharing |
+| `ShareOffer` | Sharing modal with link/QR/text tabs and social buttons |
+| `P2PPaymentLink` | Payment link generation for ZEC transfers within trades |
+
+**State management:**
+
+The `useP2PMarketplace` hook centralizes marketplace state with `localStorage` persistence:
+
+```typescript
+// Automatic persistence
+const [offers, setOffers] = useState(() => getStoredJson('p2p_offers', []));
+const [myProfile, setMyProfile] = useState(() => getStoredJson('p2p_my_profile', null));
+const [myTrades, setMyTrades] = useState(() => getStoredJson('p2p_my_trades', []));
+```
+
+**URL format:**
+
+```
+https://your-domain.com/p2p/offer/{offerId}?share={encodedOffer}
+```
+
+Where `encodedOffer` is a Base64url-encoded JSON object containing the full offer data (type, amounts, maker info, payment methods, terms, timestamps).
+
+**What's implemented:**
+
+- ✅ Offer creation, editing, and cancellation
+- ✅ Local storage persistence for offers, trades, and profiles
+- ✅ Shareable offer URLs with encoded data
+- ✅ QR code generation for offer sharing
+- ✅ Social media share buttons (X, Telegram, WhatsApp, Email)
+- ✅ Import offer modal and auto-import from URL
+- ✅ Trade initiation and status tracking
+- ✅ Payment link integration via URI-Encapsulated Payments
+- ✅ Responsive design with modern UI
+
+**What's left:**
+
+- 🔲 **Real-time sync**: WebSocket/WebRTC for live offer broadcasting between peers
+- 🔲 **Escrow contracts**: On-chain escrow for trustless settlement
+- 🔲 **Reputation system**: On-chain trade history and ratings
+- 🔲 **Dispute resolution**: Arbitration flow for contested trades
+- 🔲 **PoF integration**: Require proof-of-funds before accepting large trades
+
+Access via the wallet navigation: **🏪 P2P Marketplace** → `/p2p`
+
 ### Project TODO / roadmap (high level)
 
 Across the whole workspace, the remaining work can be grouped into a few major themes:
@@ -1028,5 +1110,14 @@ Across the whole workspace, the remaining work can be grouped into a few major t
   - Generate QR codes for in-person URI sharing.
   - Add expiry notifications when payments remain unfinalized.
 
-This README will be updated as the Orchard rail, Starknet rail, Axelar GMP rail, Mina recursive proof hub, URI-Encapsulated Payments, multi-rail verifier, and future rails progress from scaffold to production-ready status.
+- **11. P2P Marketplace completion**
+  - Implement real-time offer sync via WebSocket/WebRTC for live peer-to-peer broadcasting.
+  - Deploy escrow smart contracts for trustless ZEC settlement.
+  - Build on-chain reputation system with trade history and ratings.
+  - Implement dispute resolution and arbitration flow.
+  - Integrate proof-of-funds verification for high-value trade gating.
+  - Add mobile-optimized QR scanning for in-person offer sharing.
+  - Implement offer expiration and automatic cleanup.
+
+This README will be updated as the Orchard rail, Starknet rail, Axelar GMP rail, Mina recursive proof hub, URI-Encapsulated Payments, P2P Marketplace, multi-rail verifier, and future rails progress from scaffold to production-ready status.
 

@@ -19,32 +19,47 @@ import {
   type TradingMethod,
   type OfferSortBy,
 } from '../../types/p2p';
+import { ShareButton } from './ShareOffer';
 import './P2PMarketplace.css';
 
 // ============ Offer Card ============
 function OfferCard({ offer, onSelect }: { offer: P2POffer; onSelect: (offer: P2POffer) => void }) {
   const isSelling = offer.offerType === 'sell';
-  const badge = getReputationBadge(offer.makerProfile);
-  const isOnline = Date.now() - offer.makerProfile.lastActiveAt < 300000;
+  
+  // Defensive: create a default profile if makerProfile is missing
+  const makerProfile = offer.makerProfile ?? {
+    address: offer.maker || 'unknown',
+    displayName: undefined,
+    totalTrades: 0,
+    successfulTrades: 0,
+    totalVolumeZec: 0,
+    successRate: 0,
+    registeredAt: offer.createdAt || Date.now(),
+    lastActiveAt: offer.createdAt || Date.now(),
+    isVerified: false,
+  };
+  
+  const badge = getReputationBadge(makerProfile);
+  const isOnline = Date.now() - (makerProfile.lastActiveAt || 0) < 300000;
   
   // Find primary trading method
-  const primaryMethod = offer.tradingMethods[0];
-  const methodInfo = TRADING_METHOD_INFO[primaryMethod];
+  const primaryMethod = offer.tradingMethods?.[0] || 'other';
+  const methodInfo = TRADING_METHOD_INFO[primaryMethod] || TRADING_METHOD_INFO['other'];
   
   return (
     <article className="offer-card" onClick={() => onSelect(offer)}>
       <div className="offer-card-top">
         <div className="offer-user">
           <div className={`user-avatar ${isOnline ? 'online' : ''}`}>
-            {offer.makerProfile.displayName?.[0]?.toUpperCase() || '?'}
+            {makerProfile.displayName?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="user-info">
             <span className="user-name">
-              {offer.makerProfile.displayName || 'Anonymous'}
-              {offer.makerProfile.isVerified && <span className="verified">✓</span>}
+              {makerProfile.displayName || 'Anonymous'}
+              {makerProfile.isVerified && <span className="verified">✓</span>}
             </span>
             <span className="user-meta">
-              {offer.makerProfile.totalTrades} trades · {timeAgo(offer.makerProfile.lastActiveAt)}
+              {makerProfile.totalTrades ?? 0} trades · {timeAgo(makerProfile.lastActiveAt || Date.now())}
             </span>
           </div>
         </div>
@@ -89,9 +104,12 @@ function OfferCard({ offer, onSelect }: { offer: P2POffer; onSelect: (offer: P2P
           </span>
         )}
         
-        <button className={`offer-action ${isSelling ? 'buy' : 'sell'}`}>
-          {isSelling ? 'Buy ZEC' : 'Sell ZEC'}
-        </button>
+        <div className="offer-card-actions">
+          <ShareButton offer={offer} variant="icon" size="small" />
+          <button className={`offer-action ${isSelling ? 'buy' : 'sell'}`}>
+            {isSelling ? 'Buy ZEC' : 'Sell ZEC'}
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -152,19 +170,112 @@ function QuickCreateModal({
   );
 }
 
+// ============ Import Offer Modal ============
+function ImportOfferModal({ 
+  isOpen, 
+  onClose, 
+  onImport 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void;
+  onImport: (url: string) => boolean;
+}) {
+  const [importUrl, setImportUrl] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState(false);
+  
+  const handleImport = () => {
+    setImportError(null);
+    setImportSuccess(false);
+    
+    if (!importUrl.trim()) {
+      setImportError('Please paste a share link');
+      return;
+    }
+    
+    const success = onImport(importUrl.trim());
+    if (success) {
+      setImportSuccess(true);
+      setImportUrl('');
+      setTimeout(() => {
+        onClose();
+        setImportSuccess(false);
+      }, 1500);
+    } else {
+      setImportError('Invalid share link. Make sure you copied the full URL.');
+    }
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal import-modal" onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose}>×</button>
+        <h2>📥 Import an Offer</h2>
+        <p className="import-subtitle">
+          Paste a shared offer link to view and trade with it
+        </p>
+        
+        <div className="import-input-group">
+          <input
+            type="text"
+            value={importUrl}
+            onChange={(e) => {
+              setImportUrl(e.target.value);
+              setImportError(null);
+            }}
+            placeholder="Paste offer link here (e.g., https://...?share=...)"
+            className="import-input"
+          />
+        </div>
+        
+        {importError && (
+          <div className="import-error">
+            <span>⚠️</span> {importError}
+          </div>
+        )}
+        
+        {importSuccess && (
+          <div className="import-success">
+            <span>✓</span> Offer imported successfully!
+          </div>
+        )}
+        
+        <button 
+          className="import-btn"
+          onClick={handleImport}
+          disabled={!importUrl.trim()}
+        >
+          Import Offer
+        </button>
+        
+        <div className="import-help">
+          <p>
+            <strong>How it works:</strong> When someone shares an offer with you, 
+            they'll give you a link. Paste that link here to view and respond to their offer.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ Main Marketplace ============
 export function P2PMarketplace() {
   const navigate = useNavigate();
   const {
     filteredOffers,
     loadingOffers,
-    stats,
     sortBy,
     setSortBy,
     selectOffer,
+    importOfferFromUrl,
+    broadcastStatus,
   } = useP2PMarketplace();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'sell' | 'buy'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMethods, setSelectedMethods] = useState<TradingMethod[]>([]);
@@ -227,6 +338,19 @@ export function P2PMarketplace() {
   
   const hasFilters = searchQuery || selectedMethods.length > 0 || activeTab !== 'all';
   
+  // Handle importing an offer from URL
+  const handleImportOffer = useCallback((url: string): boolean => {
+    const offer = importOfferFromUrl(url);
+    if (offer) {
+      // Navigate to the imported offer
+      setTimeout(() => {
+        navigate(`/p2p/offer/${offer.offerId}`);
+      }, 1500);
+      return true;
+    }
+    return false;
+  }, [importOfferFromUrl, navigate]);
+  
   return (
     <div className="p2p-page">
       {/* Header */}
@@ -238,29 +362,32 @@ export function P2PMarketplace() {
               Exchange ZEC for cash, crypto, goods, or services. 
               Meet in person or trade online. Your terms, your choice.
             </p>
+            {/* Broadcast status indicator */}
+            <div className={`broadcast-status ${broadcastStatus}`}>
+              <span className="status-dot" />
+              <span className="status-text">
+                {broadcastStatus === 'connected' && 'Live · Offers synced globally'}
+                {broadcastStatus === 'connecting' && 'Connecting to peers...'}
+                {broadcastStatus === 'disconnected' && 'Offline · Local only'}
+              </span>
+            </div>
           </div>
           
-          <button 
-            className="create-btn"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <span>+</span>
-            Post an Offer
-          </button>
-        </div>
-        
-        <div className="header-stats">
-          <div className="stat">
-            <span className="stat-value">{stats?.totalActiveOffers ?? displayOffers.length}</span>
-            <span className="stat-label">Active offers</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{stats?.tradersOnline ?? 0}</span>
-            <span className="stat-label">Traders online</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{formatZecFromZec(stats?.totalVolumeZec ?? 0, 0)}</span>
-            <span className="stat-label">ZEC traded</span>
+          <div className="header-actions">
+            <button 
+              className="import-btn-header"
+              onClick={() => setShowImportModal(true)}
+            >
+              <span>📥</span>
+              Import Offer
+            </button>
+            <button 
+              className="create-btn"
+              onClick={() => setShowCreateModal(true)}
+            >
+              <span>+</span>
+              Post an Offer
+            </button>
           </div>
         </div>
       </header>
@@ -427,6 +554,26 @@ export function P2PMarketplace() {
         </div>
       </section>
       
+      {/* Payment Links callout */}
+      <section className="payment-links-section">
+        <div className="payment-links-content">
+          <span className="payment-links-icon">🔗</span>
+          <div>
+            <h3>Quick Payments</h3>
+            <p>
+              Need to send ZEC instantly? Generate a payment link that anyone can 
+              claim with one click. Perfect for splitting bills or quick trades.
+            </p>
+          </div>
+          <button 
+            className="payment-links-cta"
+            onClick={() => navigate('/wallet/uri-payment')}
+          >
+            Payment Links →
+          </button>
+        </div>
+      </section>
+      
       {/* Back to wallet */}
       <div className="nav-back">
         <button onClick={() => navigate('/wallet')}>
@@ -439,6 +586,13 @@ export function P2PMarketplace() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onNavigateToCreate={handleCreateOffer}
+      />
+      
+      {/* Import Modal */}
+      <ImportOfferModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImportOffer}
       />
     </div>
   );

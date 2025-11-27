@@ -1,0 +1,544 @@
+/**
+ * P2P Payment Link Styles
+ */
+
+/* Overlay */
+.payment-link-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+  animation: paymentFadeIn 0.2s ease;
+}
+
+@keyframes paymentFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal */
+.payment-link-modal {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: paymentSlideUp 0.3s ease;
+  padding: 1.5rem;
+}
+
+@keyframes paymentSlideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.payment-link-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.payment-link-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Header */
+.payment-link-header {
+  text-align: center;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 1rem;
+}
+
+.payment-link-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.payment-link-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: white;
+}
+
+.payment-link-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+}
+
+.payment-link-amount .amount-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.payment-link-amount .amount-unit {
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.payment-link-desc {
+  margin: 0.5rem 0 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+/* Native share button */
+.payment-link-native-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 1rem;
+}
+
+.payment-link-native-share:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+}
+
+.payment-link-native-share span {
+  font-size: 1.25rem;
+}
+
+/* Tabs */
+.payment-link-tabs {
+  display: flex;
+  padding: 0;
+  gap: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 1rem;
+}
+
+.payment-tab {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.payment-tab.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+}
+
+/* Content */
+.payment-link-content {
+  min-height: 200px;
+}
+
+.section-desc {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+/* Link section */
+.payment-link-box {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.payment-link-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: white;
+  font-size: 0.8rem;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  min-width: 0;
+}
+
+.payment-link-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+}
+
+.payment-copy-btn {
+  padding: 0.75rem 1.25rem;
+  background: #38bdf8;
+  border: none;
+  border-radius: 10px;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.payment-copy-btn:hover {
+  background: #7dd3fc;
+}
+
+.payment-copy-btn.copied {
+  background: #22c55e;
+  color: white;
+}
+
+.payment-copy-btn.full {
+  width: 100%;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+/* Social sharing */
+.payment-social-share {
+  margin-top: 1rem;
+}
+
+.social-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+}
+
+.social-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.social-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.social-btn:hover {
+  transform: translateY(-2px);
+}
+
+.social-btn.twitter {
+  background: #1a1a1a;
+  color: white;
+}
+
+.social-btn.twitter:hover {
+  background: #333;
+}
+
+.social-btn.telegram {
+  background: #0088cc;
+  color: white;
+}
+
+.social-btn.telegram:hover {
+  background: #0099dd;
+}
+
+.social-btn.whatsapp {
+  background: #25d366;
+  color: white;
+}
+
+.social-btn.whatsapp:hover {
+  background: #32e078;
+}
+
+.social-btn.email {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.social-btn.email:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* QR Code section */
+.payment-qr-section {
+  text-align: center;
+}
+
+.payment-qr-container {
+  background: white;
+  border-radius: 16px;
+  padding: 1rem;
+  display: inline-block;
+  margin: 0.5rem 0 1rem;
+}
+
+.payment-qr-image {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+
+.payment-qr-loading {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #333;
+}
+
+.payment-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: white;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-download-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Text section */
+.payment-text-box {
+  margin-bottom: 0.5rem;
+}
+
+.payment-text-area {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: white;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: none;
+}
+
+.payment-text-area:focus {
+  outline: none;
+  border-color: #38bdf8;
+}
+
+/* Warning */
+.payment-link-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.875rem 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: #fbbf24;
+  margin-top: 1.25rem;
+}
+
+.warning-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+/* Loading */
+.payment-link-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.payment-link-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: paymentSpin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes paymentSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Button styles */
+.payment-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.payment-link-btn.variant-primary {
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+  color: #0f172a;
+}
+
+.payment-link-btn.variant-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(56, 189, 248, 0.3);
+}
+
+.payment-link-btn.variant-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.payment-link-btn.variant-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.payment-link-btn.size-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+}
+
+.payment-link-btn.size-large {
+  padding: 1rem 1.75rem;
+  font-size: 1rem;
+}
+
+/* Icon button */
+.payment-link-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.payment-link-icon-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.3);
+  transform: scale(1.1);
+}
+
+.payment-link-icon-btn.size-small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.875rem;
+}
+
+.payment-link-icon-btn.size-large {
+  width: 44px;
+  height: 44px;
+  font-size: 1.25rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .payment-link-modal {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 20px 20px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 85vh;
+  }
+  
+  .payment-link-tabs {
+    padding: 0;
+  }
+  
+  .payment-tab {
+    padding: 0.6rem 0.25rem;
+    font-size: 0.8rem;
+  }
+  
+  .payment-link-amount .amount-value {
+    font-size: 1.75rem;
+  }
+  
+  .social-buttons {
+    justify-content: center;
+  }
+  
+  .payment-qr-image {
+    width: 180px;
+    height: 180px;
+  }
+}
+

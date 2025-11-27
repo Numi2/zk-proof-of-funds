@@ -29,6 +29,11 @@ use zkpf_starknet_l2::{
     StarknetRailError, StarknetSnapshot, RAIL_ID_STARKNET_L2,
     StarknetChainConfig, StarknetRpcClient,
     known_tokens,
+    // Mina bridge integration
+    mina_bridge::{
+        MinaPublicInputs, SourceRails, source_rail_mask,
+        compute_holder_binding, verify_holder_binding,
+    },
 };
 
 // Environment variables
@@ -125,6 +130,10 @@ pub fn app_router() -> Router {
         .route("/rails/starknet/verify-batch", post(verify_batch))
         .route("/rails/starknet/build-snapshot", post(build_snapshot))
         .route("/rails/starknet/get-balance", post(get_balance))
+        // Mina Bridge integration endpoints
+        .route("/rails/starknet/mina-bridge/prepare-submission", post(prepare_mina_submission))
+        .route("/rails/starknet/mina-bridge/verify-binding", post(verify_mina_binding))
+        .route("/rails/starknet/mina-bridge/compute-binding", post(compute_mina_binding))
         .layer(cors)
         .with_state(state)
 }
@@ -193,6 +202,18 @@ async fn info(State(state): State<AppState>) -> impl IntoResponse {
             "session_keys": true,
             "defi_positions": true,
             "multi_account": true
+        },
+        "integrations": {
+            "mina_bridge": {
+                "enabled": true,
+                "description": "Cross-chain PoF verification via Mina recursive proofs",
+                "endpoints": {
+                    "prepare_submission": "/rails/starknet/mina-bridge/prepare-submission",
+                    "verify_binding": "/rails/starknet/mina-bridge/verify-binding",
+                    "compute_binding": "/rails/starknet/mina-bridge/compute-binding"
+                },
+                "source_rails": ["CUSTODIAL", "ORCHARD", "STARKNET_L2", "MINA_NATIVE"]
+            }
         }
     }))
 }
@@ -581,6 +602,228 @@ async fn build_snapshot(
             error: Some(format!("failed to build snapshot: {}", e)),
         })),
     }
+}
+
+// ============================================================================
+// Mina Bridge Integration Endpoints
+// ============================================================================
+
+/// Request for preparing Mina attestation submission data.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PrepareMInaSubmissionRequest {
+    /// The Mina proof bundle to prepare for submission.
+    pub mina_bundle: ProofBundle,
+    /// Validity window in Mina slots (default: 7200 = ~24 hours).
+    pub validity_window_slots: Option<u64>,
+    /// Source rails to include in the mask.
+    /// Options: "CUSTODIAL", "ORCHARD", "STARKNET_L2", "MINA_NATIVE"
+    pub source_rails: Option<Vec<String>>,
+}
+
+/// Response for prepared Mina submission.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PrepareMInaSubmissionResponse {
+    pub success: bool,
+    /// Prepared public inputs for the submission.
+    pub public_inputs: Option<MinaPublicInputs>,
+    /// Calldata ready for MinaStateVerifier.submit_attestation().
+    pub calldata: Option<Vec<String>>,
+    /// Source rails mask.
+    pub source_rails_mask: Option<u8>,
+    /// Validity window in Mina slots.
+    pub validity_window_slots: Option<u64>,
+    pub error: Option<String>,
+}
+
+/// Prepare Mina attestation submission data from a Mina proof bundle.
+/// This endpoint helps relayers prepare the calldata for submitting
+/// attestations to the MinaStateVerifier contract.
+async fn prepare_mina_submission(
+    State(_state): State<AppState>,
+    Json(req): Json<PrepareMInaSubmissionRequest>,
+) -> Result<Json<PrepareMInaSubmissionResponse>, ApiError> {
+    // Parse the Mina bundle
+    let public_inputs = match MinaPublicInputs::from_mina_bundle(&req.mina_bundle) {
+        Ok(inputs) => inputs,
+        Err(e) => {
+            return Ok(Json(PrepareMInaSubmissionResponse {
+                success: false,
+                public_inputs: None,
+                calldata: None,
+                source_rails_mask: None,
+                validity_window_slots: None,
+                error: Some(e.to_string()),
+            }));
+        }
+    };
+
+    // Compute source rails mask
+    let source_rails_mask = if let Some(rails) = &req.source_rails {
+        let mut mask = 0u8;
+        for rail in rails {
+            match rail.as_str() {
+                "CUSTODIAL" => mask |= source_rail_mask(SourceRails::CUSTODIAL),
+                "ORCHARD" => mask |= source_rail_mask(SourceRails::ORCHARD),
+                "STARKNET_L2" => mask |= source_rail_mask(SourceRails::STARKNET_L2),
+                "MINA_NATIVE" => mask |= source_rail_mask(SourceRails::MINA_NATIVE),
+                _ => {} // Ignore unknown rails
+            }
+        }
+        mask
+    } else {
+        // Default: assume STARKNET_L2 as source
+        source_rail_mask(SourceRails::STARKNET_L2)
+    };
+
+    let validity_window = req.validity_window_slots.unwrap_or(7200);
+    let calldata = public_inputs.to_calldata(validity_window, source_rails_mask);
+
+    Ok(Json(PrepareMInaSubmissionResponse {
+        success: true,
+        public_inputs: Some(public_inputs),
+        calldata: Some(calldata),
+        source_rails_mask: Some(source_rails_mask),
+        validity_window_slots: Some(validity_window),
+        error: None,
+    }))
+}
+
+/// Request for verifying a holder binding.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyMinaBindingRequest {
+    /// Holder ID (the original identifier).
+    pub holder_id: String,
+    /// Mina digest (hex-encoded, 32 bytes).
+    pub mina_digest: String,
+    /// Policy ID.
+    pub policy_id: u64,
+    /// Verifier scope ID.
+    pub scope_id: u64,
+    /// Expected holder binding (hex-encoded, 32 bytes).
+    pub expected_binding: String,
+}
+
+/// Response for binding verification.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyMinaBindingResponse {
+    pub valid: bool,
+    pub error: Option<String>,
+}
+
+/// Verify that a holder binding matches the expected inputs.
+/// This is useful for verifying attestations before submission.
+async fn verify_mina_binding(
+    State(_state): State<AppState>,
+    Json(req): Json<VerifyMinaBindingRequest>,
+) -> Result<Json<VerifyMinaBindingResponse>, ApiError> {
+    // Parse mina_digest
+    let mina_digest = match parse_hex_32(&req.mina_digest) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Ok(Json(VerifyMinaBindingResponse {
+                valid: false,
+                error: Some(format!("invalid mina_digest: {}", e)),
+            }));
+        }
+    };
+
+    // Parse expected_binding
+    let expected_binding = match parse_hex_32(&req.expected_binding) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Ok(Json(VerifyMinaBindingResponse {
+                valid: false,
+                error: Some(format!("invalid expected_binding: {}", e)),
+            }));
+        }
+    };
+
+    // Verify the binding
+    let valid = verify_holder_binding(
+        &req.holder_id,
+        &mina_digest,
+        req.policy_id,
+        req.scope_id,
+        &expected_binding,
+    );
+
+    Ok(Json(VerifyMinaBindingResponse {
+        valid,
+        error: if valid {
+            None
+        } else {
+            Some("holder binding does not match computed value".to_string())
+        },
+    }))
+}
+
+/// Request for computing a holder binding.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComputeMinaBindingRequest {
+    /// Holder ID (the original identifier).
+    pub holder_id: String,
+    /// Mina digest (hex-encoded, 32 bytes).
+    pub mina_digest: String,
+    /// Policy ID.
+    pub policy_id: u64,
+    /// Verifier scope ID.
+    pub scope_id: u64,
+}
+
+/// Response for computed binding.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComputeMinaBindingResponse {
+    pub success: bool,
+    /// Computed holder binding (hex-encoded, 32 bytes).
+    pub holder_binding: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Compute a holder binding from inputs.
+/// This is useful for generating bindings for new attestations.
+async fn compute_mina_binding(
+    State(_state): State<AppState>,
+    Json(req): Json<ComputeMinaBindingRequest>,
+) -> Result<Json<ComputeMinaBindingResponse>, ApiError> {
+    // Parse mina_digest
+    let mina_digest = match parse_hex_32(&req.mina_digest) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Ok(Json(ComputeMinaBindingResponse {
+                success: false,
+                holder_binding: None,
+                error: Some(format!("invalid mina_digest: {}", e)),
+            }));
+        }
+    };
+
+    // Compute the binding
+    let binding = compute_holder_binding(
+        &req.holder_id,
+        &mina_digest,
+        req.policy_id,
+        req.scope_id,
+    );
+
+    Ok(Json(ComputeMinaBindingResponse {
+        success: true,
+        holder_binding: Some(format!("0x{}", hex::encode(binding))),
+        error: None,
+    }))
+}
+
+/// Parse a hex string (with or without 0x prefix) into a 32-byte array.
+fn parse_hex_32(hex_str: &str) -> Result<[u8; 32], String> {
+    let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    let bytes = hex::decode(hex_str).map_err(|e| format!("invalid hex: {}", e))?;
+
+    if bytes.len() != 32 {
+        return Err(format!("expected 32 bytes, got {}", bytes.len()));
+    }
+
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    Ok(arr)
 }
 
 /// API error type.

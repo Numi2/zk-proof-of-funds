@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { URIPaymentCreate } from './URIPaymentCreate';
 import { URIPaymentReceive } from './URIPaymentReceive';
 import { URIPaymentHistory } from './URIPaymentHistory';
@@ -12,6 +13,7 @@ type ActiveView = 'create' | 'redeem' | 'history';
  * Payment Links - Create and redeem ZEC payment links
  */
 export function URIPaymentPage() {
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<ActiveView>('create');
   const [incomingPayment, setIncomingPayment] = useState<UriPayment | null>(null);
 
@@ -63,6 +65,20 @@ export function URIPaymentPage() {
           {activeView === 'redeem' && <URIPaymentReceive />}
           {activeView === 'history' && <URIPaymentHistory />}
         </main>
+        
+        {/* P2P Trade Link */}
+        <div className="link-p2p-promo">
+          <div className="p2p-promo-content">
+            <span className="p2p-promo-icon">🤝</span>
+            <div className="p2p-promo-text">
+              <strong>Want to trade ZEC for cash?</strong>
+              <span>Visit the P2P marketplace to buy or sell ZEC with other people.</span>
+            </div>
+          </div>
+          <button className="p2p-promo-btn" onClick={() => navigate('/p2p')}>
+            Go to P2P →
+          </button>
+        </div>
       </div>
 
       <style>{`
@@ -156,6 +172,63 @@ export function URIPaymentPage() {
           min-height: 300px;
         }
 
+        /* P2P Promo */
+        .link-p2p-promo {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          padding: 1rem 1.25rem;
+          background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(129, 140, 248, 0.08));
+          border: 1px solid rgba(56, 189, 248, 0.15);
+          border-radius: 12px;
+          margin-top: 2rem;
+        }
+
+        .p2p-promo-content {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .p2p-promo-icon {
+          font-size: 1.75rem;
+        }
+
+        .p2p-promo-text {
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
+        }
+
+        .p2p-promo-text strong {
+          color: #fff;
+          font-size: 0.95rem;
+        }
+
+        .p2p-promo-text span {
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.8rem;
+        }
+
+        .p2p-promo-btn {
+          padding: 0.6rem 1.25rem;
+          background: rgba(56, 189, 248, 0.15);
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          border-radius: 8px;
+          color: #38bdf8;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.15s ease;
+        }
+
+        .p2p-promo-btn:hover {
+          background: rgba(56, 189, 248, 0.25);
+          transform: translateY(-1px);
+        }
+
         @media (max-width: 480px) {
           .link-pay-page {
             padding: 1.5rem 1rem;
@@ -168,6 +241,19 @@ export function URIPaymentPage() {
           .link-tab {
             padding: 0.6rem 0.75rem;
             font-size: 0.8rem;
+          }
+          
+          .link-p2p-promo {
+            flex-direction: column;
+            text-align: center;
+          }
+          
+          .p2p-promo-content {
+            flex-direction: column;
+          }
+          
+          .p2p-promo-btn {
+            width: 100%;
           }
         }
       `}</style>

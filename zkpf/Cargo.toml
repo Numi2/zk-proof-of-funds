@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
+    # Core circuit synthesis framework
+    "ragu",
     "zkpf-circuit",
     "zkpf-prover",
     "zkpf-verifier",

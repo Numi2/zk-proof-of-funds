@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { RouteErrorBoundary } from './components/ErrorBoundary';
 import './App.css';
 
 const ZKPFApp = lazy(() =>
@@ -16,31 +17,33 @@ const BoundIdentityApp = lazy(() =>
 
 function App() {
   return (
-    <Suspense
-      fallback={(
-        <div className="app-shell">
-          <section className="card">
-            <p className="eyebrow">Loading</p>
-            <p className="muted small">Preparing the console…</p>
-          </section>
-        </div>
-      )}
-    >
-      <Routes>
-        <Route
-          path="/zkpassport/*"
-          element={<ZKPassportApp />}
-        />
-        <Route
-          path="/bound-identity/*"
-          element={<BoundIdentityApp />}
-        />
-        <Route
-          path="/*"
-          element={<ZKPFApp />}
-        />
-      </Routes>
-    </Suspense>
+    <RouteErrorBoundary>
+      <Suspense
+        fallback={(
+          <div className="app-shell">
+            <section className="card">
+              <p className="eyebrow">Loading</p>
+              <p className="muted small">Preparing the console…</p>
+            </section>
+          </div>
+        )}
+      >
+        <Routes>
+          <Route
+            path="/zkpassport/*"
+            element={<ZKPassportApp />}
+          />
+          <Route
+            path="/bound-identity/*"
+            element={<BoundIdentityApp />}
+          />
+          <Route
+            path="/*"
+            element={<ZKPFApp />}
+          />
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }
 

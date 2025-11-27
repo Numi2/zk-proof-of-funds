@@ -22,6 +22,10 @@ use zkpf_mina::{
     // Mina Proof of State types
     MinaProofOfStatePublicInputs, CANDIDATE_CHAIN_LENGTH,
     verify_proof_of_state_binding, create_proof_of_state_bundle, verify_proof_of_state_bundle,
+    // Starknet integration types
+    wrap_starknet_proof, wrap_starknet_proofs, validate_starknet_bundle,
+    CrossChainAttestationInfo, StarknetChainId, StarknetProofMetadata, StarknetWrapConfig,
+    RAIL_ID_STARKNET,
 };
 
 // Environment variables
@@ -77,6 +81,10 @@ pub fn app_router() -> Router {
         .route("/rails/mina/submit-attestation", post(submit_attestation))
         .route("/rails/mina/query-attestation", post(query_attestation))
         .route("/rails/mina/bridge-message", post(create_bridge_message))
+        // Starknet → Mina integration endpoints
+        .route("/rails/mina/starknet/wrap", post(wrap_starknet))
+        .route("/rails/mina/starknet/wrap-batch", post(wrap_starknet_batch))
+        .route("/rails/mina/starknet/validate", post(validate_starknet))
         // Mina Proof of State endpoints (lambdaclass/mina_bridge integration)
         .route("/rails/mina/proof-of-state/verify", post(verify_proof_of_state))
         .route("/rails/mina/proof-of-state/create-bundle", post(create_pos_bundle))
@@ -107,6 +115,17 @@ async fn info(State(state): State<AppState>) -> impl IntoResponse {
             "multi_rail_aggregation": true,
             "zk_bridges": true,
             "max_source_proofs": zkpf_mina::MINA_MAX_SOURCE_PROOFS
+        },
+        "integrations": {
+            "starknet": {
+                "enabled": true,
+                "supported_chains": ["SN_MAIN", "SN_SEPOLIA"],
+                "endpoints": {
+                    "wrap": "/rails/mina/starknet/wrap",
+                    "wrap_batch": "/rails/mina/starknet/wrap-batch",
+                    "validate": "/rails/mina/starknet/validate"
+                }
+            }
         }
     }))
 }
@@ -358,6 +377,216 @@ async fn create_bridge_message(
         encoded_message: Some(encoded),
         error: None,
     }))
+}
+
+// ============================================================================
+// Starknet → Mina Integration Endpoints
+// ============================================================================
+
+/// Request for wrapping a single Starknet proof into Mina.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WrapStarknetRequest {
+    /// The Starknet proof bundle to wrap.
+    pub starknet_bundle: zkpf_common::ProofBundle,
+    /// Holder identifier (must match Starknet proof holder).
+    pub holder_id: String,
+    /// Current Mina global slot.
+    pub mina_slot: u64,
+    /// Optional zkApp address (uses default if not specified).
+    pub zkapp_address: Option<String>,
+    /// Starknet chain ID (e.g., "SN_MAIN", "SN_SEPOLIA").
+    pub chain_id: Option<String>,
+    /// Attestation validity window in Mina slots (default: 7200).
+    pub validity_window_slots: Option<u64>,
+}
+
+/// Response for Starknet wrapping.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WrapStarknetResponse {
+    pub success: bool,
+    pub bundle: Option<zkpf_common::ProofBundle>,
+    pub starknet_metadata: Option<StarknetProofMetadata>,
+    pub attestation_info: Option<CrossChainAttestationInfo>,
+    pub error: Option<String>,
+    pub error_code: Option<String>,
+}
+
+/// Wrap a single Starknet proof into a Mina recursive proof.
+async fn wrap_starknet(
+    State(state): State<AppState>,
+    Json(req): Json<WrapStarknetRequest>,
+) -> Result<Json<WrapStarknetResponse>, ApiError> {
+    // Validate the Starknet bundle first
+    if let Err(e) = validate_starknet_bundle(&req.starknet_bundle) {
+        return Ok(Json(WrapStarknetResponse {
+            success: false,
+            bundle: None,
+            starknet_metadata: None,
+            attestation_info: None,
+            error: Some(e.to_string()),
+            error_code: Some(error_code(&e)),
+        }));
+    }
+
+    // Parse chain_id if provided
+    let chain_id = req.chain_id.as_ref().and_then(|s| StarknetChainId::from_str(s));
+
+    // Build wrap configuration
+    let config = StarknetWrapConfig {
+        holder_id: req.holder_id,
+        mina_slot: req.mina_slot,
+        zkapp_address: req.zkapp_address.or(state.zkapp_address.clone()),
+        chain_id,
+        validity_window_slots: req.validity_window_slots,
+    };
+
+    // Perform wrapping
+    match wrap_starknet_proof(req.starknet_bundle, config) {
+        Ok(result) => Ok(Json(WrapStarknetResponse {
+            success: true,
+            bundle: Some(result.bundle),
+            starknet_metadata: Some(result.starknet_metadata),
+            attestation_info: Some(result.attestation_info),
+            error: None,
+            error_code: None,
+        })),
+        Err(e) => Ok(Json(WrapStarknetResponse {
+            success: false,
+            bundle: None,
+            starknet_metadata: None,
+            attestation_info: None,
+            error: Some(e.to_string()),
+            error_code: Some(error_code(&e)),
+        })),
+    }
+}
+
+/// Request for wrapping multiple Starknet proofs into Mina.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WrapStarknetBatchRequest {
+    /// The Starknet proof bundles to wrap.
+    pub starknet_bundles: Vec<zkpf_common::ProofBundle>,
+    /// Holder identifier (must match Starknet proof holder).
+    pub holder_id: String,
+    /// Current Mina global slot.
+    pub mina_slot: u64,
+    /// Optional zkApp address.
+    pub zkapp_address: Option<String>,
+    /// Starknet chain ID.
+    pub chain_id: Option<String>,
+    /// Attestation validity window in Mina slots.
+    pub validity_window_slots: Option<u64>,
+}
+
+/// Wrap multiple Starknet proofs into a single Mina recursive proof.
+async fn wrap_starknet_batch(
+    State(state): State<AppState>,
+    Json(req): Json<WrapStarknetBatchRequest>,
+) -> Result<Json<WrapStarknetResponse>, ApiError> {
+    if req.starknet_bundles.is_empty() {
+        return Ok(Json(WrapStarknetResponse {
+            success: false,
+            bundle: None,
+            starknet_metadata: None,
+            attestation_info: None,
+            error: Some("at least one Starknet bundle is required".to_string()),
+            error_code: Some("INVALID_INPUT".to_string()),
+        }));
+    }
+
+    // Validate all bundles
+    for (idx, bundle) in req.starknet_bundles.iter().enumerate() {
+        if let Err(e) = validate_starknet_bundle(bundle) {
+            return Ok(Json(WrapStarknetResponse {
+                success: false,
+                bundle: None,
+                starknet_metadata: None,
+                attestation_info: None,
+                error: Some(format!("bundle[{}] validation failed: {}", idx, e)),
+                error_code: Some(error_code(&e)),
+            }));
+        }
+    }
+
+    // Parse chain_id
+    let chain_id = req.chain_id.as_ref().and_then(|s| StarknetChainId::from_str(s));
+
+    // Build wrap configuration
+    let config = StarknetWrapConfig {
+        holder_id: req.holder_id,
+        mina_slot: req.mina_slot,
+        zkapp_address: req.zkapp_address.or(state.zkapp_address.clone()),
+        chain_id,
+        validity_window_slots: req.validity_window_slots,
+    };
+
+    // Perform batch wrapping
+    match wrap_starknet_proofs(req.starknet_bundles, config) {
+        Ok(result) => Ok(Json(WrapStarknetResponse {
+            success: true,
+            bundle: Some(result.bundle),
+            starknet_metadata: Some(result.starknet_metadata),
+            attestation_info: Some(result.attestation_info),
+            error: None,
+            error_code: None,
+        })),
+        Err(e) => Ok(Json(WrapStarknetResponse {
+            success: false,
+            bundle: None,
+            starknet_metadata: None,
+            attestation_info: None,
+            error: Some(e.to_string()),
+            error_code: Some(error_code(&e)),
+        })),
+    }
+}
+
+/// Request for validating a Starknet bundle (without wrapping).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ValidateStarknetRequest {
+    /// The Starknet proof bundle to validate.
+    pub starknet_bundle: zkpf_common::ProofBundle,
+}
+
+/// Response for Starknet validation.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ValidateStarknetResponse {
+    pub valid: bool,
+    pub metadata: Option<StarknetProofMetadata>,
+    pub error: Option<String>,
+    pub error_code: Option<String>,
+}
+
+/// Validate a Starknet bundle (check if it can be wrapped).
+async fn validate_starknet(
+    State(_state): State<AppState>,
+    Json(req): Json<ValidateStarknetRequest>,
+) -> Result<Json<ValidateStarknetResponse>, ApiError> {
+    // Validate the bundle
+    if let Err(e) = validate_starknet_bundle(&req.starknet_bundle) {
+        return Ok(Json(ValidateStarknetResponse {
+            valid: false,
+            metadata: None,
+            error: Some(e.to_string()),
+            error_code: Some(error_code(&e)),
+        }));
+    }
+
+    // Extract metadata
+    match StarknetProofMetadata::from_bundle(&req.starknet_bundle) {
+        Ok(metadata) => Ok(Json(ValidateStarknetResponse {
+            valid: true,
+            metadata: Some(metadata),
+            error: None,
+            error_code: None,
+        })),
+        Err(e) => Ok(Json(ValidateStarknetResponse {
+            valid: false,
+            metadata: None,
+            error: Some(e.to_string()),
+            error_code: Some(error_code(&e)),
+        })),
+    }
 }
 
 /// API error type.
@@ -722,6 +951,28 @@ fn parse_hex_32(s: &str) -> Result<[u8; 32], String> {
 mod tests {
     use super::*;
     use axum_test::TestServer;
+    use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
+
+    fn sample_starknet_bundle() -> ProofBundle {
+        ProofBundle {
+            rail_id: RAIL_ID_STARKNET.to_string(),
+            circuit_version: CIRCUIT_VERSION,
+            proof: vec![0u8; 64], // Placeholder proof
+            public_inputs: VerifierPublicInputs {
+                threshold_raw: 1_000_000_000_000_000_000, // 1 ETH
+                required_currency_code: 1027,            // ETH
+                current_epoch: 1700000000,
+                verifier_scope_id: 42,
+                policy_id: 100,
+                nullifier: [1u8; 32],
+                custodian_pubkey_hash: [0u8; 32],
+                snapshot_block_height: Some(123456),
+                snapshot_anchor_orchard: Some([2u8; 32]), // account_commitment
+                holder_binding: Some([3u8; 32]),
+                proven_sum: Some(5_000_000_000_000_000_000), // 5 ETH
+            },
+        }
+    }
 
     #[tokio::test]
     async fn test_health() {
@@ -737,6 +988,173 @@ mod tests {
         response.assert_status_ok();
         let body: serde_json::Value = response.json();
         assert_eq!(body["rail_id"], RAIL_ID_MINA);
+        // Check Starknet integration is advertised
+        assert!(body["integrations"]["starknet"]["enabled"].as_bool().unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn test_starknet_validate_success() {
+        let server = TestServer::new(app_router()).unwrap();
+        let bundle = sample_starknet_bundle();
+        
+        let response = server
+            .post("/rails/mina/starknet/validate")
+            .json(&ValidateStarknetRequest {
+                starknet_bundle: bundle,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: ValidateStarknetResponse = response.json();
+        assert!(body.valid);
+        assert!(body.metadata.is_some());
+        assert!(body.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_starknet_validate_wrong_rail() {
+        let server = TestServer::new(app_router()).unwrap();
+        let mut bundle = sample_starknet_bundle();
+        bundle.rail_id = "WRONG_RAIL".to_string();
+        
+        let response = server
+            .post("/rails/mina/starknet/validate")
+            .json(&ValidateStarknetRequest {
+                starknet_bundle: bundle,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: ValidateStarknetResponse = response.json();
+        assert!(!body.valid);
+        assert!(body.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_starknet_wrap_success() {
+        let server = TestServer::new(app_router()).unwrap();
+        let bundle = sample_starknet_bundle();
+        
+        let response = server
+            .post("/rails/mina/starknet/wrap")
+            .json(&WrapStarknetRequest {
+                starknet_bundle: bundle,
+                holder_id: "test-holder-123".to_string(),
+                mina_slot: 500000,
+                zkapp_address: Some("B62qtest...".to_string()),
+                chain_id: Some("SN_SEPOLIA".to_string()),
+                validity_window_slots: Some(7200),
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: WrapStarknetResponse = response.json();
+        assert!(body.success);
+        assert!(body.bundle.is_some());
+        assert!(body.attestation_info.is_some());
+        
+        // Verify the wrapped bundle has Mina rail_id
+        let mina_bundle = body.bundle.unwrap();
+        assert_eq!(mina_bundle.rail_id, RAIL_ID_MINA);
+    }
+
+    #[tokio::test]
+    async fn test_starknet_wrap_missing_holder() {
+        let server = TestServer::new(app_router()).unwrap();
+        let bundle = sample_starknet_bundle();
+        
+        let response = server
+            .post("/rails/mina/starknet/wrap")
+            .json(&WrapStarknetRequest {
+                starknet_bundle: bundle,
+                holder_id: "".to_string(), // Empty holder_id
+                mina_slot: 500000,
+                zkapp_address: None,
+                chain_id: None,
+                validity_window_slots: None,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: WrapStarknetResponse = response.json();
+        assert!(!body.success);
+        assert!(body.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_starknet_wrap_batch() {
+        let server = TestServer::new(app_router()).unwrap();
+        let bundle1 = sample_starknet_bundle();
+        let mut bundle2 = sample_starknet_bundle();
+        bundle2.public_inputs.snapshot_block_height = Some(123457);
+        
+        let response = server
+            .post("/rails/mina/starknet/wrap-batch")
+            .json(&WrapStarknetBatchRequest {
+                starknet_bundles: vec![bundle1, bundle2],
+                holder_id: "test-holder-123".to_string(),
+                mina_slot: 500000,
+                zkapp_address: None,
+                chain_id: Some("SN_MAIN".to_string()),
+                validity_window_slots: None,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: WrapStarknetResponse = response.json();
+        assert!(body.success);
+        assert!(body.bundle.is_some());
+        
+        // Check that starknet metadata shows mainnet
+        let metadata = body.starknet_metadata.unwrap();
+        assert_eq!(metadata.chain_id, "SN_MAIN");
+    }
+
+    #[tokio::test]
+    async fn test_starknet_wrap_batch_empty() {
+        let server = TestServer::new(app_router()).unwrap();
+        
+        let response = server
+            .post("/rails/mina/starknet/wrap-batch")
+            .json(&WrapStarknetBatchRequest {
+                starknet_bundles: vec![], // Empty batch
+                holder_id: "test-holder-123".to_string(),
+                mina_slot: 500000,
+                zkapp_address: None,
+                chain_id: None,
+                validity_window_slots: None,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: WrapStarknetResponse = response.json();
+        assert!(!body.success);
+        assert!(body.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_starknet_wrap_batch_policy_mismatch() {
+        let server = TestServer::new(app_router()).unwrap();
+        let bundle1 = sample_starknet_bundle();
+        let mut bundle2 = sample_starknet_bundle();
+        bundle2.public_inputs.policy_id = 999; // Different policy
+        
+        let response = server
+            .post("/rails/mina/starknet/wrap-batch")
+            .json(&WrapStarknetBatchRequest {
+                starknet_bundles: vec![bundle1, bundle2],
+                holder_id: "test-holder-123".to_string(),
+                mina_slot: 500000,
+                zkapp_address: None,
+                chain_id: None,
+                validity_window_slots: None,
+            })
+            .await;
+        
+        response.assert_status_ok();
+        let body: WrapStarknetResponse = response.json();
+        assert!(!body.success);
+        assert!(body.error.unwrap().contains("policy_id mismatch"));
     }
 }
 

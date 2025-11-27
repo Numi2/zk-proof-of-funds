@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useP2PMarketplace } from '../../hooks/useP2PMarketplace';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import {
@@ -20,9 +20,13 @@ import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHOD_ICONS,
   TRADING_METHOD_INFO,
+  type P2POffer,
   type P2PTrade,
   type PaymentMethod,
 } from '../../types/p2p';
+import { decodeOffer } from '../../utils/p2p-share';
+import { ShareButton } from './ShareOffer';
+import { PaymentLinkButton } from './P2PPaymentLink';
 import './P2PMarketplace.css';
 
 // Trade Chat Component
@@ -308,6 +312,21 @@ function TradeFlow({
             <p className="notice">
               Make sure to provide your payment details in the chat below.
             </p>
+            
+            {/* Payment Link Alternative */}
+            <div className="payment-link-option">
+              <div className="option-divider">
+                <span>or</span>
+              </div>
+              <p className="option-desc">
+                Generate a payment link to send ZEC directly. The buyer can claim it with one click.
+              </p>
+              <PaymentLinkButton 
+                trade={trade}
+                variant="secondary"
+                size="medium"
+              />
+            </div>
           </div>
         )}
         
@@ -487,6 +506,7 @@ function TradeFlow({
 
 export function P2POfferDetail() {
   const { offerId } = useParams<{ offerId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { state: walletState } = useWebZjsContext();
   
@@ -503,6 +523,7 @@ export function P2POfferDetail() {
     sendMessage,
     myProfile,
     registerUser,
+    importOffer,
     error,
     clearError,
   } = useP2PMarketplace();
@@ -512,19 +533,48 @@ export function P2POfferDetail() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [isInitiating, setIsInitiating] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
+  const [sharedOffer, setSharedOffer] = useState<P2POffer | null>(null);
+  const [isSharedOffer, setIsSharedOffer] = useState(false);
   
   const isWalletConnected = walletState.activeAccount != null;
   const myAddress = myProfile?.address || '';
   
-  // Fetch offer on mount
+  // Fetch offer on mount - check URL params for shared offer data
   useEffect(() => {
     if (offerId) {
       setLoading(true);
-      fetchOffer(offerId).finally(() => setLoading(false));
+      
+      // Check if there's a share param in the URL first
+      const shareData = searchParams.get('share');
+      if (shareData) {
+        try {
+          const urlOffer = decodeOffer(shareData);
+          if (urlOffer && urlOffer.offerId === offerId) {
+            setSharedOffer(urlOffer);
+            setIsSharedOffer(true);
+            // Import to local storage so it persists
+            importOffer(urlOffer);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to decode shared offer:', e);
+        }
+      }
+      
+      // Otherwise fetch from local storage
+      fetchOffer(offerId).then((localOffer) => {
+        if (localOffer) {
+          setSharedOffer(null);
+          setIsSharedOffer(false);
+        }
+        setLoading(false);
+      });
     }
-  }, [offerId, fetchOffer]);
+  }, [offerId, fetchOffer, searchParams, importOffer]);
   
-  const offer = selectedOffer;
+  // Use shared offer if local offer not found
+  const offer = selectedOffer || sharedOffer;
   
   // Determine user role in trade
   const isSeller = activeTrade?.seller === myAddress;
@@ -650,7 +700,20 @@ export function P2POfferDetail() {
     );
   }
   
-  const tier = getReputationTier(offer.makerProfile);
+  // Defensive: create a default profile if makerProfile is missing
+  const makerProfile = offer.makerProfile ?? {
+    address: offer.maker || 'unknown',
+    displayName: undefined,
+    totalTrades: 0,
+    successfulTrades: 0,
+    totalVolumeZec: 0,
+    successRate: 0,
+    registeredAt: offer.createdAt || Date.now(),
+    lastActiveAt: offer.createdAt || Date.now(),
+    isVerified: false,
+  };
+  
+  const tier = getReputationTier(makerProfile);
   const isSelling = offer.offerType === 'sell';
   
   return (
@@ -660,7 +723,16 @@ export function P2POfferDetail() {
         <button className="back-btn" onClick={() => navigate('/p2p')}>
           ← Back to Marketplace
         </button>
+        {offer && <ShareButton offer={offer} variant="button" size="medium" />}
       </div>
+      
+      {/* Shared offer indicator */}
+      {isSharedOffer && (
+        <div className="shared-offer-banner">
+          <span className="shared-icon">🔗</span>
+          <span>This offer was shared with you. Connect your wallet to trade.</span>
+        </div>
+      )}
       
       {/* Error Display */}
       {error && (
@@ -702,8 +774,12 @@ export function P2POfferDetail() {
               <div className={`offer-type-badge large ${isSelling ? 'sell' : 'buy'}`}>
                 {isSelling ? '🛒 Selling ZEC' : '💸 Buying ZEC'}
               </div>
-              <div className="offer-created">
-                Posted {new Date(offer.createdAt).toLocaleDateString()}
+              <div className="offer-header-actions">
+                <PaymentLinkButton offer={offer} variant="icon" size="small" />
+                <ShareButton offer={offer} size="medium" />
+                <div className="offer-created">
+                  Posted {new Date(offer.createdAt).toLocaleDateString()}
+                </div>
               </div>
             </div>
             
@@ -790,27 +866,30 @@ export function P2POfferDetail() {
               </div>
             )}
             
-            {/* Trade Button */}
-            {offer.status === 'active' && (
-              <button 
-                className={`start-trade-btn ${isSelling ? 'buy' : 'sell'}`}
-                onClick={() => setShowTradeModal(true)}
-              >
-                {isSelling ? 'Buy from this offer' : 'Sell to this offer'}
-              </button>
-            )}
+            {/* Action Buttons */}
+            <div className="offer-action-buttons">
+              {offer.status === 'active' && (
+                <button 
+                  className={`start-trade-btn ${isSelling ? 'buy' : 'sell'}`}
+                  onClick={() => setShowTradeModal(true)}
+                >
+                  {isSelling ? 'Buy from this offer' : 'Sell to this offer'}
+                </button>
+              )}
+              <ShareButton offer={offer} variant="button" size="large" />
+            </div>
           </div>
           
           {/* Maker Profile */}
           <div className="maker-profile-card">
             <div className="maker-header">
               <div className="maker-avatar large">
-                {offer.makerProfile.displayName?.[0]?.toUpperCase() || '?'}
+                {makerProfile.displayName?.[0]?.toUpperCase() || '?'}
               </div>
               <div className="maker-identity">
                 <h3>
-                  {offer.makerProfile.displayName || offer.maker}
-                  {offer.makerProfile.isVerified && <span className="verified-badge">✓</span>}
+                  {makerProfile.displayName || offer.maker}
+                  {makerProfile.isVerified && <span className="verified-badge">✓</span>}
                 </h3>
                 <span className={`reputation-tier tier-${tier.toLowerCase()}`}>{tier}</span>
               </div>
@@ -818,15 +897,15 @@ export function P2POfferDetail() {
             
             <div className="maker-stats-grid">
               <div className="stat-item">
-                <span className="stat-value">{offer.makerProfile.totalTrades}</span>
+                <span className="stat-value">{makerProfile.totalTrades ?? 0}</span>
                 <span className="stat-label">Trades</span>
               </div>
               <div className="stat-item success">
-                <span className="stat-value">{offer.makerProfile.successRate}%</span>
+                <span className="stat-value">{makerProfile.successRate ?? 0}%</span>
                 <span className="stat-label">Success</span>
               </div>
               <div className="stat-item">
-                <span className="stat-value">{formatZecFromZec(offer.makerProfile.totalVolumeZec, 0)}</span>
+                <span className="stat-value">{formatZecFromZec(makerProfile.totalVolumeZec ?? 0, 0)}</span>
                 <span className="stat-label">Volume</span>
               </div>
             </div>
@@ -835,21 +914,21 @@ export function P2POfferDetail() {
               <div className="meta-item">
                 <span className="meta-label">Member since</span>
                 <span className="meta-value">
-                  {new Date(offer.makerProfile.registeredAt).toLocaleDateString()}
+                  {new Date(makerProfile.registeredAt || Date.now()).toLocaleDateString()}
                 </span>
               </div>
-              {(offer.makerProfile.disputesWon !== undefined || offer.makerProfile.disputesLost !== undefined) && (
+              {(makerProfile.disputesWon !== undefined || makerProfile.disputesLost !== undefined) && (
                 <div className="meta-item">
                   <span className="meta-label">Disputes won/lost</span>
                   <span className="meta-value">
-                    {offer.makerProfile.disputesWon ?? 0}/{offer.makerProfile.disputesLost ?? 0}
+                    {makerProfile.disputesWon ?? 0}/{makerProfile.disputesLost ?? 0}
                   </span>
                 </div>
               )}
-              {offer.makerProfile.avgTradeTimeMinutes && (
+              {makerProfile.avgTradeTimeMinutes && (
                 <div className="meta-item">
                   <span className="meta-label">Avg. trade time</span>
-                  <span className="meta-value">{offer.makerProfile.avgTradeTimeMinutes} min</span>
+                  <span className="meta-value">{makerProfile.avgTradeTimeMinutes} min</span>
                 </div>
               )}
             </div>
@@ -866,8 +945,8 @@ export function P2POfferDetail() {
             <h2>{isSelling ? 'Buy ZEC' : 'Sell ZEC'}</h2>
             <p className="modal-subtitle">
               {isSelling 
-                ? `Trading with ${offer.makerProfile.displayName || 'Seller'}`
-                : `Trading with ${offer.makerProfile.displayName || 'Buyer'}`
+                ? `Trading with ${makerProfile.displayName || 'Seller'}`
+                : `Trading with ${makerProfile.displayName || 'Buyer'}`
               }
             </p>
             

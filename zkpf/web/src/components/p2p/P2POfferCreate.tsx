@@ -16,6 +16,7 @@ import {
   type OfferType,
   type TradingMethod,
   type CreateOfferParams,
+  type P2POffer,
 } from '../../types/p2p';
 import './P2PMarketplace.css';
 
@@ -23,7 +24,7 @@ export function P2POfferCreate() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { state: walletState } = useWebZjsContext();
-  const { createOffer, myProfile, registerUser, error, clearError } = useP2PMarketplace();
+  const { createOffer, offers, myProfile, registerUser, error, clearError } = useP2PMarketplace();
   
   // Get initial type from URL param
   const initialType = (searchParams.get('type') as OfferType) || 'sell';
@@ -43,8 +44,9 @@ export function P2POfferCreate() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showMethodPicker, setShowMethodPicker] = useState(false);
+  const [createdOffer, setCreatedOffer] = useState<P2POffer | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
   
-  const isWalletConnected = walletState.activeAccount != null;
   const zecAmountNum = parseFloat(zecAmount) || 0;
   
   // Check if currency is a known one or local/custom
@@ -86,11 +88,6 @@ export function P2POfferCreate() {
     // Validation
     if (!zecAmount || zecAmountNum <= 0) {
       setFormError('Enter how much ZEC you want to trade');
-      return;
-    }
-    
-    if (offerType === 'sell' && zecAmountNum > walletBalance) {
-      setFormError('Amount exceeds your wallet balance');
       return;
     }
     
@@ -142,16 +139,28 @@ export function P2POfferCreate() {
       };
       
       const offerId = await createOffer(params);
-      navigate(`/p2p/offer/${offerId}`);
+      
+      // Find the created offer to show share modal
+      // We need to wait a tick for the state to update
+      setTimeout(() => {
+        const newOffer = offers.find(o => o.offerId === offerId);
+        if (newOffer) {
+          setCreatedOffer(newOffer);
+          setShowShareModal(true);
+        } else {
+          // If we can't find it, just navigate
+          navigate(`/p2p/offer/${offerId}`);
+        }
+      }, 100);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to create offer');
     } finally {
       setIsSubmitting(false);
     }
   }, [
-    zecAmount, zecAmountNum, walletBalance, exchangeValue, effectiveCurrency,
+    zecAmount, zecAmountNum, exchangeValue, effectiveCurrency,
     selectedMethods, isFaceToFace, location, offerType, myProfile, registerUser,
-    displayName, exchangeDescription, notes, createOffer, navigate
+    displayName, exchangeDescription, notes, createOffer, navigate, offers
   ]);
   
   // Quick amounts
@@ -166,21 +175,6 @@ export function P2POfferCreate() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
-  
-  if (!isWalletConnected) {
-    return (
-      <div className="p2p-page">
-        <div className="create-connect">
-          <span className="connect-icon">🔐</span>
-          <h2>Connect Your Wallet</h2>
-          <p>Connect your Zcash wallet to start trading</p>
-          <button className="create-btn" onClick={() => navigate('/wallet')}>
-            Go to Wallet
-          </button>
-        </div>
-      </div>
-    );
-  }
   
   return (
     <div className="p2p-page create-page">
@@ -457,6 +451,60 @@ export function P2POfferCreate() {
           Meet in public places for face-to-face trades.
         </p>
       </div>
+      
+      {/* Success & Share Modal */}
+      {showShareModal && createdOffer && (
+        <div className="modal-overlay">
+          <div className="modal success-modal">
+            <div className="success-header">
+              <span className="success-icon">🎉</span>
+              <h2>Offer Created!</h2>
+              <p>Your offer is live. Share it so people can find it!</p>
+            </div>
+            
+            <div className="success-offer-preview">
+              <div className="preview-type">
+                {createdOffer.offerType === 'sell' ? '📤 Selling' : '📥 Buying'}
+              </div>
+              <div className="preview-amounts">
+                <span className="preview-zec">{formatZecFromZec(createdOffer.zecAmount)} ZEC</span>
+                <span className="preview-arrow">⇄</span>
+                <span className="preview-fiat">{createdOffer.exchangeValue} {createdOffer.exchangeCurrency}</span>
+              </div>
+            </div>
+            
+            <div className="success-actions">
+              <button 
+                className="share-now-btn"
+                onClick={() => {
+                  // Keep the success modal showing and open share modal
+                  setShowShareModal(false);
+                  // Navigate to the offer detail where they can share
+                  navigate(`/p2p/offer/${createdOffer.offerId}`);
+                }}
+              >
+                📤 Share Now
+              </button>
+              <button 
+                className="skip-btn"
+                onClick={() => {
+                  setShowShareModal(false);
+                  navigate(`/p2p/offer/${createdOffer.offerId}`);
+                }}
+              >
+                View Offer →
+              </button>
+            </div>
+            
+            <div className="success-tip">
+              <p>
+                <strong>💡 Tip:</strong> Without sharing, only you can see this offer. 
+                Share the link on social media, forums, or directly with potential traders.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

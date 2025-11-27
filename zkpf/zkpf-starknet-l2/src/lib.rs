@@ -33,6 +33,7 @@
 
 pub mod circuit;
 pub mod error;
+pub mod mina_bridge;
 pub mod state;
 pub mod types;
 pub mod wallet;

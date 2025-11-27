@@ -1,0 +1,481 @@
+/**
+ * ShareOffer Component Styles
+ */
+
+/* Overlay */
+.share-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal */
+.share-modal {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.share-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.share-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* Header */
+.share-header {
+  padding: 1.5rem 1.5rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.share-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.share-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: white;
+}
+
+.share-subtitle {
+  margin: 0.5rem 0 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+/* Native share button */
+.share-native-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: calc(100% - 3rem);
+  margin: 1rem 1.5rem;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.share-native-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+}
+
+.share-native-btn span {
+  font-size: 1.25rem;
+}
+
+/* Tabs */
+.share-tabs {
+  display: flex;
+  padding: 0 1rem;
+  gap: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.share-tab {
+  flex: 1;
+  padding: 0.875rem 0.5rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.share-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.share-tab.active {
+  color: #f7931a;
+  border-bottom-color: #f7931a;
+}
+
+/* Content */
+.share-content {
+  padding: 1.5rem;
+}
+
+.share-description {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+/* Link section */
+.share-link-box {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.share-link-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', monospace;
+}
+
+.share-link-input:focus {
+  outline: none;
+  border-color: #f7931a;
+}
+
+.share-copy-btn {
+  padding: 0.75rem 1.25rem;
+  background: #f7931a;
+  border: none;
+  border-radius: 8px;
+  color: #1a1a2e;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.share-copy-btn:hover {
+  background: #ffa64d;
+}
+
+.share-copy-btn.copied {
+  background: #22c55e;
+  color: white;
+}
+
+.share-copy-btn.full {
+  width: 100%;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+/* Social sharing */
+.share-social {
+  margin-top: 1rem;
+}
+
+.share-social-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+}
+
+.share-social-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.share-social-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.share-social-btn:hover {
+  transform: translateY(-2px);
+}
+
+.share-social-btn.twitter {
+  background: #1a1a1a;
+  color: white;
+}
+
+.share-social-btn.twitter:hover {
+  background: #333;
+}
+
+.share-social-btn.telegram {
+  background: #0088cc;
+  color: white;
+}
+
+.share-social-btn.telegram:hover {
+  background: #0099dd;
+}
+
+.share-social-btn.whatsapp {
+  background: #25d366;
+  color: white;
+}
+
+.share-social-btn.whatsapp:hover {
+  background: #32e078;
+}
+
+.share-social-btn.email {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.share-social-btn.email:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* QR Code section */
+.share-qr-section {
+  text-align: center;
+}
+
+.share-qr-container {
+  background: white;
+  border-radius: 16px;
+  padding: 1rem;
+  display: inline-block;
+  margin: 0.5rem 0 1rem;
+}
+
+.share-qr-image {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+
+.share-qr-loading {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #333;
+}
+
+.share-qr-loading .loader {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #eee;
+  border-top-color: #333;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.share-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.share-download-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Text section */
+.share-text-box {
+  margin-bottom: 0.5rem;
+}
+
+.share-text-area {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: white;
+  font-size: 0.8rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: none;
+}
+
+.share-text-area:focus {
+  outline: none;
+  border-color: #f7931a;
+}
+
+/* Footer */
+.share-footer {
+  padding: 1rem 1.5rem 1.5rem;
+  text-align: center;
+}
+
+.share-privacy-note {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+}
+
+/* Share button styles */
+.share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.share-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.share-btn-small {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.share-btn-large {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* Icon button */
+.share-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.share-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.share-icon-small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.875rem;
+}
+
+.share-icon-large {
+  width: 44px;
+  height: 44px;
+  font-size: 1.25rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .share-modal {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    position: fixed;
+    bottom: 0;
+    max-height: 80vh;
+  }
+  
+  .share-tabs {
+    padding: 0 0.5rem;
+  }
+  
+  .share-tab {
+    padding: 0.75rem 0.25rem;
+    font-size: 0.8rem;
+  }
+  
+  .share-content {
+    padding: 1rem;
+  }
+  
+  .share-social-buttons {
+    justify-content: center;
+  }
+  
+  .share-qr-image {
+    width: 180px;
+    height: 180px;
+  }
+}
+

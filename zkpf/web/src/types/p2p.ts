@@ -220,6 +220,10 @@ export interface P2POffer {
   
   // Privacy
   shieldedAddressCommitment: string;
+  
+  // Broadcast metadata
+  isBroadcast?: boolean;          // True if received from P2P broadcast network
+  isImported?: boolean;           // True if imported via share link
 }
 
 export interface P2PTrade {
@@ -355,48 +359,53 @@ export interface MarketplaceStats {
 
 // ============ Helper functions ============
 
-export function zatoshiToZec(zatoshi: number): number {
-  return zatoshi / 100_000_000;
+export function zatoshiToZec(zatoshi: number | null | undefined): number {
+  return (zatoshi ?? 0) / 100_000_000;
 }
 
-export function zecToZatoshi(zec: number): number {
-  return Math.floor(zec * 100_000_000);
+export function zecToZatoshi(zec: number | null | undefined): number {
+  return Math.floor((zec ?? 0) * 100_000_000);
 }
 
-export function formatZec(zatoshi: number, decimals = 4): string {
+export function formatZec(zatoshi: number | null | undefined, decimals = 4): string {
+  const safeZatoshi = zatoshi ?? 0;
   const maxDecimals = Math.max(0, decimals);
   const minDecimals = Math.min(2, maxDecimals);
   
-  return zatoshiToZec(zatoshi).toLocaleString(undefined, {
+  return zatoshiToZec(safeZatoshi).toLocaleString(undefined, {
     minimumFractionDigits: minDecimals,
     maximumFractionDigits: maxDecimals,
   });
 }
 
-export function formatZecFromZec(zec: number, decimals = 4): string {
+export function formatZecFromZec(zec: number | null | undefined, decimals = 4): string {
+  const safeZec = zec ?? 0;
   const maxDecimals = Math.max(0, decimals);
   const minDecimals = Math.min(2, maxDecimals);
   
-  return zec.toLocaleString(undefined, {
+  return safeZec.toLocaleString(undefined, {
     minimumFractionDigits: minDecimals,
     maximumFractionDigits: maxDecimals,
   });
 }
 
-export function getCurrencySymbol(currency: string): string {
+export function getCurrencySymbol(currency: string | null | undefined): string {
+  if (!currency) return '';
   const found = COMMON_CURRENCIES.find(c => c.code.toLowerCase() === currency.toLowerCase());
   return found?.symbol || '';
 }
 
-export function formatExchangeValue(value: string, currency: string): string {
-  const symbol = getCurrencySymbol(currency);
-  const numValue = parseFloat(value);
+export function formatExchangeValue(value: string | null | undefined, currency: string | null | undefined): string {
+  const safeValue = value ?? '0';
+  const safeCurrency = currency ?? '';
+  const symbol = getCurrencySymbol(safeCurrency);
+  const numValue = parseFloat(safeValue);
   
-  if (isNaN(numValue)) return `${value} ${currency}`;
+  if (isNaN(numValue)) return `${safeValue} ${safeCurrency}`;
   
   // For fiat-like currencies, format with 2 decimals
   const isFiat = COMMON_CURRENCIES.some(c => 
-    c.code === currency && !['BTC', 'ETH'].includes(c.code)
+    c.code === safeCurrency && !['BTC', 'ETH'].includes(c.code)
   );
   
   if (isFiat) {
@@ -407,12 +416,15 @@ export function formatExchangeValue(value: string, currency: string): string {
   }
   
   // For crypto or custom, show as-is
-  return symbol ? `${symbol}${value}` : `${value} ${currency}`;
+  return symbol ? `${symbol}${safeValue}` : `${safeValue} ${safeCurrency}`;
 }
 
-export function getReputationBadge(profile: P2PUserProfile): { label: string; color: string } {
-  const trades = profile.totalTrades;
-  const rate = profile.successRate;
+export function getReputationBadge(profile: P2PUserProfile | null | undefined): { label: string; color: string } {
+  // Defensive: handle missing or undefined profile
+  if (!profile) return { label: 'New', color: 'neutral' };
+  
+  const trades = profile.totalTrades ?? 0;
+  const rate = profile.successRate ?? 0;
   
   if (trades === 0) return { label: 'New', color: 'neutral' };
   if (trades < 5) return { label: 'Getting Started', color: 'neutral' };
@@ -440,12 +452,14 @@ export function getTradeStatusInfo(status: TradeStatus): { label: string; color:
 
 // ============ Fiat helpers ============
 
-export function formatFiat(cents: number, currency: string): string {
-  const amount = cents / 100;
-  const symbol = getCurrencySymbol(currency);
+export function formatFiat(cents: number | null | undefined, currency: string | null | undefined): string {
+  const safeCents = cents ?? 0;
+  const safeCurrency = currency ?? '';
+  const amount = safeCents / 100;
+  const symbol = getCurrencySymbol(safeCurrency);
   
   // Format based on currency type
-  const isCrypto = ['BTC', 'ETH', 'USDC'].includes(currency);
+  const isCrypto = ['BTC', 'ETH', 'USDC'].includes(safeCurrency);
   
   if (isCrypto) {
     return `${symbol}${amount.toLocaleString(undefined, {
@@ -460,7 +474,7 @@ export function formatFiat(cents: number, currency: string): string {
   })}`;
 }
 
-export function formatPricePerZec(priceCents: number, currency: string): string {
+export function formatPricePerZec(priceCents: number | null | undefined, currency: string | null | undefined): string {
   return `${formatFiat(priceCents, currency)} / ZEC`;
 }
 
@@ -500,9 +514,12 @@ export function getTradeStatusColor(status: TradeStatus): string {
 
 export type ReputationTier = 'New' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond';
 
-export function getReputationTier(profile: P2PUserProfile): ReputationTier {
-  const trades = profile.totalTrades;
-  const rate = profile.successRate;
+export function getReputationTier(profile: P2PUserProfile | null | undefined): ReputationTier {
+  // Defensive: handle missing or undefined profile
+  if (!profile) return 'New';
+  
+  const trades = profile.totalTrades ?? 0;
+  const rate = profile.successRate ?? 0;
   
   if (trades === 0) return 'New';
   if (trades < 5) return 'Bronze';
@@ -513,13 +530,14 @@ export function getReputationTier(profile: P2PUserProfile): ReputationTier {
   return 'Bronze';
 }
 
-export function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+export function timeAgo(timestamp: number | null | undefined): string {
+  const safeTimestamp = timestamp ?? Date.now();
+  const seconds = Math.floor((Date.now() - safeTimestamp) / 1000);
   
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
   
-  return new Date(timestamp).toLocaleDateString();
+  return new Date(safeTimestamp).toLocaleDateString();
 }

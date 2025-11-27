@@ -61,6 +61,7 @@
 pub mod circuit;
 pub mod error;
 pub mod state;
+pub mod starknet_integration;
 pub mod types;
 pub mod zkapp;
 
@@ -81,6 +82,14 @@ pub use circuit::{
 };
 pub use error::MinaRailError;
 pub use types::*;
+
+// Re-export Starknet integration types
+pub use starknet_integration::{
+    wrap_starknet_proof, wrap_starknet_proofs, validate_starknet_bundle,
+    starknet_bundle_to_source_input,
+    CrossChainAttestationInfo, StarknetChainId, StarknetProofMetadata, StarknetWrapConfig,
+    StarknetWrapResult, RAIL_ID_STARKNET,
+};
 
 // Re-export Mina Proof of State types from the Kimchi wrapper
 pub use zkpf_mina_kimchi_wrapper::{

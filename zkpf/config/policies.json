@@ -139,11 +139,11 @@
   },
   {
     "policy_id": 200003,
-    "threshold_raw": 100000000000000000000,
+    "threshold_raw": 18000000000000000000,
     "required_currency_code": 1027,
     "verifier_scope_id": 402,
     "rail_id": "STARKNET_L2",
-    "label": "Starknet ≥ 100 ETH",
+    "label": "Starknet ≥ 18 ETH",
     "category": "STARKNET"
   },
   {

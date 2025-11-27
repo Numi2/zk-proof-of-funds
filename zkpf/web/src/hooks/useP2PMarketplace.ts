@@ -3,6 +3,9 @@
  * 
  * Manages P2P marketplace state for human-friendly trading.
  * Trade ZEC for anything - fiat, crypto, goods, services.
+ * 
+ * Now with P2P broadcast support - offers are shared across all visitors
+ * using Gun.js decentralized database.
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
@@ -20,9 +23,37 @@ import type {
   TradingMethod,
   PaymentMethod,
 } from '../types/p2p';
+import { decodeOffer } from '../utils/p2p-share';
+import { p2pBroadcast } from '../services/p2p-broadcast';
 
 // API base for P2P backend (when available)
 const API_BASE = import.meta.env.VITE_P2P_API_BASE || '/api/p2p';
+
+// LocalStorage keys for persistent state
+const STORAGE_KEYS = {
+  offers: 'p2p_offers',
+  importedOffers: 'p2p_imported_offers',
+  myProfile: 'p2p_my_profile',
+  myTrades: 'p2p_my_trades',
+};
+
+// Helper to safely get/set localStorage
+function getStoredJson<T>(key: string, fallback: T): T {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setStoredJson<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 // Trade initiation params - supports both ZEC and zatoshi formats
 export interface InitiateTradeParams {
@@ -56,6 +87,10 @@ interface UseP2PMarketplaceReturn {
   // Stats
   stats: MarketplaceStats | null;
   
+  // Broadcast status
+  broadcastStatus: 'connecting' | 'connected' | 'disconnected';
+  broadcastPeerCount: number;
+  
   // Filters
   filters: OfferFilters;
   sortBy: OfferSortBy;
@@ -66,6 +101,9 @@ interface UseP2PMarketplaceReturn {
   fetchOffer: (offerId: string) => Promise<P2POffer | null>;
   createOffer: (params: CreateOfferParams) => Promise<string>;
   cancelOffer: (offerId: string) => Promise<void>;
+  importOffer: (offer: P2POffer) => void;
+  importOfferFromUrl: (url: string) => P2POffer | null;
+  broadcastOffer: (offer: P2POffer) => Promise<boolean>;
   
   initiateTrade: (params: InitiateTradeParams, currentProfile?: P2PUserProfile | null) => Promise<string>;
   depositEscrow: (tradeId: string, escrowCommitment: string) => Promise<void>;
@@ -91,18 +129,64 @@ interface UseP2PMarketplaceReturn {
 }
 
 export function useP2PMarketplace(): UseP2PMarketplaceReturn {
-  // Offers state
-  const [offers, setOffers] = useState<P2POffer[]>([]);
+  // Offers state - load from localStorage on init
+  const [localOffers, setLocalOffersState] = useState<P2POffer[]>(() => 
+    getStoredJson<P2POffer[]>(STORAGE_KEYS.offers, [])
+  );
+  const [broadcastOffers, setBroadcastOffers] = useState<P2POffer[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<P2POffer | null>(null);
   const [loadingOffers, setLoadingOffers] = useState(false);
   
-  // Trades state
+  // Broadcast connection status
+  const [broadcastStatus, setBroadcastStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [broadcastPeerCount, setBroadcastPeerCount] = useState(0);
+  
+  // Trades state - load from localStorage on init
   const [activeTrade, setActiveTrade] = useState<P2PTrade | null>(null);
-  const [myTrades, setMyTrades] = useState<P2PTrade[]>([]);
+  const [myTrades, setMyTradesState] = useState<P2PTrade[]>(() =>
+    getStoredJson<P2PTrade[]>(STORAGE_KEYS.myTrades, [])
+  );
   const [loadingTrade, setLoadingTrade] = useState(false);
   
-  // User state
-  const [myProfile, setMyProfile] = useState<P2PUserProfile | null>(null);
+  // User state - load from localStorage on init
+  const [myProfile, setMyProfileState] = useState<P2PUserProfile | null>(() =>
+    getStoredJson<P2PUserProfile | null>(STORAGE_KEYS.myProfile, null)
+  );
+  
+  // Merge local and broadcast offers, deduplicating by offerId
+  const offers = useMemo(() => {
+    const offerMap = new Map<string, P2POffer>();
+    
+    // Add broadcast offers first
+    broadcastOffers.forEach(o => offerMap.set(o.offerId, o));
+    
+    // Local offers take precedence
+    localOffers.forEach(o => offerMap.set(o.offerId, o));
+    
+    return Array.from(offerMap.values());
+  }, [localOffers, broadcastOffers]);
+  
+  // Wrapper functions that persist to localStorage
+  const setOffers = useCallback((updater: P2POffer[] | ((prev: P2POffer[]) => P2POffer[])) => {
+    setLocalOffersState(prev => {
+      const newOffers = typeof updater === 'function' ? updater(prev) : updater;
+      setStoredJson(STORAGE_KEYS.offers, newOffers);
+      return newOffers;
+    });
+  }, []);
+  
+  const setMyTrades = useCallback((updater: P2PTrade[] | ((prev: P2PTrade[]) => P2PTrade[])) => {
+    setMyTradesState(prev => {
+      const newTrades = typeof updater === 'function' ? updater(prev) : updater;
+      setStoredJson(STORAGE_KEYS.myTrades, newTrades);
+      return newTrades;
+    });
+  }, []);
+  
+  const setMyProfile = useCallback((profile: P2PUserProfile | null) => {
+    setMyProfileState(profile);
+    setStoredJson(STORAGE_KEYS.myProfile, profile);
+  }, []);
   
   // Stats
   const [stats, setStats] = useState<MarketplaceStats | null>(null);
@@ -187,21 +271,25 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
       
       if (response.ok) {
         const data = await response.json();
-        setOffers(data.offers || []);
+        const apiOffers = data.offers || [];
+        // Merge API offers with local offers (local offers take precedence)
+        setOffers(prev => {
+          const localOfferIds = new Set(prev.map(o => o.offerId));
+          const newApiOffers = apiOffers.filter((o: P2POffer) => !localOfferIds.has(o.offerId));
+          return [...prev, ...newApiOffers];
+        });
         setStats(data.stats || null);
       } else {
-        // No backend available - show empty state
-        setOffers([]);
+        // No backend available - keep existing local offers
         setStats(null);
       }
     } catch {
-      // Backend not available - show empty state (no error, this is expected)
-      setOffers([]);
+      // Backend not available - keep existing local offers (no error, this is expected)
       setStats(null);
     } finally {
       setLoadingOffers(false);
     }
-  }, []);
+  }, [setOffers]);
   
   // Fetch single offer
   const fetchOffer = useCallback(async (offerId: string): Promise<P2POffer | null> => {
@@ -270,23 +358,61 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
       
       setOffers(prev => [newOffer, ...prev]);
       
+      // Auto-broadcast the new offer to the P2P network
+      p2pBroadcast.broadcastOffer(newOffer).catch(console.error);
+      
       return offerId;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create offer';
       setError(message);
       throw new Error(message);
     }
-  }, [myProfile]);
+  }, [myProfile, setOffers]);
   
   // Cancel offer
   const cancelOffer = useCallback(async (offerId: string): Promise<void> => {
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       setOffers(prev => prev.filter(o => o.offerId !== offerId));
+      
+      // Also remove from broadcast network
+      p2pBroadcast.removeOffer(offerId).catch(console.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel offer');
     }
-  }, []);
+  }, [setOffers]);
+  
+  // Import a shared offer into local storage
+  const importOffer = useCallback((offer: P2POffer): void => {
+    setOffers(prev => {
+      // Check if already exists
+      if (prev.some(o => o.offerId === offer.offerId)) {
+        return prev;
+      }
+      // Mark as imported and add to list
+      return [{ ...offer, isImported: true } as P2POffer, ...prev];
+    });
+  }, [setOffers]);
+  
+  // Import offer from a shared URL
+  const importOfferFromUrl = useCallback((url: string): P2POffer | null => {
+    try {
+      // Extract the share param from the URL
+      const urlObj = new URL(url);
+      const shareData = urlObj.searchParams.get('share');
+      if (!shareData) return null;
+      
+      const offer = decodeOffer(shareData);
+      if (offer) {
+        importOffer(offer);
+        return offer;
+      }
+      return null;
+    } catch (e) {
+      console.error('Failed to import offer from URL:', e);
+      return null;
+    }
+  }, [importOffer]);
   
   // Initiate trade
   const initiateTrade = useCallback(async (
@@ -359,7 +485,7 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     } finally {
       setLoadingTrade(false);
     }
-  }, [offers, myProfile]);
+  }, [offers, myProfile, setMyTrades, setOffers]);
   
   // Deposit ZEC to escrow
   const depositEscrow = useCallback(async (tradeId: string, escrowCommitment: string): Promise<void> => {
@@ -449,7 +575,7 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm payment');
     }
-  }, []);
+  }, [setOffers]);
   
   // Confirm fiat received (releases ZEC to buyer)
   const confirmFiatReceived = useCallback(async (tradeId: string): Promise<void> => {
@@ -477,7 +603,7 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel trade');
     }
-  }, [activeTrade]);
+  }, [activeTrade, setOffers]);
   
   // Open dispute
   const openDispute = useCallback(async (tradeId: string, reason: string): Promise<void> => {
@@ -542,7 +668,7 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
       setError(err instanceof Error ? err.message : 'Failed to register');
       throw err;
     }
-  }, []);
+  }, [setMyProfile]);
   
   // Select offer
   const selectOffer = useCallback((offer: P2POffer | null) => {
@@ -553,6 +679,43 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
   useEffect(() => {
     fetchOffers();
   }, [fetchOffers]);
+  
+  // Subscribe to P2P broadcast network
+  useEffect(() => {
+    let isMounted = true;
+    
+    // Subscribe to offers from the broadcast network
+    const unsubscribeOffers = p2pBroadcast.subscribe((offers) => {
+      // Only update state if component is still mounted
+      if (isMounted) {
+        setBroadcastOffers(offers);
+      }
+    });
+    
+    // Subscribe to connection status
+    const unsubscribeStatus = p2pBroadcast.subscribeStatus((status) => {
+      // Only update state if component is still mounted
+      if (isMounted) {
+        setBroadcastStatus(status as 'connecting' | 'connected' | 'disconnected');
+      }
+    });
+    
+    // Get peer count
+    if (isMounted) {
+      setBroadcastPeerCount(p2pBroadcast.getPeerCount());
+    }
+    
+    return () => {
+      isMounted = false;
+      unsubscribeOffers();
+      unsubscribeStatus();
+    };
+  }, []);
+  
+  // Broadcast an offer to the P2P network
+  const broadcastOfferToNetwork = useCallback(async (offer: P2POffer): Promise<boolean> => {
+    return p2pBroadcast.broadcastOffer(offer);
+  }, []);
   
   // Poll for trade updates
   useEffect(() => {
@@ -590,6 +753,10 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     // Stats
     stats,
     
+    // Broadcast status
+    broadcastStatus,
+    broadcastPeerCount,
+    
     // Filters
     filters,
     sortBy,
@@ -600,6 +767,9 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     fetchOffer,
     createOffer,
     cancelOffer,
+    importOffer,
+    importOfferFromUrl,
+    broadcastOffer: broadcastOfferToNetwork,
     initiateTrade,
     depositEscrow,
     markPaymentSent,

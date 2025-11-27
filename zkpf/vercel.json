@@ -44,6 +44,7 @@
     { "source": "/zkpf/verify-bundle", "destination": "/api/zkpf/verify-bundle" },
     { "source": "/zkpf/attest", "destination": "/api/zkpf/attest" },
     { "source": "/lightwalletd/:path*", "destination": "/api/lightwalletd" },
+    { "source": "/api/p2p/offers", "destination": "/api/p2p/offers" },
     {
       "source": "/(.*)",
       "destination": "/index.html"

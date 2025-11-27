@@ -7,4 +7,6 @@
 export { P2PMarketplace, default as P2PMarketplaceDefault } from './P2PMarketplace';
 export { P2POfferCreate, default as P2POfferCreateDefault } from './P2POfferCreate';
 export { P2POfferDetail, default as P2POfferDetailDefault } from './P2POfferDetail';
+export { ShareOffer, ShareButton } from './ShareOffer';
+export { PaymentLinkGenerator, PaymentLinkButton } from './P2PPaymentLink';
 

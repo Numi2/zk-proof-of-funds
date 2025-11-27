@@ -9,6 +9,7 @@ import { FinanceContext } from './FinanceContext';
 import { UsageGuide } from './UsageGuide';
 import type { PolicyDefinition, ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
+import { RouteErrorBoundary } from './ErrorBoundary';
 
 const ProofBuilder = lazy(() =>
   import('./ProofBuilder').then((module) => ({ default: module.ProofBuilder })),
@@ -442,16 +443,18 @@ export function ZKPFApp() {
         <Route
           path="/wallet"
           element={(
-            <Suspense
-              fallback={(
-                <section className="card">
-                  <p className="eyebrow">Loading wallet</p>
-                  <p className="muted small">Preparing Zcash WebWallet…</p>
-                </section>
-              )}
-            >
-              <WalletLayout />
-            </Suspense>
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading wallet</p>
+                    <p className="muted small">Preparing Zcash WebWallet…</p>
+                  </section>
+                )}
+              >
+                <WalletLayout />
+              </Suspense>
+            </RouteErrorBoundary>
           )}
         >
           <Route index element={<WalletDashboard />} />
@@ -466,46 +469,52 @@ export function ZKPFApp() {
         <Route
           path="/p2p"
           element={(
-            <Suspense
-              fallback={(
-                <section className="card">
-                  <p className="eyebrow">Loading marketplace</p>
-                  <p className="muted small">Preparing P2P trading platform…</p>
-                </section>
-              )}
-            >
-              <P2PMarketplace />
-            </Suspense>
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading marketplace</p>
+                    <p className="muted small">Preparing P2P trading platform…</p>
+                  </section>
+                )}
+              >
+                <P2PMarketplace />
+              </Suspense>
+            </RouteErrorBoundary>
           )}
         />
         <Route
           path="/p2p/create"
           element={(
-            <Suspense
-              fallback={(
-                <section className="card">
-                  <p className="eyebrow">Loading</p>
-                  <p className="muted small">Preparing offer creation…</p>
-                </section>
-              )}
-            >
-              <P2POfferCreate />
-            </Suspense>
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading</p>
+                    <p className="muted small">Preparing offer creation…</p>
+                  </section>
+                )}
+              >
+                <P2POfferCreate />
+              </Suspense>
+            </RouteErrorBoundary>
           )}
         />
         <Route
           path="/p2p/offer/:offerId"
           element={(
-            <Suspense
-              fallback={(
-                <section className="card">
-                  <p className="eyebrow">Loading</p>
-                  <p className="muted small">Preparing trade view…</p>
-                </section>
-              )}
-            >
-              <P2POfferDetail />
-            </Suspense>
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading</p>
+                    <p className="muted small">Preparing trade view…</p>
+                  </section>
+                )}
+              >
+                <P2POfferDetail />
+              </Suspense>
+            </RouteErrorBoundary>
           )}
         />
 
@@ -525,7 +534,7 @@ export function ZKPFApp() {
 
       <footer>
         <p>
-          Made by Numan - inspired heavily by webzjs - vendored keys.
+          Made by Numan Thabit.
         </p>
       </footer>
 
