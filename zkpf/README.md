@@ -2,14 +2,15 @@
 
 This workspace hosts an end-to-end proving stack for custodial proof-of-funds attestations. The Halo2 circuit enforces a Poseidon commitment over the attestation fields, verifies a secp256k1 ECDSA signature, derives a nullifier scoped to a verifier/policy pair, and now additionally exposes the hash of the custodian’s allow-listed public key as a public input. Deterministic fixtures and test witnesses make it possible to run consistent proofs in CI or locally without depending on external custody systems.
 
-### What’s New
+### What's New
+- **URI-Encapsulated Payments (ZIP 324)**: Send Zcash via secure messaging (Signal, WhatsApp) without knowing the recipient's address. New `zkpf-uri-payment` crate handles ephemeral key derivation via ZIP 32, Bech32m key encoding, and URI parsing. React components provide create/receive/history UI at `/wallet/uri-payment`. Keys are recoverable from wallet backup using a gap limit scan.
 - **Deterministic witness generation**: `zkpf-circuit/tests/basic.rs` builds a fully valid attestation + signature fixture, allowing the MockProver to run with real data instead of `unimplemented!()`.
 - **Expanded public inputs**: An eighth instance column now commits to `custodian_pubkey_hash`, and the nullifier mixes `(account_id_hash, scope_id, policy_id, current_epoch)`.
 - **Custodian allowlist baked into the circuit**: `zkpf_circuit::custodians` tracks the exact secp256k1 keys that may sign attestations. The circuit hashes the witness public key and constrains it to the allow-listed hash, and the tests panic when attempting to use a non-listed custodian.
 - **Shared fixtures crate**: `zkpf-test-fixtures` produces prover artifacts, serialized public inputs, and JSON blobs with deterministic values so that integration tests across crates consume the same data.
 - **Server-owned policy enforcement**: The backend now loads allow-listed policies from `config/policies.json` (override with `ZKPF_POLICY_PATH`). Clients reference policies by `policy_id`, and the service enforces the stored expectations for threshold, currency, custodian, scope, and policy identifiers.
 - **Durable nullifier replay protection**: A persistent sled-backed store (`ZKPF_NULLIFIER_DB`, default `data/nullifiers.db`) keeps `(scope_id, policy_id, nullifier)` tuples so duplicate proofs remain rejected across process restarts.
-- **Provider-backed Zashi sessions & canonical attestations**: The custodial circuit now includes a dedicated Zashi custodian ID + key, `zkpf-common` exposes a reusable `Attestation` model + Poseidon message-hash helper, and the backend/front-end add `/zkpf/zashi/session/*` APIs plus a “Zashi provider session” workflow that fetches a signed bundle straight from the Zashi app.
+- **Provider-backed Zashi sessions & canonical attestations**: The custodial circuit now includes a dedicated Zashi custodian ID + key, `zkpf-common` exposes a reusable `Attestation` model + Poseidon message-hash helper, and the backend/front-end add `/zkpf/zashi/session/*` APIs plus a "Zashi provider session" workflow that fetches a signed bundle straight from the Zashi app.
 
 ### Repository Layout
 | Crate | Purpose |
@@ -23,6 +24,7 @@ This workspace hosts an end-to-end proving stack for custodial proof-of-funds at
 | `zkpf-tools` | Misc CLI helpers (e.g. manifest inspection). |
 | `zkpf-wasm` | WASM bindings for browser or mobile environments. |
 | `xtask` | Placeholder for future automation; exists to keep `cargo fmt` and `cargo test` workspace operations happy. |
+| `zkpf-uri-payment` | URI-Encapsulated Payments (ZIP 324): ephemeral key derivation, Bech32m key encoding, URI parsing/generation, and payment note construction for sending ZEC via secure messaging. |
 | `zkpf-zcash-orchard-wallet` | Zcash/Orchard-specific wallet backend and snapshot API. Owns a global `WalletDb` + `BlockDb` (via `zcash_client_sqlite`), loads config from env, runs a background sync loop against `lightwalletd`, and exposes `build_snapshot_for_fvk(fvk, height) -> OrchardSnapshot` backed by real Orchard notes (values, commitments, Merkle paths, and anchors) for an imported UFVK. |
 | `zkpf-zcash-orchard-circuit` | Public API for the `ZCASH_ORCHARD` rail circuit, including Orchard-specific public metadata and a `prove_orchard_pof` entrypoint. It builds `VerifierPublicInputs` in the V2_ORCHARD layout and wraps a bn256 circuit that will eventually act as an **outer recursive verifier** of an inner Orchard PoF circuit. |
 | `zkpf-orchard-inner` | Defines the data model and prover interface for the **inner Orchard proof-of-funds circuit** over the Pallas/Vesta fields. This circuit is expected to use Orchard’s own Halo2 gadgets (MerkleChip, Sinsemilla `MerklePath::calculate_root`, etc.) to enforce consensus-compatible Orchard semantics. |
@@ -854,6 +856,106 @@ Critically, verifiers **never** see:
 - The underlying attestation body (including exact `balance_raw`).
 - The `account_tag` itself—only the derived nullifier.
 
+### URI-Encapsulated Payments (ZIP 324) – send ZEC via messaging
+
+The workspace includes a **URI-Encapsulated Payments** implementation that enables sending Zcash
+payments via any unmodified secure messaging service (Signal, WhatsApp, etc.). The sender need not
+know the recipient's Zcash address, and the recipient need not have a wallet pre-installed.
+
+**How it works:**
+
+1. **Sender creates payment**: Alice's wallet generates an ephemeral Zcash address, sends funds to it,
+   and constructs a URI containing the secret spending key.
+2. **URI transmission**: Alice sends the URI via secure messaging to Bob.
+3. **Recipient finalizes**: Bob clicks the link, his wallet verifies the funds on-chain, and he
+   "finalizes" by transferring to his own address using the key from the URI.
+
+**URI format:**
+
+```
+https://pay.withzcash.com:65536/v1#amount=1.23&desc=Coffee&key=zkey1...
+```
+
+- **Host**: `pay.withzcash.com` (mainnet) or `testpay.testzcash.com` (testnet)
+- **Port**: `65536` (intentionally invalid TCP port to prevent accidental HTTP requests)
+- **Fragment parameters**: `amount`, `desc` (optional description), `key` (Bech32m-encoded 256-bit key)
+
+**Key components:**
+
+| Crate/Module | Purpose |
+| --- | --- |
+| `zkpf-uri-payment` | Core Rust crate: ephemeral key derivation (ZIP 32), Bech32m encoding, URI parsing/generation, payment note construction. |
+| `webzjs-wallet/bindgen/uri_payment.rs` | WASM bindings exposing `UriPayment`, `UriPaymentStatus`, and helper functions to JavaScript. |
+| `web/src/components/uri-payment/` | React components for creating, receiving, and managing URI payments. |
+
+**React components:**
+
+| Component | Purpose |
+| --- | --- |
+| `URIPaymentPage` | Main interface with tabs for Send/Receive/History |
+| `URIPaymentCreate` | Create payments with amount/description, generate shareable links |
+| `URIPaymentReceive` | Verify incoming payments and finalize to user's wallet |
+| `URIPaymentHistory` | View sent/received payment history (persisted in localStorage) |
+| `URIPaymentStatus` | Real-time status tracking (pending → ready → finalized) |
+| `URIPaymentDeepLink` | Handle incoming deep links from messaging apps |
+
+**Key derivation (ZIP 32):**
+
+Ephemeral keys are derived deterministically from the wallet seed, enabling recovery:
+
+```
+path: m_Sapling/324'/coin_type'/payment_index'
+key = BLAKE2b-256(extended_spending_key, personal='Zcash_PaymentURI')
+```
+
+The wallet tracks used `payment_index` values (0..2^31) and never reuses them.
+
+**Recovery from backup:**
+
+When restoring a wallet, the implementation uses a "gap limit" of N=3:
+- Derive the first N payment URI keys
+- Scan the chain for spent nullifiers matching these keys
+- When a match is found, derive the next key in sequence
+- Stop when N consecutive keys have no on-chain activity
+
+**Security considerations:**
+
+- URIs are like "magic spells" — anyone who sees one can claim the funds
+- The intentionally invalid port (65536) prevents browser HTTP requests
+- Fragment parameters (`#...`) are never sent over the network per RFC 3986
+- Keys use Bech32m encoding with `zkey1` (mainnet) or `zkeytest1` (testnet) HRP for error detection
+- Payments should only be sent over end-to-end encrypted channels
+
+**Frontend integration:**
+
+Access via the wallet navigation: **📨 Via Message** → `/wallet/uri-payment`
+
+**What's implemented:**
+
+- ✅ Core Rust crate with ephemeral key derivation and URI parsing
+- ✅ WASM bindings for JavaScript/TypeScript
+- ✅ Complete React UI (create, receive, history, status tracking)
+- ✅ Proper Bech32m encoding/decoding (BIP-350 compliant)
+- ✅ Local storage persistence for payment history
+- ✅ Deep link handling for `pay.withzcash.com` URLs
+- ✅ Recovery hook for wallet restoration
+
+**What's left:**
+
+- 🔲 **Wire to actual wallet transactions**: Currently UI is scaffolded but not connected to real
+  Sapling note creation. Need to integrate with `webzjs-wallet` to:
+  - Generate actual Sapling transactions funding the ephemeral address
+  - Spend notes using the ephemeral key during finalization
+- 🔲 **Lightwalletd integration**: Add efficient note lookup by ephemeral IVK (trial decryption or
+  indexed tags) instead of full chain scan
+- 🔲 **Cancellation flow**: Implement sender-side "claw back" when recipient hasn't finalized
+- 🔲 **Mobile deep linking**: Configure iOS/Android app links for `pay.withzcash.com` domain
+- 🔲 **Testnet support**: Add `testpay.testzcash.com` handling and TAZ currency display
+- 🔲 **QR code generation**: Add QR code display for in-person URI sharing
+- 🔲 **Expiry notifications**: Alert sender when payment hasn't been finalized within N days
+
+For the full specification, see [docs/uri-encapsulated-payments.md](docs/uri-encapsulated-payments.md).
+
 ### Project TODO / roadmap (high level)
 
 Across the whole workspace, the remaining work can be grouped into a few major themes:
@@ -916,5 +1018,15 @@ Across the whole workspace, the remaining work can be grouped into a few major t
     - Multi-rail regression tests.
     - End-to-end flows (custodial, Orchard, Starknet) using `zkpf-test-fixtures`-like harnesses.
 
-This README will be updated as the Orchard rail, Starknet rail, Axelar GMP rail, Mina recursive proof hub, multi-rail verifier, and future rails progress from scaffold to production-ready status.
+- **10. URI-Encapsulated Payments (ZIP 324) completion**
+  - Wire the React UI to actual Sapling transaction creation via `webzjs-wallet`.
+  - Implement finalization flow: spend ephemeral notes to user's persistent address.
+  - Add efficient note lookup via lightwalletd (indexed tags or IVK-based trial decryption).
+  - Implement sender-side cancellation ("claw back" before recipient finalizes).
+  - Configure iOS/Android deep linking for `pay.withzcash.com` domain.
+  - Add testnet support with `testpay.testzcash.com` handling.
+  - Generate QR codes for in-person URI sharing.
+  - Add expiry notifications when payments remain unfinalized.
+
+This README will be updated as the Orchard rail, Starknet rail, Axelar GMP rail, Mina recursive proof hub, URI-Encapsulated Payments, multi-rail verifier, and future rails progress from scaffold to production-ready status.
 

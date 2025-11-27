@@ -396,7 +396,6 @@ impl<'a> ECChip<'a, Fr> {
     }
 
     /// Verify addition cases are correct.
-    #[allow(unused_variables)]
     fn verify_add_cases(
         &self,
         ctx: &mut Context<Fr>,
@@ -411,18 +410,94 @@ impl<'a> ECChip<'a, Fr> {
         let gate = self.ff_chip.range.gate();
         let one = ctx.load_constant(Fr::one());
         
-        // Case 1: If p is infinity, result.x = q.x, result.y = q.y
-        // (enforced via selection in witness generation)
+        // Case 1: If p is infinity, result should equal q
+        let not_p_inf = gate.sub(ctx, one, p_is_inf);
+        let result_eq_q = self.is_equal(ctx, result, q);
+        let p_inf_implies_eq = gate.or(ctx, not_p_inf, result_eq_q);
+        gate.assert_is_const(ctx, &p_inf_implies_eq, &Fr::one());
         
-        // Case 2: If q is infinity, result.x = p.x, result.y = p.y
+        // Case 2: If q is infinity, result should equal p
+        let not_q_inf = gate.sub(ctx, one, q_is_inf);
+        let result_eq_p = self.is_equal(ctx, result, p);
+        let q_inf_implies_eq = gate.or(ctx, not_q_inf, result_eq_p);
+        gate.assert_is_const(ctx, &q_inf_implies_eq, &Fr::one());
         
-        // Case 3: If inverse, result.is_infinity = 1
+        // Case 3: If inverse (p = -q), result.is_infinity = 1
         let not_inverse = gate.sub(ctx, one, is_inverse);
         let inv_implies_inf = gate.or(ctx, not_inverse, result.is_infinity);
         gate.assert_is_const(ctx, &inv_implies_inf, &Fr::one());
         
-        // General case verification is implicit in on-curve check
-        // and the witness generation correctness
+        // Case 4: General addition (neither infinity, not inverse, not double)
+        // Verify: slope = (y2 - y1) / (x2 - x1), x3 = slope^2 - x1 - x2, y3 = slope*(x1 - x3) - y1
+        let neither_inf_p = gate.sub(ctx, one, p_is_inf);
+        let neither_inf_q = gate.sub(ctx, one, q_is_inf);
+        let neither_inf = gate.mul(ctx, neither_inf_p, neither_inf_q);
+        let not_double = gate.sub(ctx, one, is_double);
+        let not_inv_not_double = gate.mul(ctx, not_inverse, not_double);
+        let general_case = gate.mul(ctx, neither_inf, not_inv_not_double);
+        
+        // Only verify general case formula if we're in the general case
+        // We use a conditional constraint: if general_case == 1, then verify formula
+        self.verify_general_add_formula(ctx, p, q, result, general_case);
+    }
+    
+    /// Verify the general EC addition formula: P + Q = R.
+    ///
+    /// Formula:
+    /// - slope = (y2 - y1) / (x2 - x1)
+    /// - x3 = slope^2 - x1 - x2
+    /// - y3 = slope * (x1 - x3) - y1
+    ///
+    /// This verification is conditional: it only applies when is_general_case = 1.
+    fn verify_general_add_formula(
+        &self,
+        ctx: &mut Context<Fr>,
+        p: &ECPoint<Fr>,
+        q: &ECPoint<Fr>,
+        result: &ECPoint<Fr>,
+        is_general_case: AssignedValue<Fr>,
+    ) {
+        let gate = self.ff_chip.range.gate();
+        let one = ctx.load_constant(Fr::one());
+        
+        // Compute slope = (q.y - p.y) / (q.x - p.x)
+        let dy = self.ff_chip.sub(ctx, &q.y, &p.y);
+        let dx = self.ff_chip.sub(ctx, &q.x, &p.x);
+        let dx_inv = self.ff_chip.inv(ctx, &dx);
+        let slope = self.ff_chip.mul(ctx, &dy, &dx_inv);
+        
+        // Compute expected x3 = slope^2 - p.x - q.x
+        let slope2 = self.ff_chip.mul(ctx, &slope, &slope);
+        let x3_expected = self.ff_chip.sub(ctx, &slope2, &p.x);
+        let x3_expected = self.ff_chip.sub(ctx, &x3_expected, &q.x);
+        
+        // Compute expected y3 = slope * (p.x - x3) - p.y
+        let dx1 = self.ff_chip.sub(ctx, &p.x, &x3_expected);
+        let y3_expected = self.ff_chip.mul(ctx, &slope, &dx1);
+        let y3_expected = self.ff_chip.sub(ctx, &y3_expected, &p.y);
+        
+        // Verify: if is_general_case == 1, then result.x = x3_expected and result.y = y3_expected
+        // We use conditional selection: if is_general_case, check equality; otherwise skip
+        
+        // Check if result.x equals x3_expected
+        let x_eq = self.ff_chip.is_equal(ctx, &result.x, &x3_expected);
+        let y_eq = self.ff_chip.is_equal(ctx, &result.y, &y3_expected);
+        
+        // If is_general_case == 0, we don't care about the equality (set to 1)
+        // If is_general_case == 1, we require x_eq == 1 and y_eq == 1
+        // Constraint: is_general_case * (1 - x_eq) = 0  =>  if is_general_case, then x_eq must be 1
+        let x_not_eq = gate.sub(ctx, one, x_eq);
+        let x_constraint = gate.mul(ctx, is_general_case, x_not_eq);
+        gate.assert_is_const(ctx, &x_constraint, &Fr::zero());
+        
+        let y_not_eq = gate.sub(ctx, one, y_eq);
+        let y_constraint = gate.mul(ctx, is_general_case, y_not_eq);
+        gate.assert_is_const(ctx, &y_constraint, &Fr::zero());
+        
+        // Also verify result is not infinity in general case
+        // Constraint: is_general_case * result.is_infinity = 0
+        let inf_constraint = gate.mul(ctx, is_general_case, result.is_infinity);
+        gate.assert_is_const(ctx, &inf_constraint, &Fr::zero());
     }
 
     /// Check if a point is on the curve: y² = x³ + 5.

@@ -6,7 +6,7 @@ import { ApiError, ZkpfClient } from '../api/zkpf';
 import type { AttestResponse, PolicyCategory, PolicyDefinition, ProofBundle, VerifyResponse } from '../types/zkpf';
 import { publicInputsToBytes } from '../utils/bytes';
 import { parseProofBundle } from '../utils/parse';
-import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
+import { formatPolicyThreshold, getCurrencyMeta, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import { BundleSummary } from './BundleSummary';
 import type { AssetRail } from '../types/ui';
 
@@ -28,6 +28,7 @@ interface Props {
   client: ZkpfClient;
   connectionState: ConnectionState;
   prefillBundle?: string | null;
+  prefillCustomPolicy?: PolicyDefinition | null;
   onPrefillConsumed?: () => void;
   onVerificationOutcome?: (outcome: 'accepted' | 'rejected' | 'error' | 'pending' | 'reset') => void;
 }
@@ -117,6 +118,7 @@ export function ProofWorkbench({
   client,
   connectionState,
   prefillBundle,
+  prefillCustomPolicy,
   onPrefillConsumed,
   onVerificationOutcome,
 }: Props) {
@@ -137,6 +139,7 @@ export function ProofWorkbench({
   const [attestLoading, setAttestLoading] = useState(false);
   const [attestError, setAttestError] = useState<string | null>(null);
   const [attestResult, setAttestResult] = useState<AttestResponse | null>(null);
+  const [customPolicy, setCustomPolicy] = useState<PolicyDefinition | null>(null);
 
   const policiesQuery = useQuery<PolicyDefinition[]>({
     queryKey: ['policies', client.baseUrl],
@@ -144,7 +147,16 @@ export function ProofWorkbench({
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
-  const policies = useMemo(() => policiesQuery.data ?? [], [policiesQuery.data]);
+  
+  // Merge custom policy with fetched policies (custom policy takes priority)
+  const policies = useMemo<PolicyDefinition[]>(() => {
+    const fetchedPolicies = policiesQuery.data ?? [];
+    if (customPolicy) {
+      // Put custom policy at the start of the list, remove any duplicate
+      return [customPolicy, ...fetchedPolicies.filter(p => p.policy_id !== customPolicy.policy_id)];
+    }
+    return fetchedPolicies;
+  }, [policiesQuery.data, customPolicy]);
   const policiesError = policiesQuery.error
     ? (policiesQuery.error as Error).message ?? 'Unable to load policies'
     : undefined;
@@ -168,7 +180,7 @@ export function ProofWorkbench({
   }, [selectedPolicyId]);
 
   const handleRawInput = useCallback(
-    (value: string) => {
+    (value: string, providedPolicies?: PolicyDefinition[]) => {
       setRawInput(value);
       setVerifyResponse(null);
       setVerifyError(null);
@@ -189,29 +201,90 @@ export function ProofWorkbench({
         if (parsed.rail_id === 'ZCASH_ORCHARD') {
           setAssetRail('orchard');
         }
+        
+        // Auto-create a custom policy from bundle if no matching policy exists
+        // This handles cases where bundles are loaded manually without going through the wallet flow
+        const policiesToCheck = providedPolicies ?? policies;
+        const bundlePolicyId = parsed.public_inputs.policy_id;
+        const matchingPolicy = policiesToCheck.find(p => p.policy_id === bundlePolicyId);
+        
+        if (!matchingPolicy && !customPolicy) {
+          // Create a synthetic custom policy from the bundle's public inputs
+          // This allows verification of bundles loaded manually (e.g., drag & drop)
+          const currencyMeta = getCurrencyMeta(parsed.public_inputs.required_currency_code);
+          const thresholdRaw = parsed.public_inputs.threshold_raw;
+          const divisor = currencyMeta.decimals > 0 ? 10 ** currencyMeta.decimals : 1;
+          const thresholdValue = thresholdRaw / divisor;
+          
+          // Generate a descriptive label based on the bundle's parameters
+          const thresholdLabel = thresholdRaw === 0
+            ? `exactly 0 ${currencyMeta.code}`
+            : `≥ ${thresholdValue.toLocaleString()} ${currencyMeta.code}`;
+          
+          const syntheticPolicy: PolicyDefinition = {
+            policy_id: bundlePolicyId,
+            threshold_raw: thresholdRaw,
+            required_currency_code: parsed.public_inputs.required_currency_code,
+            verifier_scope_id: parsed.public_inputs.verifier_scope_id,
+            // Infer category and rail from currency code and rail_id
+            category: parsed.rail_id === 'ZCASH_ORCHARD' ? 'ZCASH_ORCHARD' 
+              : parsed.public_inputs.required_currency_code === 5915971 ? 'ZASHI'
+              : parsed.public_inputs.required_currency_code === 840 ? 'FIAT'
+              : 'ONCHAIN',
+            rail_id: parsed.rail_id || 'CUSTODIAL_ATTESTATION',
+            label: `Prove ${thresholdLabel} (from bundle)`,
+          };
+          setCustomPolicy(syntheticPolicy);
+          setSelectedPolicyId(bundlePolicyId);
+        }
+        
         setParseError(null);
       } catch (err) {
         setBundle(null);
         setParseError((err as Error).message);
       }
     },
-    [onVerificationOutcome, setAssetRail],
+    [onVerificationOutcome, setAssetRail, policies, customPolicy],
   );
 
   useEffect(() => {
     if (!prefillBundle) return;
-    handleRawInput(prefillBundle);
+    // Pass the custom policy through if provided, so we don't auto-create one
+    if (prefillCustomPolicy) {
+      setCustomPolicy(prefillCustomPolicy);
+      setSelectedPolicyId(prefillCustomPolicy.policy_id);
+    }
+    // Pass current policies so the handler can check for matches
+    handleRawInput(prefillBundle, policies);
     onPrefillConsumed?.();
-  }, [prefillBundle, handleRawInput, onPrefillConsumed]);
+  }, [prefillBundle, prefillCustomPolicy, handleRawInput, onPrefillConsumed, policies]);
 
   const selectedPolicy = selectedPolicyId
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
     : null;
 
   const policyMismatchWarning = useMemo(() => {
-    if (!bundle || !selectedPolicy) {
+    if (!bundle) {
       return null;
     }
+    
+    // If we have a custom policy that matches the bundle, no mismatch
+    if (customPolicy && bundle.public_inputs.policy_id === customPolicy.policy_id) {
+      // Verify the custom policy actually matches
+      const publicInputs = bundle.public_inputs;
+      if (
+        publicInputs.threshold_raw === customPolicy.threshold_raw &&
+        publicInputs.required_currency_code === customPolicy.required_currency_code &&
+        publicInputs.verifier_scope_id === customPolicy.verifier_scope_id
+      ) {
+        return null;
+      }
+    }
+    
+    if (!selectedPolicy) {
+      return null;
+    }
+    
     const publicInputs = bundle.public_inputs;
     const problems: string[] = [];
 
@@ -243,7 +316,7 @@ export function ProofWorkbench({
     return `Bundle public inputs do not match the currently configured policy: ${problems.join(
       '; ',
     )}. This usually means the proof was generated against an earlier policy configuration.`;
-  }, [bundle, selectedPolicy]);
+  }, [bundle, selectedPolicy, customPolicy]);
 
   const policiesForRail = useMemo(() => {
     if (!policies.length) {
@@ -253,12 +326,20 @@ export function ProofWorkbench({
     return policies.filter((policy) => normalizePolicyCategory(policy) === targetCategory);
   }, [assetRail, policies]);
 
-  const displayedPolicies = useMemo(
-    () => (policiesForRail.length ? policiesForRail : policies),
-    [policiesForRail, policies],
-  );
+  // Always include custom policy in displayed policies, even if it doesn't match the rail filter
+  const displayedPolicies = useMemo(() => {
+    const railFiltered = policiesForRail.length ? policiesForRail : policies;
+    // Ensure custom policy is always included at the top if present
+    if (customPolicy && !railFiltered.some(p => p.policy_id === customPolicy.policy_id)) {
+      return [customPolicy, ...railFiltered];
+    }
+    return railFiltered;
+  }, [policiesForRail, policies, customPolicy]);
 
   const showingFallbackPolicies = policies.length > 0 && !policiesForRail.length;
+  
+  // Check if we're in streamlined mode (bundle + custom policy from wallet)
+  const isStreamlinedMode = Boolean(customPolicy && bundle);
 
   useEffect(() => {
     if (bundle) {
@@ -383,7 +464,15 @@ export function ProofWorkbench({
 
   const handleVerify = async () => {
     if (!bundle) return;
-    if (policyMismatchWarning) {
+    
+    // Skip policy mismatch check for custom policies that match the bundle
+    const hasMatchingCustomPolicy = customPolicy && 
+      bundle.public_inputs.policy_id === customPolicy.policy_id &&
+      bundle.public_inputs.threshold_raw === customPolicy.threshold_raw &&
+      bundle.public_inputs.required_currency_code === customPolicy.required_currency_code &&
+      bundle.public_inputs.verifier_scope_id === customPolicy.verifier_scope_id;
+    
+    if (policyMismatchWarning && !hasMatchingCustomPolicy) {
       setVerifyError(
         `${policyMismatchWarning} Regenerate the proof bundle against the current policy configuration, then retry verification.`,
       );
@@ -392,6 +481,8 @@ export function ProofWorkbench({
       onVerificationOutcome?.('error');
       return;
     }
+    
+    // Use the bundle's policy_id for verification (this is what the proof was generated against)
     const policyIdForVerify = bundle.public_inputs.policy_id;
     setIsVerifying(true);
     setVerifyError(null);
@@ -583,6 +674,170 @@ export function ProofWorkbench({
     }
   };
 
+  // Streamlined mode: simplified UI when coming from wallet with custom policy
+  if (isStreamlinedMode && customPolicy) {
+    return (
+      <section className="proof-workbench card streamlined-workbench">
+        <header>
+          <p className="eyebrow">Verify your wallet proof</p>
+          <h2>One-click verification</h2>
+        </header>
+        
+        <div className="streamlined-banner">
+          <div className="streamlined-banner-icon">✨</div>
+          <div className="streamlined-banner-content">
+            <h3>Proof ready for verification</h3>
+            <p>Your proof bundle was generated from your wallet and is ready to verify.</p>
+          </div>
+        </div>
+
+        <div className="streamlined-policy-card">
+          <div className="streamlined-policy-header">
+            <span className="streamlined-policy-badge">Custom Policy</span>
+            <span className="streamlined-policy-id">ID: {customPolicy.policy_id}</span>
+          </div>
+          <dl className="streamlined-policy-details">
+            <div>
+              <dt>Proving</dt>
+              <dd>{policyDisplayName(customPolicy)}</dd>
+            </div>
+            <div>
+              <dt>Threshold</dt>
+              <dd>{formatPolicyThreshold(customPolicy).formatted}</dd>
+            </div>
+            <div>
+              <dt>Rail</dt>
+              <dd>{policyRailLabel(customPolicy)}</dd>
+            </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>{customPolicy.verifier_scope_id}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="streamlined-bundle-info">
+          <div className="streamlined-bundle-row">
+            <span className="streamlined-bundle-label">Circuit Version</span>
+            <span className="streamlined-bundle-value">{bundle?.circuit_version}</span>
+          </div>
+          <div className="streamlined-bundle-row">
+            <span className="streamlined-bundle-label">Rail ID</span>
+            <span className="streamlined-bundle-value mono">{bundle?.rail_id || 'Default'}</span>
+          </div>
+          <div className="streamlined-bundle-row">
+            <span className="streamlined-bundle-label">Epoch</span>
+            <span className="streamlined-bundle-value">{bundle?.public_inputs.current_epoch}</span>
+          </div>
+        </div>
+
+        <div className="streamlined-actions">
+          <button
+            type="button"
+            onClick={handleVerify}
+            disabled={isVerifying || !bundle}
+            className="streamlined-verify-button"
+          >
+            {isVerifying ? (
+              <>
+                <span className="spinner"></span>
+                <span>Verifying proof…</span>
+              </>
+            ) : (
+              <>
+                <span>✓</span>
+                <span>Verify Proof</span>
+              </>
+            )}
+          </button>
+          
+          <button
+            type="button"
+            className="streamlined-secondary-button"
+            onClick={() => {
+              setCustomPolicy(null);
+              const fetchedPolicies = policiesQuery.data ?? [];
+              if (fetchedPolicies.length > 0) {
+                setSelectedPolicyId(fetchedPolicies[0].policy_id);
+              }
+            }}
+          >
+            Switch to advanced mode
+          </button>
+        </div>
+
+        {verifyResponse && (
+          <VerificationBanner
+            response={verifyResponse}
+            endpoint={mode}
+            assetRail={assetRail}
+            railId={bundle?.rail_id}
+          />
+        )}
+        
+        {verifyError && (
+          <div className="error-message">
+            <span className="error-icon">⚠️</span>
+            <span>Verification failed: {verifyError}</span>
+          </div>
+        )}
+
+        {verifyResponse?.valid && (
+          <div className="streamlined-success-actions">
+            <h4>What's next?</h4>
+            <div className="streamlined-next-steps">
+              <div className="streamlined-next-step">
+                <span className="next-step-icon">📥</span>
+                <div>
+                  <strong>Download proof bundle</strong>
+                  <p className="muted small">Save the verified proof for your records</p>
+                </div>
+                <button
+                  type="button"
+                  className="tiny-button"
+                  onClick={() => {
+                    if (!bundle) return;
+                    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `proof-bundle-${Date.now()}.json`;
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    showToast('Bundle downloaded', 'success');
+                  }}
+                >
+                  Download
+                </button>
+              </div>
+              <div className="streamlined-next-step">
+                <span className="next-step-icon">🔗</span>
+                <div>
+                  <strong>On-chain attestation</strong>
+                  <p className="muted small">Publish proof to blockchain for permanent record</p>
+                </div>
+                <button
+                  type="button"
+                  className="tiny-button"
+                  onClick={() => {
+                    setCustomPolicy(null);
+                    const fetchedPolicies = policiesQuery.data ?? [];
+                    if (fetchedPolicies.length > 0) {
+                      setSelectedPolicyId(fetchedPolicies[0].policy_id);
+                    }
+                  }}
+                >
+                  Open advanced
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {bundle && <BundleSummary bundle={bundle} assetRail={assetRail} />}
+      </section>
+    );
+  }
+
   return (
     <section className="proof-workbench card">
       <header>
@@ -594,7 +849,7 @@ export function ProofWorkbench({
         browser before it is sent to the verifier.
       </p>
       <p className="muted small">
-        This page lines up with the <strong>“Verify proof”</strong> and <strong>“Share &amp; record”</strong> steps in
+        This page lines up with the <strong>"Verify proof"</strong> and <strong>"Share &amp; record"</strong> steps in
         the checklist. Follow the flow below from bundle preparation through optional on-chain attestation.
       </p>
       <p className="muted small">
@@ -602,6 +857,37 @@ export function ProofWorkbench({
         ultimately reject them at the cryptographic check, so use real prover output for end-to-end success.
       </p>
       <FlowVisualizer steps={flowSteps} />
+
+      {/* Custom Policy Banner - shown when using a custom policy from wallet (but no bundle yet) */}
+      {customPolicy && !bundle && (
+        <div className="custom-policy-banner">
+          <div className="custom-policy-banner-content">
+            <span className="custom-policy-banner-icon">✨</span>
+            <div className="custom-policy-banner-text">
+              <strong>Custom policy from your wallet</strong>
+              <p>
+                This policy was automatically configured based on your wallet balance.
+                The proof bundle was generated against policy ID <strong>{customPolicy.policy_id}</strong>.
+              </p>
+            </div>
+            <button 
+              type="button" 
+              className="ghost tiny-button"
+              onClick={() => {
+                setCustomPolicy(null);
+                // Reset to first fetched policy
+                const fetchedPolicies = policiesQuery.data ?? [];
+                if (fetchedPolicies.length > 0) {
+                  setSelectedPolicyId(fetchedPolicies[0].policy_id);
+                }
+              }}
+            >
+              Clear custom policy
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="input-grid">
         <label className="field" htmlFor={textareaId}>
           <span>Bundle JSON</span>
@@ -736,11 +1022,12 @@ export function ProofWorkbench({
                     <option value="">No policies available</option>
                   ) : (
                     displayedPolicies.map((policy) => {
+                      const isCustom = customPolicy && policy.policy_id === customPolicy.policy_id;
                       const label = policyDisplayName(policy);
                       const threshold = formatPolicyThreshold(policy).formatted;
                       return (
                         <option key={policy.policy_id} value={policy.policy_id}>
-                          {label} • {threshold} • Scope {policy.verifier_scope_id}
+                          {isCustom ? '✨ ' : ''}{label} • {threshold} • Scope {policy.verifier_scope_id}
                         </option>
                       );
                     })

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { ZKPassport, type ProofResult, type QueryResult } from '@zkpassport/sdk';
 import QRCode from 'react-qr-code';
 import { ZKPassportProgress, type VerificationStage } from './ZKPassportProgress';
@@ -355,6 +356,13 @@ export function ZKPassportPage() {
           )}
         </>
       )}
+
+      {/* Identity Bond Card Button */}
+      <Link to="/bound-identity" className="identity-bond-card">
+        <span className="identity-bond-icon">🔗</span>
+        <span className="identity-bond-title">Identity Bond</span>
+        <span className="identity-bond-desc">Create a bound identity proof</span>
+      </Link>
     </div>
   );
 }

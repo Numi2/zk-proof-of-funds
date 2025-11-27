@@ -10,6 +10,10 @@ const ZKPassportApp = lazy(() =>
   import('./components/ZKPassportApp').then((module) => ({ default: module.ZKPassportApp })),
 );
 
+const BoundIdentityApp = lazy(() =>
+  import('./components/BoundIdentityApp').then((module) => ({ default: module.BoundIdentityApp })),
+);
+
 function App() {
   return (
     <Suspense
@@ -26,6 +30,10 @@ function App() {
         <Route
           path="/zkpassport/*"
           element={<ZKPassportApp />}
+        />
+        <Route
+          path="/bound-identity/*"
+          element={<BoundIdentityApp />}
         />
         <Route
           path="/*"

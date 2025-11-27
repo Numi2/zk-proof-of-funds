@@ -7,7 +7,7 @@ import { VerifierEndpointCard } from './StatusCards';
 import type { ConnectionState } from './ProofWorkbench';
 import { FinanceContext } from './FinanceContext';
 import { UsageGuide } from './UsageGuide';
-import type { ProofBundle } from '../types/zkpf';
+import type { PolicyDefinition, ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
 
 const ProofBuilder = lazy(() =>
@@ -42,6 +42,10 @@ const WalletBuy = lazy(() =>
   import('./wallet/WalletBuy').then((module) => ({ default: module.WalletBuy })),
 );
 
+const URIPaymentPage = lazy(() =>
+  import('./uri-payment/URIPaymentPage').then((module) => ({ default: module.URIPaymentPage })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
@@ -61,6 +65,7 @@ const HERO_HIGHLIGHTS = [
 export function ZKPFApp() {
   const client = useMemo(() => new ZkpfClient(DEFAULT_BASE), []);
   const [prefillBundle, setPrefillBundle] = useState<string | null>(null);
+  const [prefillCustomPolicy, setPrefillCustomPolicy] = useState<PolicyDefinition | null>(null);
   const [hasBuiltBundle, setHasBuiltBundle] = useState(false);
   const [verificationOutcome, setVerificationOutcome] = useState<'idle' | 'accepted' | 'rejected' | 'error'>('idle');
   const navigate = useNavigate();
@@ -91,9 +96,10 @@ export function ZKPFApp() {
         ? 'connected'
         : 'idle';
 
-  const handleBundleReady = (bundle: ProofBundle) => {
+  const handleBundleReady = (bundle: ProofBundle, customPolicy?: PolicyDefinition | null) => {
     setHasBuiltBundle(true);
     setPrefillBundle(JSON.stringify(bundle, null, 2));
+    setPrefillCustomPolicy(customPolicy ?? null);
     navigate('/workbench');
   };
 
@@ -194,6 +200,7 @@ export function ZKPFApp() {
 
   const isWorkbenchRoute = location.pathname === '/workbench';
   const isWalletRoute = location.pathname.startsWith('/wallet');
+  const isBoundIdentityRoute = location.pathname.startsWith('/bound-identity');
 
   return (
     <div className="app-shell">
@@ -208,7 +215,7 @@ export function ZKPFApp() {
         </NavLink>
       </div>
       
-      {!isWalletRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && (
         <header className="hero">
           <div className="header-top">
             <div className="brand">
@@ -262,7 +269,7 @@ export function ZKPFApp() {
         </header>
       )}
 
-      {!isWorkbenchRoute && !isWalletRoute && (
+      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && (
         <ProgressChecklist
           steps={checklistSteps}
           onStepClick={(id) => {
@@ -364,7 +371,11 @@ export function ZKPFApp() {
                   client={client}
                   connectionState={connectionState}
                   prefillBundle={prefillBundle}
-                  onPrefillConsumed={() => setPrefillBundle(null)}
+                  prefillCustomPolicy={prefillCustomPolicy}
+                  onPrefillConsumed={() => {
+                    setPrefillBundle(null);
+                    setPrefillCustomPolicy(null);
+                  }}
                   onVerificationOutcome={(outcome) => {
                     if (outcome === 'accepted') {
                       setVerificationOutcome('accepted');
@@ -429,13 +440,14 @@ export function ZKPFApp() {
           <Route path="buy" element={<WalletBuy />} />
           <Route path="receive" element={<WalletReceive />} />
           <Route path="send" element={<WalletSend />} />
+          <Route path="uri-payment" element={<URIPaymentPage />} />
           <Route path="*" element={<Navigate to="/wallet" replace />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {!isWalletRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && (
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
             <div key={item.title} className="hero-highlight">

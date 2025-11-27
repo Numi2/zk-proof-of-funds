@@ -29,6 +29,10 @@ members = [
     "zkpf-mina-kimchi-wrapper",
     # Mina state relayer
     "zkpf-mina-relayer",
+    # URI-Encapsulated Payments (ZIP 324)
+    "zkpf-uri-payment",
+    # Wallet state machine with ZK proofs
+    "zkpf-wallet-state",
 ]
 
 [patch.crates-io]

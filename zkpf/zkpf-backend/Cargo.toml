@@ -23,6 +23,8 @@ zkpf-circuit = { path = "../zkpf-circuit" }
 halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
 halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
 zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
+zkpf-wallet-state = { path = "../zkpf-wallet-state" }
+rand = "0.8"
 
 [dev-dependencies]
 hyper = { version = "0.14", features = ["full"] }

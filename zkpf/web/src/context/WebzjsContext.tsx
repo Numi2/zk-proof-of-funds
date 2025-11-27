@@ -106,16 +106,38 @@ const getLightwalletdUrl = (): string => {
 // This requires both the API to exist AND cross-origin isolation headers to be set
 const isSharedArrayBufferAvailable = (): boolean => {
   try {
+    // Log diagnostic info for debugging
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    console.info('[SharedArrayBuffer Check]');
+    console.info(`  Browser: ${isSafari ? 'Safari' : 'Other'}`);
+    console.info(`  crossOriginIsolated: ${typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'undefined'}`);
+    console.info(`  isSecureContext: ${window.isSecureContext}`);
+    console.info(`  location: ${window.location.origin}`);
+    
     // Check if SharedArrayBuffer exists
     if (typeof SharedArrayBuffer === 'undefined') {
-      console.warn('SharedArrayBuffer is undefined');
+      console.warn('[SAB] SharedArrayBuffer API is not defined');
+      if (isSafari) {
+        console.warn('  Safari requires server to send COOP/COEP headers.');
+        console.warn('  This works on Vercel but may not work on localhost.');
+      }
       return false;
     }
 
     // Check if we're in a cross-origin isolated context
     // This is required for SharedArrayBuffer to work with WASM atomics
     if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
-      console.warn('Not in a cross-origin isolated context (crossOriginIsolated=false)');
+      console.warn('[SAB] Not cross-origin isolated (crossOriginIsolated=false)');
+      if (isSafari) {
+        console.warn('  Safari does NOT support service worker header injection.');
+        console.warn('  Server must send headers:');
+        console.warn('    Cross-Origin-Opener-Policy: same-origin');
+        console.warn('    Cross-Origin-Embedder-Policy: credentialless');
+        console.warn('  For localhost: Use Chrome/Firefox, or run "npm run preview" after building.');
+      } else {
+        console.warn('  The COI service worker should inject headers.');
+        console.warn('  Try hard refresh (Ctrl+Shift+R).');
+      }
       return false;
     }
 
@@ -127,13 +149,14 @@ const isSharedArrayBufferAvailable = (): boolean => {
     Atomics.store(view, 0, 42);
     const result = Atomics.load(view, 0);
     if (result !== 42) {
-      console.warn('Atomics operations failed');
+      console.warn('[SAB] Atomics operations failed');
       return false;
     }
 
+    console.info('[SAB] SharedArrayBuffer and Atomics available!');
     return true;
   } catch (err) {
-    console.warn('SharedArrayBuffer check failed:', err);
+    console.warn('[SAB] Check failed:', err);
     return false;
   }
 };
@@ -150,13 +173,33 @@ export function WebZjsProvider({ children }: ProviderProps) {
 
       // Check for SharedArrayBuffer support - required by the WASM library
       // which uses wasm-bindgen-rayon for Rust's Mutex/RwLock primitives
-      const hasSharedArrayBuffer = isSharedArrayBufferAvailable();
+      let hasSharedArrayBuffer = isSharedArrayBufferAvailable();
+      
+      // If not available but we have a service worker, wait a moment for it to activate
+      // The COI service worker may need time to install and reload the page
+      if (!hasSharedArrayBuffer && 'serviceWorker' in navigator && window.isSecureContext) {
+        console.info('⏳ SharedArrayBuffer not available yet, checking for service worker...');
+        
+        // Check if service worker is registered but page hasn't reloaded yet
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration?.active && !navigator.serviceWorker.controller) {
+          console.info('🔄 Service worker active but not controlling, page should reload...');
+          // The service worker script should handle the reload, but give it a moment
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // Re-check after wait
+          hasSharedArrayBuffer = isSharedArrayBufferAvailable();
+        } else if (!registration) {
+          // Give the service worker a moment to register
+          await new Promise(resolve => setTimeout(resolve, 300));
+          hasSharedArrayBuffer = isSharedArrayBufferAvailable();
+        }
+      }
+      
       if (!hasSharedArrayBuffer) {
         console.warn(
-          'SharedArrayBuffer not available. WebWallet requires cross-origin isolation.\n' +
-          'Ensure your server sends these headers:\n' +
-          '  Cross-Origin-Opener-Policy: same-origin\n' +
-          '  Cross-Origin-Embedder-Policy: credentialless\n' +
+          '❌ SharedArrayBuffer not available. WebWallet requires cross-origin isolation.\n' +
+          'The COI service worker should enable this automatically.\n' +
+          'Try a hard refresh (Ctrl+Shift+R) or use Chrome/Firefox.\n' +
           'WebWallet features will be disabled.'
         );
         dispatch({ type: 'set-loading', payload: false });
@@ -167,14 +210,15 @@ export function WebZjsProvider({ children }: ProviderProps) {
       await initWebzjsWallet();
       await initWebzjsKeys();
 
-      // Initialize thread pool for parallel sync (optional but recommended)
-      try {
+      // Initialize thread pool in background (non-blocking)
+      // Thread pool is optional - sync will be slower but still work without it
+      // In dev mode, skip entirely due to Vite worker issues
+      if (!import.meta.env.DEV) {
         const concurrency = navigator.hardwareConcurrency || 4;
-        await initThreadPool(concurrency);
-        console.info(`WebWallet thread pool initialized with ${concurrency} workers`);
-      } catch (err) {
-        // Thread pool is optional - sync will be slower but still work
-        console.warn('Thread pool unavailable, using single-threaded mode:', err);
+        // Fire and forget - don't block wallet initialization
+        initThreadPool(concurrency)
+          .then(() => console.info(`Thread pool ready (${concurrency} workers)`))
+          .catch(() => console.info('Using single-threaded sync'));
       }
 
       const lightwalletdUrl = getLightwalletdUrl();

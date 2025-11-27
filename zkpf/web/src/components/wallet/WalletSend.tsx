@@ -1,5 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useWebZjsContext } from '../../context/WebzjsContext';
+import { usePcdContext } from '../../context/PcdContext';
+import { TachyonStatePanel } from '../TachyonStatePanel';
+import type { TachyonMetadata } from '../../types/pcd';
 
 type SendStep = 'input' | 'confirm' | 'result';
 
@@ -16,13 +19,16 @@ function zecToZats(zec: number): number {
 
 export function WalletSend() {
   const { state } = useWebZjsContext();
+  const { state: pcdState, getTachyonMetadata, verifyPcd } = usePcdContext();
   
   const [step, setStep] = useState<SendStep>('input');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [txResult, setTxResult] = useState<{ success: boolean; txid?: string; error?: string } | null>(null);
+  const [txResult, setTxResult] = useState<{ success: boolean; txid?: string; error?: string; tachyonMetadata?: TachyonMetadata } | null>(null);
+  const [showTachyonPanel, setShowTachyonPanel] = useState(false);
+  const [isPcdValid, setIsPcdValid] = useState<boolean | null>(null);
 
   const activeBalanceReport = useMemo(() => {
     if (!state.summary || state.activeAccount == null) return null;
@@ -63,11 +69,19 @@ export function WalletSend() {
     );
   }, [isValidAddress, amountZats, shieldedBalance, isSending]);
 
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
     if (canSend) {
+      // Verify PCD state before proceeding if initialized
+      if (pcdState.isInitialized) {
+        const isValid = await verifyPcd();
+        setIsPcdValid(isValid);
+        if (!isValid) {
+          console.warn('PCD verification failed, proceeding with warning');
+        }
+      }
       setStep('confirm');
     }
-  }, [canSend]);
+  }, [canSend, pcdState.isInitialized, verifyPcd]);
 
   const handleBack = useCallback(() => {
     setStep('input');
@@ -76,6 +90,9 @@ export function WalletSend() {
   const handleSend = useCallback(async () => {
     setIsSending(true);
     try {
+      // Get Tachyon metadata for the transaction
+      const tachyonMetadata = getTachyonMetadata();
+      
       // Note: This is a placeholder. The actual send implementation would use
       // the WebZjs wallet APIs. For now, we'll show a message that this feature
       // requires additional setup.
@@ -84,6 +101,7 @@ export function WalletSend() {
       setTxResult({
         success: false,
         error: 'Send functionality requires full wallet integration. Use the standalone webwallet for transactions.',
+        tachyonMetadata: tachyonMetadata ?? undefined,
       });
       setStep('result');
     } catch (err) {
@@ -95,7 +113,7 @@ export function WalletSend() {
     } finally {
       setIsSending(false);
     }
-  }, []);
+  }, [getTachyonMetadata]);
 
   const handleReset = useCallback(() => {
     setStep('input');
@@ -246,6 +264,39 @@ export function WalletSend() {
               </div>
             </div>
 
+            {/* Tachyon (PCD) Status */}
+            {pcdState.isInitialized && (
+              <div className="wallet-tachyon-status" style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                backgroundColor: isPcdValid === true ? 'rgba(34, 197, 94, 0.1)' : isPcdValid === false ? 'rgba(251, 191, 36, 0.1)' : 'rgba(96, 165, 250, 0.1)',
+                borderRadius: '0.5rem',
+                border: `1px solid ${isPcdValid === true ? 'rgba(34, 197, 94, 0.3)' : isPcdValid === false ? 'rgba(251, 191, 36, 0.3)' : 'rgba(96, 165, 250, 0.3)'}`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                    {isPcdValid === true ? '✓ Tachyon Verified' : isPcdValid === false ? '⚠️ Tachyon Warning' : '⏳ Tachyon State'}
+                  </span>
+                  <button 
+                    type="button"
+                    className="tiny-button ghost"
+                    onClick={() => setShowTachyonPanel(!showTachyonPanel)}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    {showTachyonPanel ? 'Hide' : 'Details'}
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                  Height: {pcdState.pcdState?.wallet_state.height ?? 'N/A'} | Chain: {pcdState.pcdState?.chain_length ?? 0}
+                </div>
+                {showTachyonPanel && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <TachyonStatePanel compact />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="wallet-send-actions">
               <button className="ghost" onClick={handleBack}>
                 Back
@@ -278,6 +329,36 @@ export function WalletSend() {
                 <div className="wallet-result-icon error">✕</div>
                 <h4>Transaction Failed</h4>
                 <p className="error">{txResult.error}</p>
+              </div>
+            )}
+
+            {/* Tachyon Metadata for the transaction */}
+            {txResult.tachyonMetadata && (
+              <div className="wallet-tachyon-metadata" style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                borderRadius: '0.5rem',
+                border: '1px solid rgba(96, 165, 250, 0.3)',
+              }}>
+                <h5 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                  Tachyon Metadata (for verification)
+                </h5>
+                <div style={{ fontSize: '0.75rem', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                  <div><strong>S:</strong> {txResult.tachyonMetadata.s_current.slice(0, 20)}...{txResult.tachyonMetadata.s_current.slice(-10)}</div>
+                  <div><strong>Height:</strong> {txResult.tachyonMetadata.height}</div>
+                  <div><strong>Chain:</strong> {txResult.tachyonMetadata.chain_length}</div>
+                </div>
+                <button
+                  type="button"
+                  className="tiny-button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(txResult.tachyonMetadata, null, 2));
+                  }}
+                  style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}
+                >
+                  📋 Copy Tachyon Metadata
+                </button>
               </div>
             )}
 

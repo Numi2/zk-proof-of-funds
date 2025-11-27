@@ -14,6 +14,14 @@ import type {
   ProviderSessionSnapshot,
   ZashiSessionStartResponse,
 } from '../types/zkpf';
+import type {
+  PcdInitRequest,
+  PcdInitResponse,
+  PcdUpdateRequest,
+  PcdUpdateResponse,
+  PcdVerifyRequest,
+  PcdVerifyResponse,
+} from '../types/pcd';
 import { toUint8Array } from '../utils/bytes';
 
 const LOCAL_FALLBACK_BASE = 'http://localhost:3000';
@@ -187,6 +195,44 @@ export class ZkpfClient {
 
   async getZashiSession(sessionId: string): Promise<ProviderSessionSnapshot> {
     return this.request<ProviderSessionSnapshot>(`/zkpf/zashi/session/${encodeURIComponent(sessionId)}`);
+  }
+
+  // ============================================================
+  // PCD (Proof-Carrying Data) Methods
+  // ============================================================
+
+  /**
+   * Initialize a new PCD chain from genesis.
+   * This creates the first proof in the chain.
+   */
+  async pcdInit(initialNotes: PcdInitRequest['initial_notes'] = []): Promise<PcdInitResponse> {
+    return this.request<PcdInitResponse>('/zkpf/pcd/init', {
+      method: 'POST',
+      body: JSON.stringify({ initial_notes: initialNotes }),
+    });
+  }
+
+  /**
+   * Update PCD state with new block data.
+   * This implements the two-step recursive approach:
+   * 1. Verifies the previous proof off-chain
+   * 2. Generates a new proof referencing S_prev as trusted
+   */
+  async pcdUpdate(payload: PcdUpdateRequest): Promise<PcdUpdateResponse> {
+    return this.request<PcdUpdateResponse>('/zkpf/pcd/update', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * Verify a PCD state and its proof chain.
+   */
+  async pcdVerify(pcdState: PcdVerifyRequest['pcd_state']): Promise<PcdVerifyResponse> {
+    return this.request<PcdVerifyResponse>('/zkpf/pcd/verify', {
+      method: 'POST',
+      body: JSON.stringify({ pcd_state: pcdState }),
+    });
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {

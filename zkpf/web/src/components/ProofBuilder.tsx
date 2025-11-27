@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { blake3 } from '@noble/hashes/blake3.js';
+import * as secp256k1 from '@noble/secp256k1';
 import type { CircuitInput, ProofBundle, PolicyDefinition } from '../types/zkpf';
 import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import type { ConnectionState } from './ProofWorkbench';
@@ -11,7 +13,9 @@ import { WalletConnector } from './WalletConnector';
 import { BtcWalletConnector } from './BtcWalletConnector';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
 import { ZashiSessionConnector } from './ZashiSessionConnector';
-import { prepareProverArtifacts, generateBundle } from '../wasm/prover';
+import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
+import { useWebZjsContext } from '../context/WebzjsContext';
+import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
 
 interface WalletNavigationState {
   customPolicy?: PolicyDefinition;
@@ -22,7 +26,7 @@ interface WalletNavigationState {
 interface Props {
   client: ZkpfClient;
   connectionState: ConnectionState;
-  onBundleReady?: (bundle: ProofBundle) => void;
+  onBundleReady?: (bundle: ProofBundle, customPolicy?: PolicyDefinition | null) => void;
 }
 
 type WasmStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -60,6 +64,7 @@ const PROOF_PROGRESS_MESSAGES: Record<ProofProgress, string> = {
 export function ProofBuilder({ client, connectionState, onBundleReady }: Props) {
   const location = useLocation();
   const navigationState = location.state as WalletNavigationState | null;
+  const { state: walletState } = useWebZjsContext();
   
   const [rawInput, setRawInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -71,11 +76,38 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
   const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('zcash');
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
+  const [isBuildingAttestation, setIsBuildingAttestation] = useState(false);
+  const [showCancelPending, setShowCancelPending] = useState(false);
+  const cancelRequestedRef = useRef(false);
   
   // Track if we're using a custom policy from the wallet
   const [customPolicy, setCustomPolicy] = useState<PolicyDefinition | null>(
     navigationState?.customPolicy ?? null
   );
+  
+  // Check if we came from wallet with custom policy - this enables streamlined mode
+  const isCustomPolicyFromWallet = Boolean(customPolicy && navigationState?.fromWallet);
+  
+  // Get wallet balance and snapshot height from context when available
+  const activeAccountReport = useMemo(() => {
+    if (!walletState.summary || walletState.activeAccount == null) {
+      return undefined;
+    }
+    return walletState.summary.account_balances.find(
+      ([accountId]) => accountId === walletState.activeAccount,
+    );
+  }, [walletState.summary, walletState.activeAccount]);
+
+  const derivedShieldedBalance = useMemo(() => {
+    if (!activeAccountReport) return null;
+    const balance = activeAccountReport[1];
+    return balance.sapling_balance + balance.orchard_balance;
+  }, [activeAccountReport]);
+
+  const derivedSnapshotHeight = useMemo(() => {
+    if (!walletState.summary) return null;
+    return walletState.summary.fully_scanned_height ?? walletState.summary.chain_tip_height;
+  }, [walletState.summary]);
 
   const paramsQuery = useQuery({
     queryKey: ['params', client.baseUrl],
@@ -263,6 +295,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     async (normalizedJson: string, options?: { autoSendToVerifier?: boolean }) => {
       setIsGenerating(true);
       setProofProgress('preparing');
+      cancelRequestedRef.current = false;
+      setShowCancelPending(false);
       setError(null);
       setBundle(null);
       
@@ -272,12 +306,24 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         
         await ensureArtifacts();
         
+        // Check if cancelled during initialization
+        if (cancelRequestedRef.current) {
+          showToast('Proof generation cancelled', 'error');
+          return;
+        }
+        
         // Update progress and yield before proof generation
         setProofProgress('generating');
         await yieldToMain();
         
         // The actual proof generation - this is the CPU-intensive part
         const proofBundle = await generateBundle(normalizedJson);
+        
+        // Check if cancelled during generation (checked after blocking call completes)
+        if (cancelRequestedRef.current) {
+          showToast('Proof generation cancelled', 'error');
+          return;
+        }
         
         // Finalize
         setProofProgress('finalizing');
@@ -288,20 +334,24 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         showToast('Proof bundle generated locally', 'success');
 
         if (options?.autoSendToVerifier && onBundleReady) {
-          onBundleReady(proofBundle);
+          onBundleReady(proofBundle, customPolicy);
           showToast('Proof sent to verification console', 'success');
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'unknown error';
-        setError(message);
-        setWasmError(message);
-        setWasmStatus('error');
+        if (!cancelRequestedRef.current) {
+          const message = err instanceof Error ? err.message : 'unknown error';
+          setError(message);
+          setWasmError(message);
+          setWasmStatus('error');
+        }
       } finally {
         setIsGenerating(false);
         setProofProgress('idle');
+        cancelRequestedRef.current = false;
+        setShowCancelPending(false);
       }
     },
-    [ensureArtifacts, onBundleReady],
+    [ensureArtifacts, onBundleReady, customPolicy],
   );
 
   const handleGenerate = useCallback(async () => {
@@ -342,12 +392,143 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     [applySelectedPolicy, generateFromNormalizedJson],
   );
 
+  // Build attestation directly from wallet context (for streamlined custom policy flow)
+  const buildAttestationFromWallet = useCallback(async () => {
+    if (!selectedPolicy) {
+      setError('Select a verifier policy before building a Zcash attestation.');
+      return;
+    }
+
+    const effectiveBalance = derivedShieldedBalance ?? navigationState?.walletBalance ?? null;
+    const effectiveSnapshotHeight = derivedSnapshotHeight ?? null;
+
+    if (effectiveBalance === null || effectiveSnapshotHeight === null) {
+      setError('Wallet balance or snapshot height not available. Please sync your wallet first.');
+      return;
+    }
+
+    // Try to get UFVK from localStorage
+    const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+    let ufvk = '';
+    try {
+      ufvk = localStorage.getItem(UFVK_STORAGE_KEY) || '';
+    } catch {
+      // localStorage might be unavailable
+    }
+
+    if (!ufvk.trim()) {
+      setError('UFVK not found in browser storage. Please go to the Wallet page and re-create your wallet from your seed phrase, or use the "Use standard policy instead" button to access the full wallet connector.');
+      return;
+    }
+
+    setIsBuildingAttestation(true);
+    setError(null);
+
+    try {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const issuedAtEpoch = nowEpoch;
+      const validHours = 24;
+      const validUntilEpoch = issuedAtEpoch + validHours * 3600;
+      const attestationId = Math.floor(Math.random() * 1_000_000);
+
+      const accountSeed = new TextEncoder().encode(`zcash:main:${ufvk.trim()}`);
+      const blakeDigest = blake3(accountSeed);
+      const accountField = normalizeField(bytesToBigIntBE(blakeDigest));
+      const accountBytes = bigIntToLittleEndianBytes(accountField);
+      const accountHex = bytesToHex(accountBytes);
+
+      const scopeBigInt = BigInt(selectedPolicy.verifier_scope_id);
+      const policyBigInt = BigInt(selectedPolicy.policy_id);
+      const epochBigInt = BigInt(nowEpoch);
+      const custodianId = selectedPolicy.required_custodian_id ?? 0;
+
+      const circuitInput: CircuitInput = {
+        attestation: {
+          balance_raw: Math.floor(effectiveBalance),
+          currency_code_int: selectedPolicy.required_currency_code,
+          custodian_id: custodianId,
+          attestation_id: attestationId,
+          issued_at: issuedAtEpoch,
+          valid_until: validUntilEpoch,
+          account_id_hash: accountHex,
+          custodian_pubkey: { x: new Array<number>(32).fill(0), y: new Array<number>(32).fill(0) },
+          signature: {
+            r: new Array<number>(32).fill(0),
+            s: new Array<number>(32).fill(0),
+          },
+          message_hash: new Array<number>(32).fill(0),
+        },
+        public: {
+          threshold_raw: selectedPolicy.threshold_raw,
+          required_currency_code: selectedPolicy.required_currency_code,
+          required_custodian_id: custodianId,
+          current_epoch: nowEpoch,
+          verifier_scope_id: selectedPolicy.verifier_scope_id,
+          policy_id: selectedPolicy.policy_id,
+          nullifier: ''.padEnd(64, '0'),
+          custodian_pubkey_hash: ''.padEnd(64, '0'),
+        },
+      };
+
+      const normalizedJson = JSON.stringify(circuitInput);
+
+      // Compute message hash
+      const messageHashBytes = await wasmComputeAttestationMessageHash(normalizedJson);
+      circuitInput.attestation.message_hash = numberArrayFromBytes(messageHashBytes);
+
+      // Generate synthetic signing key (demo mode for non-custodial)
+      const demoPrivKey = secp256k1.utils.randomSecretKey();
+      const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+        prehash: false,
+      });
+      const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
+      const pubkeyX = uncompressed.slice(1, 33);
+      const pubkeyY = uncompressed.slice(33);
+      const rBytes = signature.slice(0, 32);
+      const sBytes = signature.slice(32, 64);
+
+      circuitInput.attestation.custodian_pubkey = {
+        x: numberArrayFromBytes(pubkeyX),
+        y: numberArrayFromBytes(pubkeyY),
+      };
+      circuitInput.attestation.signature = {
+        r: numberArrayFromBytes(rBytes),
+        s: numberArrayFromBytes(sBytes),
+      };
+
+      // Compute pubkey hash
+      const pubkeyHashBytes = await wasmComputeCustodianPubkeyHash(pubkeyX, pubkeyY);
+      circuitInput.public.custodian_pubkey_hash = bytesToHex(pubkeyHashBytes);
+
+      // Compute nullifier
+      const nullifierBytes = await wasmComputeNullifier(
+        accountBytes,
+        scopeBigInt,
+        policyBigInt,
+        epochBigInt,
+      );
+      circuitInput.public.nullifier = bytesToHex(nullifierBytes);
+
+      const attestationJson = JSON.stringify(circuitInput, null, 2);
+      setRawInput(attestationJson);
+      setError(null);
+      showToast('Zcash attestation JSON generated successfully!', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to build attestation';
+      console.error('Failed to build attestation from wallet:', err);
+      setError(message);
+      showToast(message, 'error');
+    } finally {
+      setIsBuildingAttestation(false);
+    }
+  }, [selectedPolicy, derivedShieldedBalance, derivedSnapshotHeight, navigationState?.walletBalance]);
+
   const handlePrefillWorkbench = useCallback(() => {
     if (bundle && onBundleReady) {
-      onBundleReady(bundle);
+      onBundleReady(bundle, customPolicy);
       showToast('Proof sent to verification console', 'success');
     }
-  }, [bundle, onBundleReady]);
+  }, [bundle, onBundleReady, customPolicy]);
 
   const handleDownloadBundle = useCallback(() => {
     if (!bundle) return;
@@ -380,11 +561,17 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       setError(null);
       setWasmError(null);
       if (onBundleReady) {
-        onBundleReady(remoteBundle);
+        onBundleReady(remoteBundle, customPolicy);
       }
     },
-    [onBundleReady],
+    [onBundleReady, customPolicy],
   );
+
+  const handleCancelGeneration = useCallback(() => {
+    cancelRequestedRef.current = true;
+    setShowCancelPending(true);
+    showToast('Cancellation requested — will take effect after current step completes', 'error');
+  }, []);
 
   const wasmStatusClass =
     wasmStatus === 'ready'
@@ -594,155 +781,229 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         </div>
       )}
 
-      {/* STEP 2: Wallet / Data Source */}
-      <div className="builder-data-source-panel">
-        <header className="data-source-header">
-          <div className="policy-step-badge">Step 2</div>
-          <div>
-            <h3>Connect your data source</h3>
-            <p className="muted small">
-              Choose how to provide your balance data. Connect a wallet for automatic attestation, or paste JSON from your custody system.
-            </p>
-          </div>
-        </header>
-
-        <div className="wallet-mode-toggle">
-          <p className="muted small">
-            <strong>Select data source type</strong>
-          </p>
-          <div className="wallet-mode-options">
-            <label>
-              <input
-                type="radio"
-                name="wallet-mode"
-                value="zcash"
-                checked={walletMode === 'zcash'}
-                onChange={() => setWalletMode('zcash')}
-              />
-              <span>Zcash wallet (UFVK + EVM signer)</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="wallet-mode"
-                value="zashi"
-                checked={walletMode === 'zashi'}
-                onChange={() => setWalletMode('zashi')}
-              />
-              <span>Zashi provider session (custodial)</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="wallet-mode"
-                value="evm"
-                checked={walletMode === 'evm'}
-                onChange={() => setWalletMode('evm')}
-              />
-              <span>Ethereum / EVM wallet</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="wallet-mode"
-                value="btc"
-                checked={walletMode === 'btc'}
-                onChange={() => setWalletMode('btc')}
-              />
-              <span>Bitcoin wallet (manual)</span>
-            </label>
-          </div>
-        </div>
-
-        {walletMode === 'evm' && (
-          <WalletConnector
-            onAttestationReady={handleWalletAttestationReady}
-            onShowToast={showToast}
-            policy={selectedPolicy ?? undefined}
-          />
-        )}
-        {walletMode === 'zashi' && (
-          <ZashiSessionConnector
-            client={client}
-            policy={activeZashiPolicy}
-            onBundleReady={handleZashiBundleReady}
-            onShowToast={showToast}
-          />
-        )}
-        {walletMode === 'btc' && (
-          <BtcWalletConnector
-            onAttestationReady={handleWalletAttestationReady}
-            onShowToast={showToast}
-            policy={selectedPolicy ?? undefined}
-          />
-        )}
-        {walletMode === 'zcash' && (
-          <ZcashWalletConnector
-            onAttestationReady={handleWalletAttestationReady}
-            onShowToast={showToast}
-            policy={selectedPolicy ?? undefined}
-          />
-        )}
-      </div>
-
-      {/* STEP 3: Manual JSON Input (Alternative) */}
-      <div className="builder-manual-panel">
-        <header className="manual-panel-header">
-          <div className="policy-step-badge policy-step-badge-alt">Alternative</div>
-          <div>
-            <h3>Or paste attestation JSON directly</h3>
-            <p className="muted small">
-              If you have attestation JSON from your custody or treasury system, paste it here instead of connecting a wallet.
-            </p>
-          </div>
-        </header>
-
-        <div className="builder-grid">
-          <label className="field">
-            <span>Attestation JSON</span>
-            <textarea
-              value={rawInput}
-              onChange={(event) => {
-                setRawInput(event.target.value);
-                setError(null);
-              }}
-              placeholder='{"attestation": {...}, "public": {...}}'
-              spellCheck={false}
-            />
-          </label>
-          <aside className="builder-sidepanel">
-            <p>
-              This payload matches the <code>ZkpfCircuitInput</code> shape: balances and custody details under{' '}
-              <code>attestation</code> and policy fields under <code>public</code>.
-            </p>
-            <ul>
-              <li>Witness data stays in your browser; the proving key is never uploaded.</li>
-              <li>The selected policy above will override policy fields in the JSON.</li>
-              <li>Make sure the nullifier and custodian hash are normalized to 32-byte values.</li>
-            </ul>
-            <div className="builder-sidepanel-actions">
-              <button type="button" className="tiny-button" onClick={handleLoadSample}>
-                Load sample attestation
-              </button>
-              <button type="button" className="ghost tiny-button" onClick={handleClear}>
-                Clear input
-              </button>
+      {/* Streamlined Action Panel - shown when coming from wallet with custom policy */}
+      {isCustomPolicyFromWallet && (
+        <div className="builder-streamlined-panel">
+          <header className="streamlined-panel-header">
+            <div className="policy-step-badge policy-step-badge-success">Step 2</div>
+            <div>
+              <h3>Generate your proof</h3>
+              <p className="muted small">
+                Your wallet is connected. Generate the attestation JSON from your wallet data, then create the cryptographic proof.
+              </p>
             </div>
-          </aside>
-        </div>
-      </div>
+          </header>
 
-      {/* Generate Button */}
-      <div className="builder-actions">
-        <button type="button" onClick={handleGenerate} disabled={disabled}>
-          {isGenerating ? 'Generating proof…' : 'Generate proof bundle'}
-        </button>
-        {!selectedPolicy && (
-          <p className="muted small builder-action-hint">
-            ↑ Select a policy in Step 1 before generating
-          </p>
-        )}
-      </div>
+          <div className="streamlined-wallet-info">
+            <div className="streamlined-info-row">
+              <span className="streamlined-info-label">Shielded Balance</span>
+              <span className="streamlined-info-value">
+                {((derivedShieldedBalance ?? navigationState?.walletBalance ?? 0) / 100_000_000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} ZEC
+              </span>
+            </div>
+            {derivedSnapshotHeight && (
+              <div className="streamlined-info-row">
+                <span className="streamlined-info-label">Snapshot Height</span>
+                <span className="streamlined-info-value mono">{derivedSnapshotHeight.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="streamlined-actions">
+            <button 
+              type="button" 
+              onClick={buildAttestationFromWallet}
+              disabled={isBuildingAttestation || !selectedPolicy}
+              className="streamlined-action-button"
+            >
+              {isBuildingAttestation ? 'Building attestation…' : 'Generate Zcash attestation JSON'}
+            </button>
+            <button 
+              type="button" 
+              onClick={handleGenerate}
+              disabled={disabled}
+              className="streamlined-action-button primary"
+            >
+              {isGenerating ? 'Generating proof…' : 'Generate proof bundle'}
+            </button>
+          </div>
+
+          {rawInput.trim() && (
+            <div className="streamlined-attestation-preview">
+              <header>
+                <span className="preview-badge">✓ Attestation JSON Ready</span>
+              </header>
+              <pre className="attestation-preview-code">{rawInput.slice(0, 500)}{rawInput.length > 500 ? '...' : ''}</pre>
+            </div>
+          )}
+
+          {error && error.includes('UFVK not found') && (
+            <div className="streamlined-fallback-hint">
+              <p className="muted small">
+                💡 <strong>Tip:</strong> Your wallet was restored from a previous session. To use the streamlined flow, 
+                please go back to the <a href="/wallet">Wallet page</a> and re-enter your seed phrase to regenerate your wallet keys. 
+                Alternatively, click "Use standard policy instead" above to access the full wallet connector where you can enter your seed phrase or UFVK directly.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STEP 2: Wallet / Data Source - hidden when coming from wallet with custom policy */}
+      {!isCustomPolicyFromWallet && (
+        <div className="builder-data-source-panel">
+          <header className="data-source-header">
+            <div className="policy-step-badge">Step 2</div>
+            <div>
+              <h3>Connect your data source</h3>
+              <p className="muted small">
+                Choose how to provide your balance data. Connect a wallet for automatic attestation, or paste JSON from your custody system.
+              </p>
+            </div>
+          </header>
+
+          <div className="wallet-mode-toggle">
+            <p className="muted small">
+              <strong>Select data source type</strong>
+            </p>
+            <div className="wallet-mode-options">
+              <label>
+                <input
+                  type="radio"
+                  name="wallet-mode"
+                  value="zcash"
+                  checked={walletMode === 'zcash'}
+                  onChange={() => setWalletMode('zcash')}
+                />
+                <span>Zcash wallet (UFVK + EVM signer)</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="wallet-mode"
+                  value="zashi"
+                  checked={walletMode === 'zashi'}
+                  onChange={() => setWalletMode('zashi')}
+                />
+                <span>Zashi provider session (custodial)</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="wallet-mode"
+                  value="evm"
+                  checked={walletMode === 'evm'}
+                  onChange={() => setWalletMode('evm')}
+                />
+                <span>Ethereum / EVM wallet</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="wallet-mode"
+                  value="btc"
+                  checked={walletMode === 'btc'}
+                  onChange={() => setWalletMode('btc')}
+                />
+                <span>Bitcoin wallet (manual)</span>
+              </label>
+            </div>
+          </div>
+
+          {walletMode === 'evm' && (
+            <WalletConnector
+              onAttestationReady={handleWalletAttestationReady}
+              onShowToast={showToast}
+              policy={selectedPolicy ?? undefined}
+            />
+          )}
+          {walletMode === 'zashi' && (
+            <ZashiSessionConnector
+              client={client}
+              policy={activeZashiPolicy}
+              onBundleReady={handleZashiBundleReady}
+              onShowToast={showToast}
+            />
+          )}
+          {walletMode === 'btc' && (
+            <BtcWalletConnector
+              onAttestationReady={handleWalletAttestationReady}
+              onShowToast={showToast}
+              policy={selectedPolicy ?? undefined}
+            />
+          )}
+          {walletMode === 'zcash' && (
+            <ZcashWalletConnector
+              onAttestationReady={handleWalletAttestationReady}
+              onShowToast={showToast}
+              policy={selectedPolicy ?? undefined}
+            />
+          )}
+        </div>
+      )}
+
+      {/* STEP 3: Manual JSON Input (Alternative) - hidden when coming from wallet with custom policy */}
+      {!isCustomPolicyFromWallet && (
+        <div className="builder-manual-panel">
+          <header className="manual-panel-header">
+            <div className="policy-step-badge policy-step-badge-alt">Alternative</div>
+            <div>
+              <h3>Or paste attestation JSON directly</h3>
+              <p className="muted small">
+                If you have attestation JSON from your custody or treasury system, paste it here instead of connecting a wallet.
+              </p>
+            </div>
+          </header>
+
+          <div className="builder-grid">
+            <label className="field">
+              <span>Attestation JSON</span>
+              <textarea
+                value={rawInput}
+                onChange={(event) => {
+                  setRawInput(event.target.value);
+                  setError(null);
+                }}
+                placeholder='{"attestation": {...}, "public": {...}}'
+                spellCheck={false}
+              />
+            </label>
+            <aside className="builder-sidepanel">
+              <p>
+                This payload matches the <code>ZkpfCircuitInput</code> shape: balances and custody details under{' '}
+                <code>attestation</code> and policy fields under <code>public</code>.
+              </p>
+              <ul>
+                <li>Witness data stays in your browser; the proving key is never uploaded.</li>
+                <li>The selected policy above will override policy fields in the JSON.</li>
+                <li>Make sure the nullifier and custodian hash are normalized to 32-byte values.</li>
+              </ul>
+              <div className="builder-sidepanel-actions">
+                <button type="button" className="tiny-button" onClick={handleLoadSample}>
+                  Load sample attestation
+                </button>
+                <button type="button" className="ghost tiny-button" onClick={handleClear}>
+                  Clear input
+                </button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {/* Generate Button - hidden when in streamlined mode (buttons are in streamlined panel) */}
+      {!isCustomPolicyFromWallet && (
+        <div className="builder-actions">
+          <button type="button" onClick={handleGenerate} disabled={disabled}>
+            {isGenerating ? 'Generating proof…' : 'Generate proof bundle'}
+          </button>
+          {!selectedPolicy && (
+            <p className="muted small builder-action-hint">
+              ↑ Select a policy in Step 1 before generating
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Proof Generation Progress Overlay */}
       {isGenerating && (
@@ -773,6 +1034,14 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
               Please wait — this computation runs entirely in your browser and may take up to 600 seconds.
               The page will become unresponsive while the proof is being generated.
             </p>
+            <button 
+              type="button" 
+              className="proof-cancel-button"
+              onClick={handleCancelGeneration}
+              disabled={showCancelPending}
+            >
+              {showCancelPending ? 'Cancelling…' : 'Cancel Generation'}
+            </button>
           </div>
         </div>
       )}

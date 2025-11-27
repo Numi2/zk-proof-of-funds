@@ -108,6 +108,18 @@
     "category": "ZASHI"
   },
   {
+    "policy_id": 900000,
+    "threshold_raw": 0,
+    "required_currency_code": 5915971,
+    "verifier_scope_id": 314159265,
+    "rail_id": "CUSTODIAL_ATTESTATION",
+    "label": "Zashi = 0 ZEC (empty wallet)",
+    "category": "ZASHI",
+    "options": {
+      "exact_zero": true
+    }
+  },
+  {
     "policy_id": 200001,
     "threshold_raw": 1000000000000000000,
     "required_currency_code": 1027,
@@ -399,6 +411,89 @@
       "allowed_chains": ["base"],
       "aggregate_cross_chain": false,
       "recommended_onramp": "coinbase"
+    }
+  },
+  {
+    "policy_id": 600001,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 5915971,
+    "verifier_scope_id": 1000,
+    "rail_id": "BOUND_IDENTITY",
+    "label": "Identity + Funds Bond (DeFi KYC)",
+    "category": "BOUND_IDENTITY",
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 18
+      },
+      "validity_days": 30,
+      "scope": "bound-identity:defi-kyc"
+    }
+  },
+  {
+    "policy_id": 600002,
+    "threshold_raw": 100000000000,
+    "required_currency_code": 5915971,
+    "verifier_scope_id": 1001,
+    "rail_id": "BOUND_IDENTITY",
+    "label": "Identity + Funds Bond (Accredited Investor)",
+    "category": "BOUND_IDENTITY",
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 21,
+        "nationality_in": ["USA", "CAN", "GBR", "DEU", "FRA", "CHE", "SGP", "JPN", "AUS"]
+      },
+      "validity_days": 90,
+      "scope": "bound-identity:accredited-investor"
+    }
+  },
+  {
+    "policy_id": 600003,
+    "threshold_raw": 10000000000,
+    "required_currency_code": 5915971,
+    "verifier_scope_id": 1002,
+    "rail_id": "BOUND_IDENTITY",
+    "label": "Identity + Funds Bond (Credit Check)",
+    "category": "BOUND_IDENTITY",
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 18,
+        "disclose_nationality": true
+      },
+      "validity_days": 7,
+      "scope": "bound-identity:credit-check"
+    }
+  },
+  {
+    "policy_id": 600004,
+    "threshold_raw": 0,
+    "required_currency_code": 5915971,
+    "verifier_scope_id": 1003,
+    "rail_id": "BOUND_IDENTITY",
+    "label": "Identity + Funds Bond (Escrow Participant)",
+    "category": "BOUND_IDENTITY",
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 18
+      },
+      "validity_days": 14,
+      "scope": "bound-identity:escrow-participant"
+    }
+  },
+  {
+    "policy_id": 600005,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 999001,
+    "verifier_scope_id": 1004,
+    "rail_id": "BOUND_IDENTITY",
+    "label": "Identity + Orchard Bond (Maximum Privacy)",
+    "category": "BOUND_IDENTITY",
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 18
+      },
+      "funds_rail": "ZCASH_ORCHARD",
+      "validity_days": 30,
+      "scope": "bound-identity:general"
     }
   }
 ]

@@ -322,9 +322,11 @@ fn load_proof_in_circuit<'a>(
     proof: &crate::kimchi_core::ParsedKimchiProof,
 ) -> Result<crate::kimchi_core::InCircuitProof<Fr>, KimchiWrapperError> {
     use crate::ec::ECChip;
+    use crate::ff::PastaField;
     use crate::kimchi_core::InCircuitProof;
     
     let ec_chip = ECChip::new(ff_chip);
+    let _field = PastaField::Pallas;
     
     // Load witness commitments
     let witness_commitments: Vec<crate::ec::ECPoint<Fr>> = proof
@@ -336,6 +338,14 @@ fn load_proof_in_circuit<'a>(
     
     // Load permutation commitment
     let permutation_commitment = ec_chip.load_witness(ctx, &proof.commitments.permutation_commitment);
+    
+    // Load quotient commitments
+    let quotient_commitments: Vec<crate::ec::ECPoint<Fr>> = proof
+        .commitments
+        .quotient_commitments
+        .iter()
+        .map(|p| ec_chip.load_witness(ctx, p))
+        .collect();
     
     // Load evaluations at zeta
     let zeta_evals: Vec<crate::ff::FFelt<Fr>> = proof
@@ -355,11 +365,48 @@ fn load_proof_in_circuit<'a>(
         .map(|e| ff_chip.load_witness(ctx, e))
         .collect();
     
+    // Load sigma evaluations for permutation argument
+    let sigma_evals: Vec<crate::ff::FFelt<Fr>> = proof
+        .evaluations
+        .zeta_evals
+        .sigma
+        .iter()
+        .map(|e| ff_chip.load_witness(ctx, e))
+        .collect();
+    
+    // Load permutation polynomial evaluations
+    let z_zeta = ff_chip.load_witness(ctx, &proof.evaluations.zeta_evals.permutation);
+    let z_zeta_omega = ff_chip.load_witness(ctx, &proof.evaluations.zeta_omega_evals.permutation);
+    
+    // Load IPA proof components
+    let ipa_l: Vec<crate::ec::ECPoint<Fr>> = proof
+        .ipa_proof
+        .l_commitments
+        .iter()
+        .map(|p| ec_chip.load_witness(ctx, p))
+        .collect();
+    
+    let ipa_r: Vec<crate::ec::ECPoint<Fr>> = proof
+        .ipa_proof
+        .r_commitments
+        .iter()
+        .map(|p| ec_chip.load_witness(ctx, p))
+        .collect();
+    
+    let ipa_final_eval = ff_chip.load_witness(ctx, &proof.ipa_proof.final_eval);
+    
     Ok(InCircuitProof {
         witness_commitments,
         permutation_commitment,
+        quotient_commitments,
         zeta_evals,
         zeta_omega_evals,
+        sigma_evals,
+        z_zeta,
+        z_zeta_omega,
+        ipa_l,
+        ipa_r,
+        ipa_final_eval,
     })
 }
 

@@ -1,5 +1,6 @@
 {
   "circuit_version": 3,
+  "rail_id": "ZCASH_ORCHARD",
   "proof": [
     12, 34, 56, 78, 90, 123, 45, 67, 89, 101, 202, 154, 37, 218, 64, 118,
     210, 11, 43, 75, 107, 139, 171, 203, 235, 17, 49, 81, 113, 145, 177, 209,
@@ -10,11 +11,11 @@
     183, 197, 212, 226
   ],
   "public_inputs": {
-    "threshold_raw": 2500000,
-    "required_currency_code": 840,
+    "threshold_raw": 1000000000,
+    "required_currency_code": 999001,
     "current_epoch": 1700001234,
-    "verifier_scope_id": 31415,
-    "policy_id": 271828,
+    "verifier_scope_id": 300,
+    "policy_id": 100200,
     "nullifier": [
       1, 2, 3, 4, 5, 6, 7, 8,
       9, 10, 11, 12, 13, 14, 15, 16,
@@ -29,5 +30,3 @@
     ]
   }
 }
-
-

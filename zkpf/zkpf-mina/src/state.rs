@@ -169,10 +169,11 @@ pub struct MerklePathElement {
 
 /// In-memory state store for development/testing.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct StateStore {
-    /// Network identifier.
+    /// Network identifier (reserved for future network-specific logic).
     network: MinaNetwork,
-    /// zkApp address.
+    /// zkApp address (reserved for future on-chain interactions).
     zkapp_address: MinaAddress,
     /// Current state.
     state: ZkAppState,
