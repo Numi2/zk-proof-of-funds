@@ -57,7 +57,8 @@ export default function () {
     // Proxy API requests in development
     proxy: {
       // Proxy zkpf API requests to the Rust backend
-      '/zkpf': {
+      // Use '/zkpf/' (with trailing slash) to avoid proxying /zkpf.png and other static assets
+      '/zkpf/': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

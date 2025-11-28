@@ -17,6 +17,9 @@ webwallet/target/**/*.wasm
 .DS_Store
 Thumbs.db
 
+# Node version files
+.nvmrc
+
 # Node modules
 node_modules/
 npm-debug.log*
