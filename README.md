@@ -10,6 +10,42 @@ A system for generating and verifying zero-knowledge proofs of funds. This allow
 
 ## 🆕 Recent Work
 
+### Tachyon Wallet: Unified Multi-Chain Proof Orchestration
+
+We built **Tachyon Wallet**—a unified wallet coordinator that orchestrates zero-knowledge proofs across five chains, using each only for its comparative advantage. The core principle: **never bridge assets, only proofs and attestations**.
+
+**Chain Responsibilities:**
+
+| Chain | Role | Why This Chain |
+|-------|------|----------------|
+| **Zcash (Orchard)** | Privacy-preserving balance proofs | Gold-standard shielded UTXOs, strongest privacy guarantees |
+| **Mina** | PCD/recursive SNARK aggregation | Constant-size proofs, infinite recursion depth |
+| **Starknet** | Heavy proving, DeFi positions | Cheap STARK proving, native AA, rich DeFi ecosystem |
+| **Axelar** | Cross-chain proof transport | Battle-tested GMP infrastructure |
+| **NEAR** | TEE-backed private AI agent | Confidential compute enclaves for wallet intelligence |
+
+**Architecture:** The wallet coordinates across rails (Zcash, Mina, Starknet) to generate unified proofs. Proofs can be aggregated via Mina recursion, then broadcast via Axelar GMP to target chains. A NEAR TEE agent provides privacy-preserving wallet intelligence without exposing sensitive data.
+
+**Key Features:**
+- Single-rail proofs (privacy-optimized via Zcash)
+- Multi-rail aggregation (balance aggregation across chains via Mina)
+- Cross-chain attestations (Axelar GMP transport)
+- TEE-backed AI agent (NEAR for private wallet intelligence)
+
+See [`docs/tachyon-architecture.md`](zkpf/docs/tachyon-architecture.md) for full architecture details.
+
+### NEAR TEE Agent: Private AI Wallet Intelligence
+
+We integrated a **NEAR TEE-backed private AI agent** that runs wallet intelligence in Trusted Execution Environments. The agent provides:
+
+- **Private portfolio analysis** — Insights without exposing transaction data
+- **Proof strategy recommendations** — Optimal rail selection based on privacy/performance tradeoffs
+- **Natural language interactions** — Intent parsing and structured actions
+- **Privacy filtering** — Ensures AI outputs don't leak sensitive wallet data
+- **Secure key management** — TEE-protected key derivation and signing
+
+All sensitive operations happen inside the TEE enclave. The agent proves it's running in a genuine TEE via attestation, and outputs are filtered to prevent data leakage.
+
 ### MetaMask Snap for Proof-of-Funds
 
 We built a MetaMask Snap that lets anyone prove they have funds without revealing how much or where. The whole flow happens inside MetaMask—no external tools, no command line, no exposing your keys to random websites.
@@ -58,6 +94,47 @@ The webwallet has its own companion snap (`webwallet/snap/`) that holds your Zca
 
 **Credits:**  WebZjs builds on [ChainSafe's fork of librustzcash](https://github.com/ChainSafe/librustzcash), which added WASM compatibility to the official Zcash libraries. Standing on the shoulders of giants.
 
+### Browser Compatibility & WASM Loader
+
+We built a comprehensive browser compatibility system that automatically detects SharedArrayBuffer support and provides graceful fallbacks. The system includes:
+
+**Browser Detection** — Detects Chrome, Firefox, Edge, Safari (desktop and mobile) and their capabilities. Checks for SharedArrayBuffer, cross-origin isolation, and secure context requirements.
+
+**Dual WASM Builds** — The wallet loader automatically selects between:
+- **Threaded build** (pkg-threads): For browsers with SharedArrayBuffer + cross-origin isolation. Uses all CPU cores for faster sync and proving.
+- **Single-threaded build** (pkg-single): For all other browsers. Slower but works everywhere.
+
+**Lite Mode** — When full wallet mode isn't available, users can still:
+- Use the P2P marketplace (post and respond to offers)
+- Verify proof bundles from others
+- View and manage attestations
+- Browse the policy catalog
+- Share offers via links
+
+**Smart Fallbacks** — The system provides clear guidance: Safari users get instructions for proper server headers, mobile users get desktop recommendations, and everyone gets the option to continue in lite mode.
+
+### Mina Recursive Proof Hub Rail
+
+We implemented a **Mina recursive proof hub rail** that enables zkpf to serve as a cross-chain compliance layer. Key insight: *PoF verified once in a privacy-preserving way; many chains can reuse it.*
+
+**How it works:**
+1. Existing zkpf proofs from any rail (Starknet, Orchard, custodial, etc.) are wrapped into Mina-native recursive proofs
+2. The Mina zkApp emits attestations that other chains can query via zkBridges
+3. Original proofs and addresses remain hidden; only the attestation bit `has_PoF(holder, policy) = true` is propagated
+
+Mina's ~22KB light client footprint makes it realistic for institutional verifiers to self-verify proofs cheaply without running full nodes.
+
+### Starknet L2 Rail: DeFi Position Proving
+
+We built a **Starknet L2 rail** that enables proof-of-funds over Starknet accounts, DeFi positions (vaults, LP tokens, lending), and leverages Starknet's native account abstraction.
+
+**Key Features:**
+- **Account Abstraction** — Session keys, batched signatures, wallet detection (Argent, Braavos, OpenZeppelin)
+- **DeFi Position Support** — Aggregates balances across JediSwap LP, Nostra lending, zkLend deposits, Ekubo positions, Haiko vaults
+- **Native STARK Verification** — Uses Starknet's STARK-friendly cryptography (Pedersen hash, ECDSA over Stark curve)
+
+The rail can prove statements like "I control Starknet account(s) with total balance ≥ threshold" or "My aggregated DeFi positions have value ≥ threshold" without revealing individual positions or addresses.
+
 ---
 
 ## Rust Crates
@@ -84,7 +161,19 @@ The core proof system is implemented in Rust, built on [Axiom's Halo2 fork](http
 | `zkpf-zcash-orchard-wallet` | Wallet integration for Orchard notes. Extracts witness data needed for proof generation. |
 | `zkpf-orchard-inner` | Inner proof types and serialization for Orchard rail. |
 
-The crate dependency graph flows: `zkpf-circuit` → `zkpf-common` → `zkpf-prover`/`zkpf-verifier` → `zkpf-backend`/`zkpf-wasm`. The Orchard crates extend this for shielded Zcash proofs.
+**Multi-chain rail crates:**
+
+| Crate | Purpose |
+|-------|---------|
+| `zkpf-tachyon-wallet` | Unified multi-chain wallet coordinator. Orchestrates proofs across Zcash, Mina, Starknet, Axelar, and NEAR. |
+| `zkpf-near-tee` | NEAR TEE-backed private AI agent. Wallet intelligence, proof strategy, intent parsing in confidential compute. |
+| `zkpf-mina` | Mina recursive proof hub. Wraps ProofBundles into Mina-native recursive proofs for cross-chain attestations. |
+| `zkpf-starknet-l2` | Starknet L2 rail. DeFi position proving, account abstraction, session keys. |
+| `zkpf-rails-mina` | HTTP service for Mina rail endpoints. |
+| `zkpf-rails-starknet` | HTTP service for Starknet rail endpoints. |
+| `zkpf-rails-axelar` | Axelar GMP integration for cross-chain transport. |
+
+The crate dependency graph flows: `zkpf-circuit` → `zkpf-common` → `zkpf-prover`/`zkpf-verifier` → `zkpf-backend`/`zkpf-wasm`. The Orchard crates extend this for shielded Zcash proofs. The Tachyon wallet coordinates across all rails.
 
 ---
 
@@ -139,7 +228,15 @@ The proof-of-funds snap described above. Manages policy selection, funding sourc
 
 ### WebWallet (`webwallet/`)
 
-The WebZjs Zcash wallet described above. Four Rust crates compiled to WASM, a React frontend (`web-wallet/`), and a companion snap for secure PCZT signing (`snap/`). The first browser-based Zcash wallet with full shielded transaction support.
+The web Zcash wallet described above. Four Rust crates compiled to WASM, a React frontend (`web-wallet/`), and a companion snap for secure PCZT signing (`snap/`). The first browser-based Zcash wallet with full shielded transaction support.
+
+### Tachyon Wallet (`zkpf-tachyon-wallet/`)
+
+The unified multi-chain wallet coordinator described above. Orchestrates proofs across Zcash, Mina, Starknet, Axelar, and NEAR. Provides proof aggregation, cross-chain attestation transport, and TEE-backed wallet intelligence.
+
+### NEAR TEE Agent (`zkpf-near-tee/`)
+
+The TEE-backed private AI agent described above. Runs wallet intelligence, proof strategy recommendations, and intent parsing in Trusted Execution Environments. Provides privacy-preserving insights without exposing sensitive wallet data.
 
 ### Smart Contracts (`contracts/`)
 
@@ -155,7 +252,11 @@ The system supports multiple "rails" for different use cases:
 
 3. **Provider Balance** (`PROVIDER_BALANCE_V2`) — Generic provider-attested proofs. Wallet-agnostic balance attestations reusing the custodial circuit with provider keys.
 
-4. **On-Chain** (design phase) — Merkle-based proofs from on-chain snapshots. See design doc for details.
+4. **Mina Recursive** (`MINA_RECURSIVE`) — Cross-chain compliance layer. Wraps ProofBundles into Mina-native recursive proofs. Enables other chains to verify PoF attestations via zkBridges. Fully implemented.
+
+5. **Starknet L2** (`STARKNET_L2`) — DeFi position proving on Starknet. Supports account abstraction, session keys, and aggregation across JediSwap, Nostra, zkLend, Ekubo, Haiko. Fully implemented.
+
+6. **On-Chain** (design phase) — Merkle-based proofs from on-chain snapshots. See design doc for details.
 
 ## Privacy Model: Holder Tags
 
@@ -172,8 +273,11 @@ The holder tag is deterministic per message—the same user signing the same pol
 ## Documentation
 
 - **[Main README](zkpf/README.md)** — Comprehensive technical documentation
+- **[Tachyon Architecture](zkpf/docs/tachyon-architecture.md)** — Multi-chain wallet architecture and design
 - **[MetaMask Snap](zkpf/zkpf-snap/README.md)** — Snap installation, usage, and dapp integration
 - **[WebWallet API](zkpf/webwallet/readme.md)** — Complete WebWallet class documentation
+- **[Mina Rail](zkpf/docs/mina-rail.md)** — Mina recursive proof hub specification
+- **[Starknet Rail](zkpf/docs/starknet-rail.md)** — Starknet L2 rail documentation
 - **[On-Chain Design](zkpf/docs/onchain-proof-of-funds.md)** — On-chain rail specification
 - **[Web Console](zkpf/web/README.md)** — Frontend documentation
 
