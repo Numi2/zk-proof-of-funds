@@ -39,3 +39,6 @@ zkpf-test-fixtures/target
 # zkpf-test-fixtures/**/fixtures/params.bin
 # zkpf-test-fixtures/**/fixtures/pk.bin
 fly.toml
+
+# Node version files
+.nvmrc

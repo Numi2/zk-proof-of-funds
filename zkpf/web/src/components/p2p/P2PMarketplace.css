@@ -4251,171 +4251,328 @@
   }
 }
 
-/* ============ Enhanced Mobile Experience ============ */
+/* ============ Clean Mobile Experience ============ */
 /* 
- * Mobile-first optimizations for wallet-grade UX
- * Competing with native apps requires attention to detail
+ * Minimal, uncluttered mobile design
+ * Focus on content, reduce visual noise
  */
 
-/* Safe area insets for notched devices (iPhone X+, etc.) */
+/* Safe area insets for notched devices */
 @supports (padding: env(safe-area-inset-bottom)) {
   .p2p-page {
-    padding-left: max(1rem, env(safe-area-inset-left));
-    padding-right: max(1rem, env(safe-area-inset-right));
-  }
-  
-  @media (max-width: 640px) {
-    .p2p-page {
-      /* Account for bottom navigation */
-      padding-bottom: calc(80px + env(safe-area-inset-bottom));
-    }
-    
-    /* Modal safe area handling */
-    .modal {
-      padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
-    }
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
   }
 }
 
-/* Touch-optimized: larger hit targets */
 @media (max-width: 640px) {
-  /* All interactive elements should be at least 48px */
-  .offer-card {
-    min-height: 48px;
+  /* ===== Page Layout ===== */
+  .p2p-page {
+    padding: 0.75rem;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   }
   
-  .offer-action,
-  .create-btn,
-  .import-btn-header,
-  .method-chip,
+  /* ===== Compact Header ===== */
+  .p2p-header {
+    margin-bottom: 0.75rem;
+  }
+  
+  .header-content {
+    gap: 0.75rem;
+  }
+  
+  .header-text h1 {
+    font-size: 1.375rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .header-text p {
+    display: none; /* Hide description on mobile - save space */
+  }
+  
+  /* Broadcast status - inline, compact */
+  .broadcast-status {
+    font-size: 10px;
+    padding: 3px 8px;
+    margin-top: 0.25rem;
+  }
+  
+  /* ===== Compact Action Buttons ===== */
+  .header-actions {
+    flex-direction: row;
+    gap: 6px;
+  }
+  
+  .header-actions button {
+    flex: 1;
+    font-size: 0.75rem;
+    padding: 8px 12px;
+    min-height: 36px;
+  }
+  
+  .header-actions button span {
+    font-size: 0.875rem;
+  }
+  
+  .import-btn-header {
+    padding: 8px 10px;
+  }
+  
+  .create-btn {
+    padding: 8px 12px;
+  }
+  
+  /* ===== Filters - Compact & Clean ===== */
+  .filters-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(10, 15, 26, 0.98);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    margin: 0 -0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(100, 120, 160, 0.15);
+    gap: 0.5rem;
+  }
+  
+  .search-box {
+    height: 36px;
+  }
+  
+  .search-box input {
+    font-size: 14px !important;
+    padding: 8px 12px 8px 36px;
+  }
+  
+  .search-icon {
+    font-size: 14px;
+    left: 10px;
+  }
+  
+  .filter-tabs {
+    gap: 4px;
+  }
+  
   .filter-tabs .tab {
-    min-height: 48px;
-    padding-top: 12px;
-    padding-bottom: 12px;
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    min-height: 32px;
+    border-radius: 6px;
   }
   
-  /* Prevent iOS zoom on input focus (requires 16px minimum) */
-  .search-box input,
-  .amount-input-wrapper input,
-  .form-input,
-  .create-page input,
-  .create-page textarea,
-  .create-page select {
-    font-size: 16px !important;
+  /* ===== Method Filters - Horizontal Scroll ===== */
+  .method-filters {
+    padding: 0.5rem 0;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
   }
   
-  /* Better touch feedback */
-  .offer-card,
-  .quick-option,
-  .method-chip,
-  .filter-tabs .tab {
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 0.1s ease, opacity 0.1s ease;
+  .filter-label {
+    font-size: 0.7rem;
+    display: none; /* Hide label on mobile */
   }
   
-  .offer-card:active,
-  .quick-option:active,
-  .method-chip:active,
-  .filter-tabs .tab:active {
-    transform: scale(0.98);
-    opacity: 0.9;
-  }
-  
-  /* Smooth scrolling for method chips */
   .method-chips {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    -ms-overflow-style: none;
-    padding-bottom: 4px;
+    gap: 4px;
+    padding-bottom: 2px;
   }
   
   .method-chips::-webkit-scrollbar {
     display: none;
   }
   
-  /* Mobile header compactness */
-  .p2p-header {
-    margin-bottom: 1.5rem;
+  .method-chip {
+    padding: 5px 10px;
+    font-size: 0.7rem;
+    min-height: 28px;
+    border-radius: 14px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   
-  .header-text h1 {
-    font-size: 1.75rem;
-    line-height: 1.2;
+  .clear-filters {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    white-space: nowrap;
   }
   
-  .header-text p {
-    font-size: 0.9rem;
-    line-height: 1.5;
+  /* ===== Offers Section ===== */
+  .offers-section {
+    margin-top: 0.5rem;
   }
   
-  /* Broadcast status as floating pill */
-  .broadcast-status {
-    position: fixed;
-    top: calc(12px + env(safe-area-inset-top, 0px));
-    right: 12px;
-    z-index: 100;
-    font-size: 11px;
-    padding: 6px 12px;
-    background: rgba(10, 15, 26, 0.9);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+  .offers-header {
+    margin-bottom: 0.5rem;
+    padding: 0;
   }
   
-  /* Stack header actions */
-  .header-actions {
-    flex-direction: row;
-    gap: 8px;
-  }
-  
-  .header-actions button {
-    flex: 1;
-    font-size: 0.85rem;
-    padding: 12px 16px;
-  }
-  
-  /* Compact offer cards */
-  .offer-card {
-    padding: 1rem;
-    border-radius: 12px;
-  }
-  
-  .offer-user {
-    gap: 0.625rem;
-  }
-  
-  .user-avatar {
-    width: 36px;
-    height: 36px;
-    font-size: 0.875rem;
-  }
-  
-  .user-name {
-    font-size: 0.9rem;
-  }
-  
-  .user-meta {
+  .offers-count {
     font-size: 0.75rem;
   }
   
+  .sort-select {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    min-height: 28px;
+  }
+  
+  /* ===== Offer Cards - Minimal ===== */
+  .offers-grid {
+    gap: 0.5rem;
+  }
+  
+  .offer-card {
+    padding: 0.75rem;
+    border-radius: 10px;
+    min-height: auto;
+  }
+  
+  .offer-card-top {
+    margin-bottom: 0.5rem;
+  }
+  
+  .offer-user {
+    gap: 0.5rem;
+  }
+  
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+  }
+  
+  .user-avatar.online::after {
+    width: 6px;
+    height: 6px;
+    border-width: 1px;
+  }
+  
+  .user-name {
+    font-size: 0.8rem;
+  }
+  
+  .user-meta {
+    font-size: 0.65rem;
+  }
+  
+  .badge {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+  }
+  
+  /* Exchange display - compact */
+  .offer-card-main {
+    margin-bottom: 0.5rem;
+  }
+  
+  .offer-exchange {
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+  }
+  
   .exchange-amount {
-    font-size: 1.25rem;
+    font-size: 1rem;
   }
   
-  /* Sticky search on scroll */
-  .filters-bar {
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    background: rgba(10, 15, 26, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    margin: 0 -1rem;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--p2p-border);
+  .exchange-label {
+    font-size: 0.65rem;
   }
   
-  /* Full-width modal for mobile (bottom sheet style) */
+  .exchange-arrow {
+    font-size: 0.875rem;
+  }
+  
+  .offer-description {
+    font-size: 0.75rem;
+    margin-top: 0.375rem;
+    line-height: 1.4;
+  }
+  
+  /* Card bottom - compact */
+  .offer-card-bottom {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  
+  .offer-methods {
+    gap: 4px;
+  }
+  
+  .method-primary {
+    font-size: 0.65rem;
+    padding: 3px 6px;
+  }
+  
+  .method-more {
+    font-size: 0.6rem;
+    padding: 2px 5px;
+  }
+  
+  .offer-location {
+    font-size: 0.65rem;
+  }
+  
+  .offer-card-actions {
+    gap: 4px;
+    margin-left: auto;
+  }
+  
+  .offer-action {
+    padding: 6px 12px;
+    font-size: 0.7rem;
+    min-height: 28px;
+    border-radius: 6px;
+  }
+  
+  /* ===== Hide Sections on Mobile ===== */
+  .how-section,
+  .traveler-section,
+  .payment-links-section,
+  .trust-note {
+    display: none; /* Hide promotional sections - focus on offers */
+  }
+  
+  /* ===== Nav Back - Hidden (bottom nav handles this) ===== */
+  .nav-back {
+    display: none;
+  }
+  
+  /* ===== Empty State ===== */
+  .empty-state {
+    padding: 2rem 1rem;
+  }
+  
+  .empty-icon {
+    font-size: 2rem;
+  }
+  
+  .empty-state h3 {
+    font-size: 1rem;
+  }
+  
+  .empty-state p {
+    font-size: 0.8rem;
+  }
+  
+  .empty-state .create-btn {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+  }
+  
+  /* ===== Loading State ===== */
+  .loading-state {
+    padding: 2rem;
+  }
+  
+  .loading-state p {
+    font-size: 0.8rem;
+  }
+  
+  /* ===== Modals - Bottom Sheet ===== */
   .modal-overlay {
     align-items: flex-end;
     padding: 0;
@@ -4426,100 +4583,149 @@
   .import-modal {
     max-width: 100%;
     width: 100%;
-    border-radius: 20px 20px 0 0;
-    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
+    max-height: 80vh;
     margin: 0;
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
   
-  /* Modal drag indicator */
   .modal::before,
   .quick-create-modal::before,
   .import-modal::before {
     content: '';
     display: block;
-    width: 36px;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.3);
+    width: 32px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.25);
     border-radius: 2px;
-    margin: 0 auto 16px;
+    margin: 0 auto 12px;
   }
   
-  /* How section compact */
-  .how-section {
-    padding: 1.5rem;
-    margin: 1.5rem -1rem;
-    border-radius: 0;
+  .modal-close {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+    top: 12px;
+    right: 12px;
   }
   
-  .how-section h2 {
+  /* Quick Create Modal */
+  .quick-create-modal h2 {
     font-size: 1.125rem;
+    margin-bottom: 1rem;
   }
   
-  .how-item h3 {
+  .quick-options {
+    gap: 0.5rem;
+  }
+  
+  .quick-option {
+    padding: 0.875rem;
+    border-radius: 10px;
+  }
+  
+  .option-icon {
+    font-size: 1.5rem;
+  }
+  
+  .option-title {
     font-size: 0.9rem;
   }
   
-  .how-item p {
+  .option-desc {
+    font-size: 0.75rem;
+  }
+  
+  .quick-examples {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+  }
+  
+  .examples-title {
+    font-size: 0.75rem;
+  }
+  
+  .example-tags {
+    gap: 0.375rem;
+  }
+  
+  .example-tags span {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
+  
+  /* Import Modal */
+  .import-modal h2 {
+    font-size: 1.125rem;
+  }
+  
+  .import-subtitle {
     font-size: 0.8rem;
   }
   
-  /* Traveler section mobile */
-  .traveler-section,
-  .payment-links-section {
-    margin: 1rem -1rem;
-    border-radius: 0;
+  .import-input {
+    font-size: 14px !important;
+    padding: 10px 12px;
   }
   
-  /* Back to wallet button - make it a floating action */
-  .nav-back {
-    position: fixed;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    left: 16px;
-    z-index: 90;
+  .import-btn {
+    padding: 10px;
+    font-size: 0.85rem;
   }
   
-  .nav-back button {
-    background: rgba(10, 15, 26, 0.9);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-radius: 20px;
-    padding: 8px 16px;
-    font-size: 0.8rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  .import-help {
+    font-size: 0.75rem;
+  }
+  
+  /* ===== Touch Feedback ===== */
+  .offer-card,
+  .quick-option,
+  .method-chip,
+  .filter-tabs .tab {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .offer-card:active {
+    opacity: 0.9;
+    transform: scale(0.995);
   }
 }
 
 /* Extra small phones (iPhone SE, etc.) */
 @media (max-width: 375px) {
   .p2p-page {
-    padding: 0.75rem;
+    padding: 0.5rem;
   }
   
   .header-text h1 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
   }
   
-  .header-text p {
-    font-size: 0.85rem;
+  .header-actions button {
+    font-size: 0.7rem;
+    padding: 6px 10px;
+  }
+  
+  .offer-card {
+    padding: 0.625rem;
   }
   
   .exchange-amount {
-    font-size: 1.125rem;
+    font-size: 0.9rem;
   }
   
-  .quick-options {
-    flex-direction: column;
-  }
-  
-  .quick-option {
-    padding: 1rem;
+  .user-avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 0.6rem;
   }
 }
 
-/* Landscape phone handling */
+/* Landscape phone */
 @media (max-height: 500px) and (orientation: landscape) {
   .p2p-page {
-    padding-bottom: 60px;
+    padding-bottom: 56px;
   }
   
   .modal,
@@ -4529,7 +4735,7 @@
   }
 }
 
-/* Reduce motion for accessibility */
+/* Reduce motion */
 @media (prefers-reduced-motion: reduce) {
   .offer-card,
   .quick-option,
@@ -4540,7 +4746,7 @@
   }
 }
 
-/* Dark mode optimization (already dark, but ensure consistency) */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .p2p-page {
     color-scheme: dark;

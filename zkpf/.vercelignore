@@ -5,4 +5,7 @@ webwallet/target/
 # Node modules
 node_modules/
 
+# Node version files
+.nvmrc
+
 # Other build artifacts

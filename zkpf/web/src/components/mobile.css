@@ -20,13 +20,13 @@
   --mobile-spacing-lg: 24px;
   --mobile-spacing-xl: 32px;
   
-  /* Touch target minimum (48px per WCAG) */
-  --touch-target-min: 48px;
-  --touch-target-comfortable: 56px;
+  /* Touch target minimum (44px for iOS standard) */
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
   
-  /* Bottom nav height */
-  --bottom-nav-height: 64px;
-  --bottom-nav-height-safe: calc(64px + var(--safe-area-inset-bottom));
+  /* Bottom nav height - compact */
+  --bottom-nav-height: 52px;
+  --bottom-nav-height-safe: calc(52px + var(--safe-area-inset-bottom));
   
   /* Mobile typography */
   --mobile-font-sm: 0.8125rem;   /* 13px */
@@ -71,23 +71,23 @@
   justify-content: center;
   flex: 1;
   min-width: var(--touch-target-min);
-  padding: 6px 8px;
+  padding: 4px 6px;
   
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.45);
   
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   text-decoration: none;
   
-  transition: color 0.2s ease, transform 0.1s ease;
+  transition: color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
 }
 
 .mobile-nav-item:active {
-  transform: scale(0.95);
+  opacity: 0.7;
 }
 
 .mobile-nav-item.active {
@@ -95,15 +95,16 @@
 }
 
 .mobile-nav-icon {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .mobile-nav-label {
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  opacity: 0.9;
 }
 
 /* ============ Mobile Header Adjustments ============ */
@@ -175,23 +176,23 @@
 
 /* ============ Touch-Friendly Buttons ============ */
 @media (max-width: 640px) {
-  /* Ensure all interactive elements meet touch targets */
+  /* Compact buttons - still touchable but not oversized */
   button,
   .btn,
   [role="button"],
   a.button,
   input[type="button"],
   input[type="submit"] {
-    min-height: var(--touch-target-min);
-    padding-left: var(--mobile-spacing-md);
-    padding-right: var(--mobile-spacing-md);
+    min-height: 36px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
   
-  /* Larger hit areas for links in lists */
+  /* List items - reasonable touch targets */
   .offer-card,
   .transaction-row,
   .list-item {
-    min-height: var(--touch-target-min);
+    min-height: 40px;
   }
 }
 
@@ -207,14 +208,14 @@
   textarea,
   select {
     font-size: 16px !important; /* Prevents iOS zoom on focus */
-    min-height: var(--touch-target-min);
-    padding: 12px 16px;
+    min-height: 40px;
+    padding: 10px 12px;
   }
   
   /* Search inputs */
   .search-box input {
-    font-size: 16px !important;
-    padding: 14px 16px 14px 44px;
+    font-size: 14px !important;
+    padding: 10px 12px 10px 36px;
   }
 }
 
@@ -228,12 +229,13 @@
   .modal {
     width: 100%;
     max-width: 100%;
-    max-height: 90vh;
-    border-radius: 20px 20px 0 0;
+    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
     margin: 0;
-    padding-bottom: calc(var(--mobile-spacing-lg) + var(--safe-area-inset-bottom));
+    padding: 1rem;
+    padding-bottom: calc(1rem + var(--safe-area-inset-bottom));
     
-    animation: slideUp 0.3s ease-out;
+    animation: slideUp 0.2s ease-out;
   }
   
   @keyframes slideUp {
@@ -248,22 +250,22 @@
   }
   
   .modal-close {
-    top: 12px;
-    right: 16px;
-    width: 36px;
-    height: 36px;
+    top: 10px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
   }
   
   /* Modal drag handle indicator */
   .modal::before {
     content: '';
     position: absolute;
-    top: 8px;
+    top: 6px;
     left: 50%;
     transform: translateX(-50%);
-    width: 36px;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.3);
+    width: 32px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.25);
     border-radius: 2px;
   }
 }
