@@ -150,3 +150,4 @@ pub trait DriverSink<D: Driver>: Sink<D, D::W> {}
 
 impl<D: Driver, S: Sink<D, D::W>> DriverSink<D> for S {}
 
+

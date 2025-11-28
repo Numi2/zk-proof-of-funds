@@ -304,3 +304,4 @@ mod tests {
     fn _assert_nonuniform_compiles<F: Field, C: NonUniformCircuit<F>>() {}
 }
 
+

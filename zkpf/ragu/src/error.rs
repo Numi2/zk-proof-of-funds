@@ -78,3 +78,4 @@ impl std::error::Error for Error {}
 /// Result type alias for synthesis operations.
 pub type Result<T> = core::result::Result<T, Error>;
 
+

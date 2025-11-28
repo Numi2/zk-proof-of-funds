@@ -237,7 +237,8 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
       result = result.filter(o => o.zecAmount <= filters.maxZec!);
     }
     
-    // Apply sorting
+    // Apply sorting - all comparisons use ascending order (a - b), 
+    // then sortDirection flips for descending
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
@@ -248,14 +249,15 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
           // Defensive: handle missing makerProfile
           const aRate = a.makerProfile?.successRate ?? 0;
           const bRate = b.makerProfile?.successRate ?? 0;
-          comparison = bRate - aRate;
+          comparison = aRate - bRate;
           break;
         case 'recent':
         default:
-          comparison = (b.createdAt ?? 0) - (a.createdAt ?? 0);
+          comparison = (a.createdAt ?? 0) - (b.createdAt ?? 0);
           break;
       }
-      return sortDirection === 'asc' ? comparison : -comparison;
+      // 'desc' = newest/highest first (negate to flip order)
+      return sortDirection === 'desc' ? -comparison : comparison;
     });
     
     return result;
