@@ -2,6 +2,8 @@ import { Suspense, lazy, useMemo } from 'react';
 import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
 import { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import { detectDefaultBase } from '../api/zkpf';
+import { MobileBottomNav } from './MobileBottomNav';
+import './mobile.css';
 
 const ZKPassportPage = lazy(() =>
   import('./ZKPassportPage').then((module) => ({ default: module.ZKPassportPage })),
@@ -151,6 +153,9 @@ export function ZKPassportApp() {
           integrated by Numan Thabit.
         </p>
       </footer>
+
+      {/* Mobile bottom navigation */}
+      <MobileBottomNav />
     </div>
   );
 }

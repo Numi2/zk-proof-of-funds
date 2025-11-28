@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use nonempty::NonEmpty;
-use prost::Message;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -13,7 +12,7 @@ use crate::wallet::usk_from_seed_str;
 use crate::{bindgen::proposal::Proposal, Wallet, PRUNING_DEPTH};
 use wasm_thread as thread;
 use webzjs_common::{Network, Pczt};
-use webzjs_keys::{ProofGenerationKey, SeedFingerprint, UnifiedSpendingKey};
+use webzjs_keys::{ProofGenerationKey, SeedFingerprint};
 use zcash_address::ZcashAddress;
 use zcash_client_backend::data_api::{AccountPurpose, InputSource, WalletRead, Zip32Derivation};
 use zcash_client_backend::proto::service::{
@@ -23,7 +22,7 @@ use zcash_client_memory::MemoryWalletDb;
 use zcash_keys::encoding::AddressCodec;
 use zcash_keys::keys::UnifiedFullViewingKey;
 use zcash_primitives::transaction::TxId;
-use zcash_primitives::zip32;
+use zip32::AccountId as Zip32AccountId;
 
 pub type MemoryWallet<T> = Wallet<MemoryWalletDb<Network>, T>;
 pub type AccountId = <MemoryWalletDb<Network> as WalletRead>::AccountId;
@@ -212,7 +211,7 @@ impl WebWallet {
             .map_err(Error::KeyParse)?;
         let derivation = Some(Zip32Derivation::new(
             seed_fingerprint.into(),
-            zip32::AccountId::try_from(account_hd_index)?,
+            Zip32AccountId::try_from(account_hd_index)?,
         ));
         self.inner
             .import_ufvk(
@@ -572,7 +571,7 @@ impl From<zcash_client_backend::data_api::AccountBalance> for AccountBalance {
         AccountBalance {
             sapling_balance: balance.sapling_balance().spendable_value().into(),
             orchard_balance: balance.orchard_balance().spendable_value().into(),
-            unshielded_balance: balance.unshielded().into(),
+            unshielded_balance: balance.unshielded_balance().spendable_value().into(),
         }
     }
 }

@@ -23,7 +23,15 @@ import { ShareButton } from './ShareOffer';
 import './P2PMarketplace.css';
 
 // ============ Offer Card ============
-function OfferCard({ offer, onSelect }: { offer: P2POffer; onSelect: (offer: P2POffer) => void }) {
+function OfferCard({
+  offer,
+  onSelect,
+  onStartTrade,
+}: {
+  offer: P2POffer;
+  onSelect: (offer: P2POffer) => void;
+  onStartTrade?: (offer: P2POffer) => void;
+}) {
   const isSelling = offer.offerType === 'sell';
   
   // Defensive: create a default profile if makerProfile is missing
@@ -106,8 +114,22 @@ function OfferCard({ offer, onSelect }: { offer: P2POffer; onSelect: (offer: P2P
         
         <div className="offer-card-actions">
           <ShareButton offer={offer} variant="icon" size="small" />
-          <button className={`offer-action ${isSelling ? 'buy' : 'sell'}`}>
-            {isSelling ? 'Buy ZEC' : 'Sell ZEC'}
+          <button
+            className={`offer-action ${isSelling ? 'buy' : 'sell'}`}
+            onClick={(e) => {
+              // Don’t double-trigger the card click; this button is the
+              // one-click “Start trade + open chat” CTA. It navigates to
+              // the offer detail view with query params that auto-open
+              // the trade modal and pre-fill an amount.
+              e.stopPropagation();
+              if (onStartTrade) {
+                onStartTrade(offer);
+              } else {
+                onSelect(offer);
+              }
+            }}
+          >
+            {isSelling ? 'Inspect' : 'Inspect'}
           </button>
         </div>
       </div>
@@ -284,6 +306,9 @@ export function P2PMarketplace() {
   const displayOffers = useMemo(() => {
     let offers = filteredOffers;
     
+    // Filter out 0 ZEC offers
+    offers = offers.filter(o => o.zecAmount > 0);
+    
     // Tab filter
     if (activeTab !== 'all') {
       offers = offers.filter(o => o.offerType === activeTab);
@@ -315,6 +340,15 @@ export function P2PMarketplace() {
   const handleOfferSelect = useCallback((offer: P2POffer) => {
     selectOffer(offer);
     navigate(`/p2p/offer/${offer.offerId}`);
+  }, [selectOffer, navigate]);
+
+  const handleStartTrade = useCallback((offer: P2POffer) => {
+    selectOffer(offer);
+    // Pre-fill the trade amount with a sensible default: use the minimum
+    // if specified, otherwise the full offer amount.
+    const defaultAmount = offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : offer.zecAmount);
+    const amountParam = Number.isFinite(defaultAmount) ? `&amount=${encodeURIComponent(String(defaultAmount))}` : '';
+    navigate(`/p2p/offer/${offer.offerId}?trade=1${amountParam}`);
   }, [selectOffer, navigate]);
   
   const handleCreateOffer = useCallback((type: OfferType) => {
@@ -493,8 +527,9 @@ export function P2PMarketplace() {
             {displayOffers.map(offer => (
               <OfferCard 
                 key={offer.offerId} 
-                offer={offer} 
+                offer={offer}
                 onSelect={handleOfferSelect}
+                onStartTrade={handleStartTrade}
               />
             ))}
           </div>
@@ -516,9 +551,9 @@ export function P2PMarketplace() {
             <p>Exchange however works for both of you — in person, online, any method.</p>
           </div>
           <div className="how-item">
-            <span className="how-icon">✅</span>
+            <span className="how-icon"></span>
             <h3>Done</h3>
-            <p>Complete the trade. Build reputation. Help grow the community.</p>
+            <p>Complete the trade.</p>
           </div>
         </div>
         

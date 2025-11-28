@@ -25,6 +25,7 @@ import type {
 } from '../types/p2p';
 import { decodeOffer } from '../utils/p2p-share';
 import { p2pBroadcast } from '../services/p2p-broadcast';
+import { chatService } from '../services/chat';
 
 // API base for P2P backend (when available)
 const API_BASE = import.meta.env.VITE_P2P_API_BASE || '/api/p2p';
@@ -324,11 +325,24 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
     
     try {
       // In production, this would submit to blockchain/backend
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       const offerId = `offer-${Date.now()}`;
       
-      // Create new offer
+      // Create chat channel for this offer immediately so anyone can join
+      // This enables bidding/discussion even before a trade is initiated
+      let chatTicket: string | undefined;
+      try {
+        const nickname = myProfile?.displayName || (myProfile?.address ?? '').slice(0, 8) || 'maker';
+        const { ticket } = await chatService.createOfferChannel(offerId, nickname);
+        chatTicket = ticket;
+        console.log('[P2P] Created chat channel for offer:', offerId);
+      } catch (chatErr) {
+        console.warn('[P2P] Chat channel creation failed (chat may not be available):', chatErr);
+        // Continue without chat - offer can still be created
+      }
+      
+      // Create new offer with chat ticket embedded
       const newOffer: P2POffer = {
         offerId,
         maker: myProfile?.address || '0x0000...0000',
@@ -357,11 +371,12 @@ export function useP2PMarketplace(): UseP2PMarketplaceReturn {
         expiresAt: params.expiresAt,
         completedTrades: 0,
         shieldedAddressCommitment: params.shieldedAddressCommitment,
+        chatTicket, // Embed chat ticket so anyone viewing can auto-join
       };
       
       setOffers(prev => [newOffer, ...prev]);
       
-      // Auto-broadcast the new offer to the P2P network
+      // Auto-broadcast the new offer to the P2P network (includes chatTicket)
       p2pBroadcast.broadcastOffer(newOffer).catch(console.error);
       
       return offerId;

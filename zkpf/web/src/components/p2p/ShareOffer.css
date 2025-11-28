@@ -9,14 +9,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   z-index: 1000;
-  padding: 1rem;
-  animation: fadeIn 0.2s ease;
+  padding: 2rem;
+  padding-top: 4rem;
+  animation: fadeIn 0.15s ease;
 }
 
 @keyframes fadeIn {
@@ -26,75 +26,79 @@
 
 /* Modal */
 .share-modal {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: #1e293b;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  max-width: 480px;
+  border-radius: 12px;
+  max-width: 340px;
   width: 100%;
-  max-height: 90vh;
+  max-height: calc(100vh - 6rem);
   overflow-y: auto;
   position: relative;
-  animation: slideUp 0.3s ease;
+  animation: slideIn 0.2s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-@keyframes slideUp {
+@keyframes slideIn {
   from {
-    transform: translateY(20px);
+    transform: translateX(12px);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateX(0);
     opacity: 1;
   }
 }
 
 .share-close {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
-  width: 32px;
-  height: 32px;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 1.1rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .share-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
 /* Header */
 .share-header {
-  padding: 1.5rem 1.5rem 1rem;
-  text-align: center;
+  padding: 1rem 1.25rem 0.75rem;
+  text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .share-icon {
-  font-size: 2.5rem;
-  display: block;
-  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  display: inline-block;
+  margin-right: 0.5rem;
+  vertical-align: middle;
 }
 
 .share-header h2 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: white;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .share-subtitle {
-  margin: 0.5rem 0 0;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.9rem;
+  margin: 0.375rem 0 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
 }
 
 /* Native share button */
@@ -102,48 +106,48 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  width: calc(100% - 3rem);
-  margin: 1rem 1.5rem;
-  padding: 0.875rem 1.5rem;
+  gap: 0.375rem;
+  width: calc(100% - 2rem);
+  margin: 0.75rem 1rem;
+  padding: 0.625rem 1rem;
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   color: white;
-  font-size: 1rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .share-native-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .share-native-btn span {
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 /* Tabs */
 .share-tabs {
   display: flex;
-  padding: 0 1rem;
-  gap: 0.5rem;
+  padding: 0 0.75rem;
+  gap: 0.25rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .share-tab {
   flex: 1;
-  padding: 0.875rem 0.5rem;
+  padding: 0.625rem 0.375rem;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .share-tab:hover {
@@ -157,31 +161,31 @@
 
 /* Content */
 .share-content {
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 .share-description {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.875rem;
-  margin: 0 0 1rem;
-  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
 }
 
 /* Link section */
 .share-link-box {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  gap: 0.375rem;
+  margin-bottom: 1rem;
 }
 
 .share-link-input {
   flex: 1;
-  padding: 0.75rem 1rem;
-  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 6px;
   color: white;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-family: 'SF Mono', monospace;
 }
 
@@ -191,16 +195,16 @@
 }
 
 .share-copy-btn {
-  padding: 0.75rem 1.25rem;
+  padding: 0.5rem 0.875rem;
   background: #f7931a;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #1a1a2e;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .share-copy-btn:hover {
@@ -214,8 +218,8 @@
 
 .share-copy-btn.full {
   width: 100%;
-  padding: 1rem;
-  margin-top: 1rem;
+  padding: 0.625rem;
+  margin-top: 0.75rem;
 }
 
 /* Social sharing */
@@ -446,27 +450,44 @@
 }
 
 /* Mobile responsive */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
+  .share-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  
   .share-modal {
     max-width: 100%;
     margin: 0;
-    border-radius: 16px 16px 0 0;
-    position: fixed;
-    bottom: 0;
-    max-height: 80vh;
+    border-radius: 12px 12px 0 0;
+    animation: slideUp 0.2s ease;
   }
   
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+@media (max-width: 480px) {
   .share-tabs {
     padding: 0 0.5rem;
   }
   
   .share-tab {
-    padding: 0.75rem 0.25rem;
-    font-size: 0.8rem;
+    padding: 0.5rem 0.25rem;
+    font-size: 0.7rem;
   }
   
   .share-content {
-    padding: 1rem;
+    padding: 0.875rem;
   }
   
   .share-social-buttons {
@@ -474,8 +495,8 @@
   }
   
   .share-qr-image {
-    width: 180px;
-    height: 180px;
+    width: 160px;
+    height: 160px;
   }
 }
 

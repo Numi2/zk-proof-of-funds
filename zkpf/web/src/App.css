@@ -868,13 +868,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(2, 6, 23, 0.92);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.5);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
+  padding: 2rem;
+  padding-top: 4rem;
+  animation: fadeIn 0.15s ease;
 }
 
 @keyframes fadeIn {
@@ -883,19 +884,31 @@
 }
 
 .proof-progress-card {
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 1.5rem;
-  padding: 2.5rem 3rem;
-  max-width: 480px;
-  width: 90%;
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  max-width: 320px;
+  width: 100%;
   text-align: center;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 100px rgba(56, 189, 248, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .proof-progress-card h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1.4rem;
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
   color: #f1f5f9;
 }
 
@@ -4384,27 +4397,39 @@ dd {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(2, 6, 23, 0.9);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 10000;
-  padding: 1rem;
-  animation: fadeIn 0.2s ease;
+  padding: 2rem;
+  padding-top: 3rem;
+  animation: fadeIn 0.15s ease;
 }
 
 .template-selector-modal {
   background: rgba(15, 23, 42, 0.98);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
   width: 100%;
-  max-width: 1100px;
-  max-height: 90vh;
+  max-width: 900px;
+  max-height: calc(100vh - 5rem);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .template-selector-header {
@@ -5742,6 +5767,321 @@ dd {
 }
 
 /* ==================================
+   ZKPassport Mobile Optimizations
+   ================================== */
+
+@media (max-width: 640px) {
+  /* Hide desktop nav on mobile (bottom nav takes over) */
+  .zkpassport-app .main-nav {
+    display: none;
+  }
+  
+  /* Add padding for bottom navigation */
+  .zkpassport-app {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  
+  /* Compact header */
+  .zkpassport-app .hero {
+    padding: 1rem;
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+  }
+  
+  .zkpassport-app .header-top {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .zkpassport-app .brand {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .zkpassport-app .brand .logo span {
+    font-size: 2rem !important;
+  }
+  
+  .zkpassport-app .brand h1 {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  
+  .zkpassport-app .brand .eyebrow {
+    font-size: 0.7rem;
+  }
+  
+  .zkpassport-app > p {
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+  
+  .zkpassport-back-link {
+    font-size: 0.85rem;
+    padding: 4px 0;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+  }
+  
+  /* Scenario grid mobile */
+  .scenario-hero h2 {
+    font-size: 1.25rem;
+  }
+  
+  .scenario-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  
+  .scenario-card {
+    flex-direction: row;
+    padding: 1rem 1.25rem;
+    gap: 1rem;
+    text-align: left;
+    min-height: 48px;
+  }
+  
+  .scenario-icon {
+    font-size: 2rem;
+  }
+  
+  .scenario-title {
+    font-size: 1rem;
+    margin-bottom: 0;
+  }
+  
+  .scenario-desc {
+    font-size: 0.8rem;
+  }
+  
+  /* Touch feedback */
+  .scenario-card {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.1s ease, opacity 0.1s ease;
+  }
+  
+  .scenario-card:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+  
+  /* QR code mobile */
+  .verification-qr-card {
+    max-width: 100%;
+    margin: 1rem 0;
+  }
+  
+  .qr-code-container {
+    padding: 1rem;
+  }
+  
+  .qr-code-container svg {
+    max-width: 240px !important;
+    height: auto !important;
+  }
+  
+  .qr-link-button {
+    min-height: 48px;
+    font-size: 0.9rem;
+  }
+  
+  /* Success/error cards mobile */
+  .verification-success-card,
+  .verification-error-card {
+    max-width: 100%;
+    margin: 1rem 0;
+  }
+  
+  .success-icon-big,
+  .error-icon-big {
+    font-size: 3rem;
+  }
+  
+  .success-content h3,
+  .error-content h3 {
+    font-size: 1.25rem;
+  }
+  
+  .success-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .success-actions button {
+    width: 100%;
+    min-height: 48px;
+  }
+  
+  /* Progress stages mobile */
+  .verification-progress {
+    padding: 0.75rem;
+  }
+  
+  .progress-stage {
+    gap: 0.5rem;
+  }
+  
+  .stage-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.75rem;
+  }
+  
+  .stage-content h5 {
+    font-size: 0.85rem;
+  }
+  
+  .stage-content p {
+    font-size: 0.75rem;
+  }
+  
+  /* Inline progress mobile */
+  .progress-inline {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .inline-step-label {
+    display: none;
+  }
+  
+  .inline-step-line {
+    width: 1rem;
+  }
+  
+  /* Unique ID mobile */
+  .unique-id {
+    padding: 0.75rem;
+    overflow-x: auto;
+  }
+  
+  .unique-id code {
+    font-size: 0.7rem;
+    word-break: break-all;
+  }
+  
+  /* Cancel button mobile */
+  .cancel-action {
+    margin: 1rem 0;
+  }
+  
+  .cancel-button {
+    width: 100%;
+    min-height: 48px;
+  }
+  
+  /* Result JSON mobile */
+  .result-json {
+    margin-top: 1rem;
+  }
+  
+  .result-json pre {
+    font-size: 0.7rem;
+    overflow-x: auto;
+  }
+  
+  /* Identity bond card mobile */
+  .identity-bond-card {
+    margin: 1rem 0;
+    padding: 1rem;
+    flex-direction: row;
+    gap: 1rem;
+    text-align: left;
+    min-height: 48px;
+  }
+  
+  .identity-bond-icon {
+    font-size: 1.5rem;
+  }
+  
+  /* Footer mobile */
+  .zkpassport-app footer {
+    padding: 1rem;
+    margin-bottom: 80px;
+  }
+}
+
+/* Extra small phones */
+@media (max-width: 375px) {
+  .scenario-card {
+    padding: 0.875rem 1rem;
+  }
+  
+  .scenario-icon {
+    font-size: 1.75rem;
+  }
+  
+  .qr-code-container svg {
+    max-width: 200px !important;
+  }
+}
+
+/* ==================================
+   Bound Identity Mobile Optimizations
+   ================================== */
+
+@media (max-width: 640px) {
+  /* Hide desktop nav on mobile (bottom nav takes over) */
+  .bound-identity-app .main-nav {
+    display: none;
+  }
+  
+  /* Add padding for bottom navigation */
+  .bound-identity-app {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  
+  /* Compact header */
+  .bound-identity-app .hero {
+    padding: 1rem;
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+  }
+  
+  .bound-identity-app .header-top {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .bound-identity-app .brand {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .bound-identity-app .brand .logo span {
+    font-size: 2rem !important;
+  }
+  
+  .bound-identity-app .brand h1 {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  
+  .bound-identity-app .brand .eyebrow {
+    font-size: 0.7rem;
+  }
+  
+  .bound-identity-app > p {
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+  
+  .bound-identity-back-link {
+    font-size: 0.85rem;
+    padding: 4px 0;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+  }
+  
+  /* Footer mobile */
+  .bound-identity-app footer {
+    padding: 1rem;
+    margin-bottom: 80px;
+  }
+}
+
+/* ==================================
    Wallet Integration Styles
    ================================== */
 
@@ -6581,6 +6921,82 @@ dd {
   }
 }
 
+/* Mobile bottom nav integration */
+@media (max-width: 640px) {
+  /* Hide desktop wallet nav on mobile (bottom nav takes over) */
+  .wallet-nav {
+    display: none;
+  }
+  
+  /* Add padding for bottom navigation */
+  .wallet-layout {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+  
+  /* Compact header for mobile */
+  .wallet-page-header {
+    padding: 1rem;
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+    gap: 0.5rem;
+  }
+  
+  .wallet-back-link {
+    font-size: 0.85rem;
+    padding: 4px 0;
+  }
+  
+  .wallet-title-block {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .wallet-logo {
+    font-size: 1.75rem;
+  }
+  
+  .wallet-page-header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+  }
+  
+  .wallet-page-header .eyebrow {
+    font-size: 0.7rem;
+    margin: 0;
+  }
+  
+  .wallet-tagline {
+    display: none; /* Hide on mobile for compactness */
+  }
+  
+  /* Connection status as compact pill */
+  .wallet-header-top .connection-status {
+    position: absolute;
+    top: calc(1rem + env(safe-area-inset-top, 0px));
+    right: 1rem;
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
+  
+  .wallet-header-top {
+    position: relative;
+  }
+  
+  /* Touch-friendly action buttons */
+  .wallet-actions-grid button,
+  .wallet-send-actions button {
+    min-height: 48px;
+    font-size: 0.9rem;
+  }
+  
+  /* Prevent iOS zoom on inputs */
+  .wallet-layout input,
+  .wallet-layout select,
+  .wallet-layout textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ==================================
    Wallet Buy Page Styles
    ================================== */
@@ -6634,42 +7050,31 @@ dd {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(2, 6, 23, 0.92);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.5);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   z-index: 1000;
-  padding: 1rem;
-  animation: fadeIn 0.2s ease;
+  padding: 2rem;
+  padding-top: 4rem;
+  animation: fadeIn 0.15s ease;
 }
 
 .share-modal-content {
-  max-width: 560px;
+  max-width: 380px;
   width: 100%;
-  max-height: 90vh;
+  max-height: calc(100vh - 6rem);
   overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  animation: slideIn 0.2s ease;
 }
 
 /* Proof Share Container */
 .proof-share-container {
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 1.5rem;
-  padding: 1.75rem;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 80px rgba(56, 189, 248, 0.12);
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
 .proof-share-header {

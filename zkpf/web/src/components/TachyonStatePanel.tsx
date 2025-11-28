@@ -210,7 +210,7 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
             <button onClick={handleDemoUpdate} style={styles.actionButton} disabled={state.status !== 'idle'}>
               {state.status === 'syncing' || state.status === 'generating_proof' 
                 ? 'Updating...' 
-                : 'Update PCD (Demo Block)'}
+                : 'Update PCD'}
             </button>
             <button onClick={handleVerify} style={styles.actionButton} disabled={state.status !== 'idle'}>
               {state.status === 'verifying' ? 'Verifying...' : 'Verify Proof'}

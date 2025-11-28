@@ -3,8 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/image.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Zero-knowledge Proof of Funds</title>
+    
+    <!-- Mobile viewport optimized for wallet UX -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ZEC Wallet" />
+    <link rel="apple-touch-icon" href="/image.png" />
+    
+    <!-- Android theme color -->
+    <meta name="theme-color" content="#0a0f1a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- Prevent phone number detection -->
+    <meta name="format-detection" content="telephone=no" />
+    
+    <title>Zcash Shielded Wallet</title>
     <!-- 
       COI Service Worker: Enables SharedArrayBuffer for multi-threaded WASM
       Must load before any WASM initialization for cross-origin isolation

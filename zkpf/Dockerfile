@@ -8,7 +8,7 @@ COPY . .
 RUN cargo build --release -p zkpf-backend
 
 # Build the MetaMask Snap
-FROM node:20-slim as snap-builder
+FROM node:24-slim as snap-builder
 WORKDIR /snap
 # Copy the snap directory from zkpf-snap
 COPY zkpf-snap/package.json zkpf-snap/package-lock.json ./

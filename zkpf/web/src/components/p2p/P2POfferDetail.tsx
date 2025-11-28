@@ -4,7 +4,7 @@
  * View offer details and manage the trade flow from start to completion.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useP2PMarketplace } from '../../hooks/useP2PMarketplace';
 import { useWebZjsContext } from '../../context/WebzjsContext';
@@ -28,18 +28,26 @@ import { decodeOffer } from '../../utils/p2p-share';
 import { ShareButton } from './ShareOffer';
 import { PaymentLinkButton } from './P2PPaymentLink';
 import './P2PMarketplace.css';
+import { chatService } from '../../services/chat';
 
 // Trade Chat Component
-function TradeChat({ 
-  trade, 
+function TradeChat({
+  trade,
   onSendMessage,
   myAddress,
-}: { 
-  trade: P2PTrade; 
+  messages,
+  onCopyInvite,
+  isConnected,
+}: {
+  trade: P2PTrade;
   onSendMessage: (content: string) => void;
   myAddress: string;
+  messages?: Array<{ id?: string; messageId?: string; sender: string; content: string; timestamp?: number; nickname?: string }>;
+  onCopyInvite?: () => Promise<void>;
+  isConnected?: boolean;
 }) {
   const [message, setMessage] = useState('');
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
   
   const handleSend = useCallback(() => {
     if (!message.trim()) return;
@@ -53,36 +61,90 @@ function TradeChat({
       handleSend();
     }
   }, [handleSend]);
+
+  const handleCopyInvite = useCallback(async () => {
+    if (!onCopyInvite || copyStatus === 'copying') return;
+    setCopyStatus('copying');
+    try {
+      await onCopyInvite();
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Failed to copy invite:', e);
+      setCopyStatus('error');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    }
+  }, [onCopyInvite, copyStatus]);
   
   return (
     <div className="trade-chat">
       <div className="chat-header">
         <h4>💬 Trade Chat</h4>
-        <span className="chat-hint">Communicate securely with your trading partner</span>
+        <span className={`chat-status ${isConnected ? 'connected' : 'waiting'}`}>
+          {isConnected ? '● Connected' : '○ Waiting for partner'}
+        </span>
+        {!!onCopyInvite && (
+          <button 
+            className={`copy-invite-btn ${copyStatus !== 'idle' ? copyStatus : ''}`} 
+            onClick={handleCopyInvite} 
+            style={{ marginLeft: 'auto' }}
+            disabled={copyStatus === 'copying'}
+          >
+            {copyStatus === 'copying' ? 'Copying...' :
+             copyStatus === 'copied' ? '✓ Copied!' :
+             copyStatus === 'error' ? '✕ Failed' :
+             '📋 Copy invite link'}
+          </button>
+        )}
       </div>
       
       <div className="chat-messages">
-        {trade.messages.length === 0 ? (
+        {(() => null)()}
+        {(() => {
+          const normalized =
+            messages ??
+            trade.messages.map((m) => ({
+              id: m.messageId,
+              messageId: m.messageId,
+              sender: m.sender,
+              content: m.content,
+              timestamp: m.timestamp,
+              nickname: undefined,
+            }));
+          return normalized.length === 0 ? (
           <div className="no-messages">
-            <span className="no-msg-icon">💭</span>
-            <p>No messages yet. Say hello to start the conversation!</p>
+            {!isConnected ? (
+              <>
+                <span className="no-msg-icon">🔗</span>
+                <p><strong>Share the invite link</strong> with your trading partner to connect!</p>
+                <p className="chat-hint-small">P2P chat requires sharing the link above to establish connection.</p>
+              </>
+            ) : (
+              <>
+                <span className="no-msg-icon">💭</span>
+                <p>Connected! Say hello to start the conversation.</p>
+              </>
+            )}
           </div>
         ) : (
-          trade.messages.map(msg => (
+          normalized.map(msg => (
             <div 
-              key={msg.messageId}
+              key={String(msg.messageId ?? msg.id)}
               className={`chat-message ${msg.sender === myAddress ? 'mine' : 'theirs'}`}
             >
-              <div className="msg-content">{msg.content}</div>
+              <div className="msg-content">
+                {msg.nickname ? <strong style={{ marginRight: 8 }}>{msg.nickname}:</strong> : null}
+                {msg.content}
+              </div>
               <div className="msg-time">
-                {new Date(msg.timestamp).toLocaleTimeString([], { 
+                {new Date(msg.timestamp ?? Date.now()).toLocaleTimeString([], { 
                   hour: '2-digit', 
                   minute: '2-digit' 
                 })}
               </div>
             </div>
           ))
-        )}
+        )})()}
       </div>
       
       <div className="chat-input-area">
@@ -101,6 +163,141 @@ function TradeChat({
           Send →
         </button>
       </div>
+    </div>
+  );
+}
+
+// Offer Chat Component - For all visitors to discuss/bid on an offer
+function OfferChat({
+  chatChannelId,
+  messages,
+  myAddress,
+  onCopyInvite,
+  onSendMessage,
+}: {
+  chatChannelId: string | null;
+  messages: Array<{ id?: string; sender: string; content: string; timestamp?: number; nickname?: string }>;
+  myAddress: string;
+  onCopyInvite: () => Promise<void>;
+  onSendMessage: (content: string) => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const isConnected = !!chatChannelId;
+  const hasMessages = messages.length > 0;
+  
+  const handleSend = useCallback(() => {
+    if (!message.trim() || !isConnected) return;
+    onSendMessage(message.trim());
+    setMessage('');
+  }, [message, isConnected, onSendMessage]);
+  
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+  
+  const handleCopyInvite = useCallback(async () => {
+    if (copyStatus === 'copying') return;
+    setCopyStatus('copying');
+    try {
+      await onCopyInvite();
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Failed to copy invite:', e);
+      setCopyStatus('error');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    }
+  }, [onCopyInvite, copyStatus]);
+  
+  return (
+    <div className={`offer-chat-card ${isExpanded ? 'expanded' : ''}`}>
+      <div className="offer-chat-header" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className="chat-title">
+          <span className="chat-icon">💬</span>
+          <h4>Discussion</h4>
+          <span className={`connection-status ${isConnected ? 'connected' : 'connecting'}`}>
+            {isConnected ? '● Connected' : '○ Connecting...'}
+          </span>
+          {hasMessages && <span className="message-count">{messages.length}</span>}
+        </div>
+        <button className="expand-toggle">{isExpanded ? '▼' : '▲'}</button>
+      </div>
+      
+      {isExpanded && (
+        <>
+          <div className="offer-chat-info">
+            <p>Ask questions, negotiate terms, or discuss the trade with other interested parties.</p>
+            <button 
+              className={`copy-invite-btn small ${copyStatus !== 'idle' ? copyStatus : ''}`}
+              onClick={(e) => { e.stopPropagation(); handleCopyInvite(); }}
+              disabled={copyStatus === 'copying'}
+            >
+              {copyStatus === 'copying' ? 'Copying...' :
+               copyStatus === 'copied' ? '✓ Copied!' :
+               copyStatus === 'error' ? '✕ Failed' :
+               '📋 Copy chat link'}
+            </button>
+          </div>
+          
+          <div className="offer-chat-messages">
+            {!isConnected ? (
+              <div className="chat-connecting">
+                <span className="spinner">⏳</span>
+                <p>Connecting to chat network...</p>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="no-messages">
+                <span className="no-msg-icon">💭</span>
+                <p>No messages yet. Be the first to start the conversation!</p>
+              </div>
+            ) : (
+              messages.map((msg, idx) => (
+                <div 
+                  key={msg.id || idx}
+                  className={`chat-message ${msg.sender === myAddress ? 'mine' : 'theirs'}`}
+                >
+                  <div className="msg-content">
+                    {msg.nickname && <strong className="msg-nickname">{msg.nickname}:</strong>}
+                    {msg.content}
+                  </div>
+                  {msg.timestamp && (
+                    <div className="msg-time">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div className="offer-chat-input">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={isConnected ? "Type a message..." : "Connecting..."}
+              disabled={!isConnected}
+              rows={2}
+            />
+            <button 
+              className="send-btn" 
+              onClick={handleSend}
+              disabled={!message.trim() || !isConnected}
+            >
+              Send →
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -133,14 +330,33 @@ function TradeFlow({
   const statusColor = getTradeStatusColor(trade.status);
   const statusLabel = getTradeStatusLabel(trade.status);
   
-  // Time remaining
-  const timeRemaining = useMemo(() => {
+  // Time remaining - with live countdown
+  const [timeRemaining, setTimeRemaining] = useState(() => {
     if (!trade.expiresAt) return 'No limit';
     const diff = trade.expiresAt - Date.now();
     if (diff <= 0) return 'Expired';
     const mins = Math.floor(diff / 60000);
     const secs = Math.floor((diff % 60000) / 1000);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  });
+
+  useEffect(() => {
+    if (!trade.expiresAt) return;
+    
+    const updateTimer = () => {
+      const diff = trade.expiresAt! - Date.now();
+      if (diff <= 0) {
+        setTimeRemaining('Expired');
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setTimeRemaining(`${mins}:${secs.toString().padStart(2, '0')}`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
   }, [trade.expiresAt]);
   
   const handleAction = useCallback(async (action: () => void | Promise<void>) => {
@@ -524,6 +740,7 @@ export function P2POfferDetail() {
     myProfile,
     registerUser,
     importOffer,
+    broadcastOffer,
     error,
     clearError,
   } = useP2PMarketplace();
@@ -535,6 +752,8 @@ export function P2POfferDetail() {
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [sharedOffer, setSharedOffer] = useState<P2POffer | null>(null);
   const [isSharedOffer, setIsSharedOffer] = useState(false);
+  const [chatChannelId, setChatChannelId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: string; content: string; nickname?: string }>>([]);
   
   const isWalletConnected = walletState.activeAccount != null;
   const myAddress = myProfile?.address || '';
@@ -572,9 +791,29 @@ export function P2POfferDetail() {
       });
     }
   }, [offerId, fetchOffer, searchParams, importOffer]);
-  
+
   // Use shared offer if local offer not found
   const offer = selectedOffer || sharedOffer;
+
+  // If navigated with trade query params, pre-fill amount and auto-open modal
+  useEffect(() => {
+    if (!offer) return;
+    const autoTrade = searchParams.get('trade') === '1';
+    if (!autoTrade) return;
+    const amountParam = searchParams.get('amount');
+    if (amountParam) {
+      setTradeAmount(amountParam);
+    } else if (!tradeAmount) {
+      // Fall back to the minimum trade amount or full offer amount.
+      const defaultAmount =
+        offer.minTradeZec ??
+        (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : offer.zecAmount);
+      if (Number.isFinite(defaultAmount)) {
+        setTradeAmount(String(defaultAmount));
+      }
+    }
+    setShowTradeModal(true);
+  }, [offer, searchParams, tradeAmount]);
   
   // Determine user role in trade
   const isSeller = activeTrade?.seller === myAddress;
@@ -623,6 +862,9 @@ export function P2POfferDetail() {
         buyerShieldedCommitment: `0x${Math.random().toString(16).slice(2)}`,
         ...(selectedPaymentMethod && { paymentMethod: selectedPaymentMethod }),
       }, profileToUse);
+      
+      // Chat channel is already created/joined by the auto-connect effect
+      // No need to create it again here
       
       setShowTradeModal(false);
     } catch (err) {
@@ -675,8 +917,135 @@ export function P2POfferDetail() {
   // Handler for sending chat message
   const handleSendMessage = useCallback((content: string) => {
     if (!activeTrade) return;
-    sendMessage(activeTrade.tradeId, content);
-  }, [activeTrade, sendMessage]);
+    if (chatChannelId) {
+      chatService.sendMessage(chatChannelId, content).catch(console.error);
+      // chatService will update subscribers, which updates chatMessages
+    } else {
+      // Fallback to local messages if chat not ready
+      sendMessage(activeTrade.tradeId, content);
+    }
+  }, [activeTrade, chatChannelId, sendMessage]);
+
+  // Auto-connect to chat for ANY visitor viewing this offer
+  // This enables bidding/discussion between interested parties before a trade is initiated
+  useEffect(() => {
+    (async () => {
+      if (chatChannelId || !offer) return;
+      const nickname = myProfile?.displayName || (myProfile?.address ?? '').slice(0, 8) || 'visitor';
+      
+      // Priority 1: URL ticket (from shared invite link - most reliable)
+      const urlTicket = searchParams.get('ticket');
+      if (urlTicket) {
+        try {
+          const joinedId = await chatService.joinWithTicket(urlTicket, nickname);
+          setChatChannelId(joinedId);
+          setChatMessages(chatService.getMessages(joinedId));
+          console.log('[Chat] Connected via URL ticket');
+          
+          // Update the offer with a fresh ticket including our node
+          const newTicket = chatService.getTicket(joinedId, {
+            includeMyself: true,
+            includeBootstrap: true,
+            includeNeighbors: true,
+          });
+          if (newTicket !== offer.chatTicket) {
+            broadcastOffer({ ...offer, chatTicket: newTicket }).catch(console.error);
+          }
+          return;
+        } catch (e) {
+          console.warn('[Chat] Failed to join via URL ticket:', e);
+          // Fall through to try offer.chatTicket
+        }
+      }
+      
+      // Priority 2: Offer's embedded chat ticket (auto-connect for all visitors!)
+      if (offer.chatTicket) {
+        try {
+          const joinedId = await chatService.joinWithTicket(offer.chatTicket, nickname);
+          setChatChannelId(joinedId);
+          setChatMessages(chatService.getMessages(joinedId));
+          console.log('[Chat] Auto-connected via offer chatTicket');
+          
+          // Update the offer with our node so future visitors can connect through us
+          const newTicket = chatService.getTicket(joinedId, {
+            includeMyself: true,
+            includeBootstrap: true,
+            includeNeighbors: true,
+          });
+          if (newTicket !== offer.chatTicket) {
+            broadcastOffer({ ...offer, chatTicket: newTicket }).catch(console.error);
+          }
+          return;
+        } catch (e) {
+          console.warn('[Chat] Failed to auto-connect via offer ticket:', e);
+          // Fall through to create new channel
+        }
+      }
+      
+      // Priority 3: Create a new channel (if no ticket exists yet)
+      // This happens when viewing an offer that was created before chat was enabled
+      // or if the maker's node is offline and no other peers are available
+      try {
+        const { channelId, ticket } = await chatService.createOfferChannel(offer.offerId, nickname);
+        setChatChannelId(channelId);
+        setChatMessages(chatService.getMessages(channelId));
+        console.log('[Chat] Created new channel for offer (no existing ticket)');
+        
+        // Save ticket to offer so others can auto-connect
+        if (ticket) {
+          broadcastOffer({ ...offer, chatTicket: ticket }).catch(console.error);
+        }
+      } catch (e) {
+        console.warn('[Chat] Failed to create channel:', e);
+      }
+    })();
+  }, [offer, chatChannelId, searchParams, myProfile, broadcastOffer]);
+
+  // Subscribe to chat messages
+  useEffect(() => {
+    if (!chatChannelId) return;
+    setChatMessages(chatService.getMessages(chatChannelId));
+    const unsubscribe = chatService.subscribeToMessages(chatChannelId, () => {
+      setChatMessages(chatService.getMessages(chatChannelId));
+    });
+    return () => unsubscribe();
+  }, [chatChannelId]);
+
+  const handleCopyInvite = useCallback(async (): Promise<void> => {
+    if (!offerId || !offer) throw new Error('No offer ID');
+    
+    let url: string;
+    try {
+      let ticket: string;
+      if (chatChannelId) {
+        ticket = chatService.getTicket(chatChannelId, {
+          includeMyself: true,
+          includeBootstrap: true,
+          includeNeighbors: true,
+        });
+      } else {
+        // Create a channel first so we have a valid ticket
+        const nickname = myProfile?.displayName || (myProfile?.address ?? '').slice(0, 8) || 'anon';
+        const { channelId, ticket: newTicket } = await chatService.createOfferChannel(offerId, nickname);
+        setChatChannelId(channelId);
+        setChatMessages(chatService.getMessages(channelId));
+        ticket = newTicket;
+      }
+      
+      // Save ticket to offer so others can auto-connect (even without the link)
+      if (ticket !== offer.chatTicket) {
+        broadcastOffer({ ...offer, chatTicket: ticket }).catch(console.error);
+      }
+      
+      url = `${window.location.origin}/p2p/offer/${offerId}?ticket=${encodeURIComponent(ticket)}`;
+    } catch (chatError) {
+      // Fallback: copy URL without chat ticket if chat service fails
+      console.warn('Chat service unavailable, copying URL without ticket:', chatError);
+      url = `${window.location.origin}/p2p/offer/${offerId}`;
+    }
+    
+    await navigator.clipboard.writeText(url);
+  }, [chatChannelId, offerId, offer, myProfile, broadcastOffer]);
   
   if (loading) {
     return (
@@ -761,6 +1130,9 @@ export function P2POfferDetail() {
             trade={activeTrade}
             onSendMessage={handleSendMessage}
             myAddress={myAddress}
+            messages={chatChannelId ? chatMessages : undefined}
+            onCopyInvite={handleCopyInvite}
+            isConnected={!!chatChannelId && chatMessages.length > 0}
           />
         </div>
       )}
@@ -826,10 +1198,6 @@ export function P2POfferDetail() {
                   <span className="info-value">{offer.paymentWindow} minutes</span>
                 </div>
               )}
-              <div className="info-row">
-                <span className="info-label">Completed trades</span>
-                <span className="info-value">{offer.completedTrades}</span>
-              </div>
             </div>
             
             {/* Trading Methods */}
@@ -885,30 +1253,12 @@ export function P2POfferDetail() {
           {/* Maker Profile */}
           <div className="maker-profile-card">
             <div className="maker-header">
-              <div className="maker-avatar large">
-                {makerProfile.displayName?.[0]?.toUpperCase() || '?'}
-              </div>
               <div className="maker-identity">
                 <h3>
                   {makerProfile.displayName || offer.maker}
                   {makerProfile.isVerified && <span className="verified-badge">✓</span>}
                 </h3>
                 <span className={`reputation-tier tier-${tier.toLowerCase()}`}>{tier}</span>
-              </div>
-            </div>
-            
-            <div className="maker-stats-grid">
-              <div className="stat-item">
-                <span className="stat-value">{makerProfile.totalTrades ?? 0}</span>
-                <span className="stat-label">Trades</span>
-              </div>
-              <div className="stat-item success">
-                <span className="stat-value">{makerProfile.successRate ?? 0}%</span>
-                <span className="stat-label">Success</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-value">{formatZecFromZec(makerProfile.totalVolumeZec ?? 0, 0)}</span>
-                <span className="stat-label">Volume</span>
               </div>
             </div>
             
@@ -935,6 +1285,19 @@ export function P2POfferDetail() {
               )}
             </div>
           </div>
+          
+          {/* Offer Chat - Available for all visitors to discuss/bid */}
+          <OfferChat
+            chatChannelId={chatChannelId}
+            messages={chatMessages}
+            myAddress={myAddress}
+            onCopyInvite={handleCopyInvite}
+            onSendMessage={(content) => {
+              if (chatChannelId) {
+                chatService.sendMessage(chatChannelId, content).catch(console.error);
+              }
+            }}
+          />
         </div>
       )}
       

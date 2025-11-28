@@ -265,7 +265,7 @@ export function P2POfferCreate() {
         {/* Exchange Value */}
         <div className="form-section">
           <label className="section-label">
-            What do you want in exchange?
+            in exchange for?
           </label>
           
           <div className="exchange-input-group">

@@ -10,6 +10,8 @@ import { UsageGuide } from './UsageGuide';
 import type { PolicyDefinition, ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
 import { RouteErrorBoundary } from './ErrorBoundary';
+import { MobileBottomNav } from './MobileBottomNav';
+import './mobile.css';
 
 const ProofBuilder = lazy(() =>
   import('./ProofBuilder').then((module) => ({ default: module.ProofBuilder })),
@@ -537,6 +539,9 @@ export function ZKPFApp() {
           Made by Numan Thabit.
         </p>
       </footer>
+
+      {/* Mobile bottom navigation - only show on wallet and P2P routes */}
+      {(isWalletRoute || isP2PRoute) && <MobileBottomNav />}
 
       <Analytics />
     </div>

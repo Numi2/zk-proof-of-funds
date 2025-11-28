@@ -224,6 +224,9 @@ export interface P2POffer {
   // Broadcast metadata
   isBroadcast?: boolean;          // True if received from P2P broadcast network
   isImported?: boolean;           // True if imported via share link
+  
+  // Chat connectivity - stores iroh tickets for auto-connect
+  chatTicket?: string;            // Chat ticket with bootstrap nodes for auto-connect
 }
 
 export interface P2PTrade {

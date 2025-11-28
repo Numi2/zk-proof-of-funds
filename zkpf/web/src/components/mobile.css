@@ -1,0 +1,484 @@
+/**
+ * Mobile-First Design System
+ * 
+ * Optimized for touch interfaces and small viewports.
+ * Following Apple's HIG and Material Design principles.
+ */
+
+/* ============ CSS Custom Properties for Mobile ============ */
+:root {
+  /* Safe area insets for notched devices */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  
+  /* Mobile spacing scale */
+  --mobile-spacing-xs: 4px;
+  --mobile-spacing-sm: 8px;
+  --mobile-spacing-md: 16px;
+  --mobile-spacing-lg: 24px;
+  --mobile-spacing-xl: 32px;
+  
+  /* Touch target minimum (48px per WCAG) */
+  --touch-target-min: 48px;
+  --touch-target-comfortable: 56px;
+  
+  /* Bottom nav height */
+  --bottom-nav-height: 64px;
+  --bottom-nav-height-safe: calc(64px + var(--safe-area-inset-bottom));
+  
+  /* Mobile typography */
+  --mobile-font-sm: 0.8125rem;   /* 13px */
+  --mobile-font-base: 0.9375rem; /* 15px */
+  --mobile-font-lg: 1.0625rem;   /* 17px */
+  --mobile-font-xl: 1.25rem;     /* 20px */
+  --mobile-font-2xl: 1.5rem;     /* 24px */
+  --mobile-font-3xl: 1.875rem;   /* 30px */
+}
+
+/* ============ Mobile Bottom Navigation ============ */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  
+  background: rgba(10, 15, 26, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  
+  border-top: 1px solid rgba(100, 120, 160, 0.2);
+  
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+.mobile-bottom-nav-inner {
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  height: var(--bottom-nav-height);
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: var(--touch-target-min);
+  padding: 6px 8px;
+  
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  
+  font-size: 10px;
+  font-weight: 500;
+  text-decoration: none;
+  
+  transition: color 0.2s ease, transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.mobile-nav-item:active {
+  transform: scale(0.95);
+}
+
+.mobile-nav-item.active {
+  color: #60cfff;
+}
+
+.mobile-nav-icon {
+  font-size: 24px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.mobile-nav-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ============ Mobile Header Adjustments ============ */
+@media (max-width: 640px) {
+  /* Show bottom nav on mobile */
+  .mobile-bottom-nav {
+    display: block;
+  }
+  
+  /* Hide desktop nav when bottom nav is visible */
+  .wallet-nav,
+  .desktop-only-nav {
+    display: none !important;
+  }
+  
+  /* Add bottom padding to prevent content being hidden behind bottom nav */
+  .wallet-layout,
+  .p2p-page,
+  .main-content {
+    padding-bottom: var(--bottom-nav-height-safe) !important;
+  }
+  
+  /* Compact header on mobile */
+  .wallet-page-header {
+    padding: var(--mobile-spacing-md);
+    padding-top: calc(var(--mobile-spacing-md) + var(--safe-area-inset-top));
+  }
+  
+  .wallet-header-top {
+    flex-direction: column;
+    gap: var(--mobile-spacing-sm);
+    align-items: flex-start;
+  }
+  
+  .wallet-title-block {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--mobile-spacing-sm);
+  }
+  
+  .wallet-title-block h1 {
+    font-size: var(--mobile-font-xl);
+    margin: 0;
+  }
+  
+  .wallet-logo {
+    font-size: 28px;
+  }
+  
+  .wallet-tagline {
+    font-size: var(--mobile-font-sm);
+    margin-top: var(--mobile-spacing-xs);
+  }
+  
+  .wallet-back-link {
+    font-size: var(--mobile-font-sm);
+    padding: var(--mobile-spacing-xs) 0;
+  }
+  
+  /* Connection status as pill */
+  .connection-status {
+    position: absolute;
+    top: calc(var(--mobile-spacing-md) + var(--safe-area-inset-top));
+    right: var(--mobile-spacing-md);
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+}
+
+/* ============ Touch-Friendly Buttons ============ */
+@media (max-width: 640px) {
+  /* Ensure all interactive elements meet touch targets */
+  button,
+  .btn,
+  [role="button"],
+  a.button,
+  input[type="button"],
+  input[type="submit"] {
+    min-height: var(--touch-target-min);
+    padding-left: var(--mobile-spacing-md);
+    padding-right: var(--mobile-spacing-md);
+  }
+  
+  /* Larger hit areas for links in lists */
+  .offer-card,
+  .transaction-row,
+  .list-item {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* ============ Mobile Form Inputs ============ */
+@media (max-width: 640px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+    min-height: var(--touch-target-min);
+    padding: 12px 16px;
+  }
+  
+  /* Search inputs */
+  .search-box input {
+    font-size: 16px !important;
+    padding: 14px 16px 14px 44px;
+  }
+}
+
+/* ============ Mobile Modal Adjustments ============ */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 20px 20px 0 0;
+    margin: 0;
+    padding-bottom: calc(var(--mobile-spacing-lg) + var(--safe-area-inset-bottom));
+    
+    animation: slideUp 0.3s ease-out;
+  }
+  
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  
+  .modal-close {
+    top: 12px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+  }
+  
+  /* Modal drag handle indicator */
+  .modal::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+  }
+}
+
+/* ============ Mobile Cards ============ */
+@media (max-width: 640px) {
+  .card,
+  .offer-card {
+    border-radius: 16px;
+    padding: var(--mobile-spacing-md);
+  }
+  
+  /* Full-width cards on mobile */
+  .offers-grid {
+    grid-template-columns: 1fr;
+    gap: var(--mobile-spacing-md);
+  }
+}
+
+/* ============ Mobile Typography ============ */
+@media (max-width: 640px) {
+  h1 {
+    font-size: var(--mobile-font-2xl);
+    line-height: 1.2;
+  }
+  
+  h2 {
+    font-size: var(--mobile-font-xl);
+  }
+  
+  h3 {
+    font-size: var(--mobile-font-lg);
+  }
+  
+  p, .body-text {
+    font-size: var(--mobile-font-base);
+    line-height: 1.5;
+  }
+  
+  .small, .caption {
+    font-size: var(--mobile-font-sm);
+  }
+}
+
+/* ============ Mobile Spacing ============ */
+@media (max-width: 640px) {
+  .p2p-page {
+    padding: var(--mobile-spacing-md);
+    padding-top: calc(var(--mobile-spacing-md) + var(--safe-area-inset-top));
+  }
+  
+  .p2p-header {
+    margin-bottom: var(--mobile-spacing-lg);
+  }
+  
+  .header-content {
+    flex-direction: column;
+    gap: var(--mobile-spacing-md);
+  }
+  
+  .header-actions {
+    width: 100%;
+    display: flex;
+    gap: var(--mobile-spacing-sm);
+  }
+  
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* ============ Mobile Filters ============ */
+@media (max-width: 640px) {
+  .filters-bar {
+    flex-direction: column;
+    gap: var(--mobile-spacing-md);
+  }
+  
+  .search-box {
+    width: 100%;
+  }
+  
+  .filter-tabs {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .filter-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .method-filters {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--mobile-spacing-sm);
+  }
+  
+  .method-chips {
+    flex-wrap: nowrap;
+    gap: var(--mobile-spacing-sm);
+  }
+  
+  .method-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+/* ============ Pull-to-Refresh Space ============ */
+@media (max-width: 640px) {
+  .pull-to-refresh-spacer {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 12px;
+  }
+}
+
+/* ============ Haptic-Like Visual Feedback ============ */
+@media (max-width: 640px) {
+  .touch-feedback {
+    transition: transform 0.1s ease, opacity 0.1s ease;
+  }
+  
+  .touch-feedback:active {
+    transform: scale(0.97);
+    opacity: 0.8;
+  }
+}
+
+/* ============ Hide Scrollbars on Mobile ============ */
+@media (max-width: 640px) {
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ============ Mobile Balance Display ============ */
+@media (max-width: 640px) {
+  .balance-large {
+    font-size: var(--mobile-font-3xl);
+    font-weight: 700;
+  }
+  
+  .balance-currency {
+    font-size: var(--mobile-font-lg);
+    opacity: 0.7;
+  }
+}
+
+/* ============ Swipe Gesture Hints ============ */
+@media (max-width: 640px) {
+  .swipeable-hint {
+    position: relative;
+  }
+  
+  .swipeable-hint::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    background: linear-gradient(90deg, transparent, rgba(10, 15, 26, 0.8));
+    pointer-events: none;
+  }
+}
+
+/* ============ iOS-Style Blur Effects ============ */
+@supports (backdrop-filter: blur(20px)) {
+  @media (max-width: 640px) {
+    .glass-effect {
+      background: rgba(10, 15, 26, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+  }
+}
+
+/* ============ Landscape Mobile ============ */
+@media (max-width: 900px) and (orientation: landscape) {
+  .mobile-bottom-nav {
+    /* Smaller nav in landscape */
+    --bottom-nav-height: 48px;
+  }
+  
+  .mobile-nav-label {
+    display: none;
+  }
+  
+  .mobile-nav-icon {
+    font-size: 20px;
+    margin-bottom: 0;
+  }
+}
+
+/* ============ Prevent Overscroll ============ */
+@media (max-width: 640px) {
+  html, body {
+    overscroll-behavior: none;
+  }
+  
+  .prevent-overscroll {
+    overscroll-behavior: contain;
+  }
+}
+

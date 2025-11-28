@@ -14,6 +14,31 @@ npm install
 npm run dev
 ```
 
+### Enabling the iroh-gossip trade chat
+
+The P2P trade chat in the web console is powered by the `zkpf-chat` browser example, which uses `iroh-gossip` under the hood. To make the **“Trade Chat”** and **“Copy invite link”** flows work in the browser, you need to build the `chat-browser` Wasm package first.
+
+From the `zkpf/` directory:
+
+```bash
+cd zkpf-chat
+
+# One-time prerequisites (from the iroh-gossip docs)
+rustup target install wasm32-unknown-unknown
+cargo binstall wasm-bindgen-cli wasm-pack
+
+# Build the chat-browser package (dev profile)
+cargo make build-browser-wasm
+```
+
+This runs the equivalent of:
+
+```bash
+wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
+```
+
+which produces a local npm package in `zkpf/zkpf-chat/pkg`. The web app consumes this via the `chat-browser` file dependency and the Vite alias in `vite.config.ts`, and the invite links you copy from the trade view will now carry real iroh-gossip tickets that peers can join in the browser.
+
 The UI auto-detects its backend target in this order:
 
 1. `VITE_ZKPF_API_URL` env variable (set in `.env.local`, Vercel env settings, etc.)

@@ -1,5 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
+import { MobileBottomNav } from './MobileBottomNav';
+import './mobile.css';
 
 const BoundIdentityBuilder = lazy(() =>
   import('./BoundIdentityBuilder').then((module) => ({ default: module.BoundIdentityBuilder })),
@@ -93,6 +95,9 @@ export function BoundIdentityApp() {
           Privacy-preserving KYC+PoF verification.
         </p>
       </footer>
+
+      {/* Mobile bottom navigation */}
+      <MobileBottomNav />
     </div>
   );
 }

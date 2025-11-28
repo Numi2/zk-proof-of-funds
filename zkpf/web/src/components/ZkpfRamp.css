@@ -5,10 +5,10 @@
  */
 
 .zkpf-ramp {
-  --ramp-bg: rgba(15, 23, 42, 0.85);
+  --ramp-bg: rgba(15, 23, 42, 0.98);
   --ramp-surface: rgba(15, 23, 42, 0.95);
   --ramp-surface-hover: rgba(30, 41, 59, 0.9);
-  --ramp-border: rgba(148, 163, 184, 0.35);
+  --ramp-border: rgba(148, 163, 184, 0.2);
   --ramp-border-active: rgba(56, 189, 248, 0.7);
   --ramp-text: #e2e8f0;
   --ramp-text-muted: #94a3b8;
@@ -21,19 +21,18 @@
   --ramp-warning: #fbbf24;
   --ramp-success: #22c55e;
   --ramp-zcash: #f4b728;
-  --ramp-radius: 1.25rem;
-  --ramp-radius-sm: 1rem;
+  --ramp-radius: 12px;
+  --ramp-radius-sm: 8px;
   
   background: var(--ramp-bg);
   border: 1px solid var(--ramp-border);
   border-radius: var(--ramp-radius);
-  padding: 2rem;
-  max-width: 460px;
+  padding: 1.5rem;
+  max-width: 400px;
   width: 100%;
   font-family: inherit;
   color: var(--ramp-text);
-  box-shadow: 0 20px 50px rgba(2, 6, 23, 0.8);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.4);
 }
 
 /* Header */

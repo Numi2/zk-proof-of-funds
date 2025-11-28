@@ -61,6 +61,8 @@ interface BroadcastOffer {
   active: boolean;
   // Timestamp for sync ordering
   updatedAt: number;
+  // Chat connectivity for auto-connect
+  chatTicket?: string;
 }
 
 // Method code mapping
@@ -118,6 +120,7 @@ function toBroadcastFormat(offer: P2POffer): BroadcastOffer {
     },
     active: offer.status === 'active',
     updatedAt: Date.now(),
+    chatTicket: offer.chatTicket,
   };
 }
 
@@ -166,6 +169,7 @@ function fromBroadcastFormat(data: BroadcastOffer): P2POffer {
     completedTrades: 0,
     shieldedAddressCommitment: '',
     isBroadcast: true,
+    chatTicket: data.chatTicket,
   };
 }
 

@@ -79,21 +79,20 @@ export default function () {
   resolve: {
     alias: {
       // WebWallet WASM bindings built from `zkpf/webwallet/crates/webzjs-wallet`
-      // Expected build output:
-      //   cd zkpf/webwallet
-      //   wasm-pack build crates/webzjs-wallet --target web --out-dir pkg
-      // which produces `pkg/webzjs_wallet.js` and friends.
-      '@chainsafe/webzjs-wallet': path.resolve(__dirname, '../webwallet/pkg/webzjs_wallet.js'),
+      // Build with: cd zkpf/webwallet && ./build-wasm.sh
+      '@chainsafe/webzjs-wallet': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg/webzjs_wallet.js'),
       // WebKeys WASM bindings built from `zkpf/webwallet/crates/webzjs-keys`
-      // Expected build output:
-      //   cd zkpf/webwallet
-      //   wasm-pack build crates/webzjs-keys --target web --out-dir pkg
-      // which produces `pkg/webzjs_keys.js` and friends.
       '@chainsafe/webzjs-keys': path.resolve(__dirname, '../webwallet/crates/webzjs-keys/pkg/webzjs_keys.js'),
+      // Chat WASM bindings built from `zkpf/zkpf-chat/browser-wasm`
+      // Build with either:
+      //   cd zkpf/zkpf-chat && cargo make build-browser-wasm
+      // or directly (from zkpf/):
+      //   cd zkpf/zkpf-chat && wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
+      'chat-browser': path.resolve(__dirname, '../zkpf-chat/pkg/chat_browser.js'),
     },
   },
   optimizeDeps: {
     // Exclude WASM modules from pre-bundling
-    exclude: ['@chainsafe/webzjs-wallet', '@chainsafe/webzjs-keys'],
+    exclude: ['@chainsafe/webzjs-wallet', '@chainsafe/webzjs-keys', 'chat-browser'],
   },
 });

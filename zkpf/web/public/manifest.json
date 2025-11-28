@@ -1,0 +1,51 @@
+{
+  "name": "Zcash Shielded Wallet",
+  "short_name": "ZEC Wallet",
+  "description": "Privacy-preserving Zcash wallet with zero-knowledge proof of funds",
+  "start_url": "/wallet",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0f1a",
+  "theme_color": "#60cfff",
+  "icons": [
+    {
+      "src": "/image.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/image.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "utilities"],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "shortcuts": [
+    {
+      "name": "Send ZEC",
+      "short_name": "Send",
+      "description": "Send Zcash to someone",
+      "url": "/wallet/send",
+      "icons": [{ "src": "/image.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Receive ZEC",
+      "short_name": "Receive",
+      "description": "Get your wallet address",
+      "url": "/wallet/receive",
+      "icons": [{ "src": "/image.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "P2P Marketplace",
+      "short_name": "Trade",
+      "description": "Trade ZEC peer-to-peer",
+      "url": "/p2p",
+      "icons": [{ "src": "/image.png", "sizes": "96x96" }]
+    }
+  ]
+}
+

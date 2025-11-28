@@ -1,0 +1,34 @@
+# Use cargo-make to run tasks here: https://crates.io/crates/cargo-make
+#
+# These tasks are thin wrappers around the `iroh-gossip` browser chat build
+# pipeline. They compile the `chat-browser` Wasm package using `wasm-pack`,
+# which is then consumed by the zkpf web console via the `chat-browser`
+# file: dependency.
+#
+# Prerequisites (from the iroh-gossip docs):
+#   rustup target install wasm32-unknown-unknown
+#   cargo binstall wasm-bindgen-cli wasm-pack
+#
+
+[tasks.build-browser-wasm]
+workspace = false
+description = "Build the chat-browser Wasm package for development (used by zkpf web)"
+script = '''
+wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
+'''
+
+[tasks.build-browser-wasm-release]
+workspace = false
+description = "Build the chat-browser Wasm package for production"
+script = '''
+wasm-pack build ./browser-wasm --release -t bundler -d pkg
+'''
+
+[tasks.deploy]
+workspace = false
+script = '''
+cd frontend
+npm run build:wasm:release
+npm install
+npm run build
+'''

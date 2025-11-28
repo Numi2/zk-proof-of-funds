@@ -59,6 +59,7 @@ interface StoredOffer {
     rate: number;
     addr: string;
   };
+  chatTicket?: string;
 }
 
 // Method mappings
@@ -99,6 +100,7 @@ function toStoredFormat(offer: P2POffer): StoredOffer {
       rate: makerProfile.successRate ?? 0,
       addr: (offer.maker ?? 'unknown').slice(0, 20),
     },
+    chatTicket: offer.chatTicket,
   };
 }
 
@@ -145,6 +147,7 @@ function fromStoredFormat(data: StoredOffer): P2POffer {
     completedTrades: 0,
     shieldedAddressCommitment: '',
     isBroadcast: true,
+    chatTicket: data.chatTicket,
   };
 }
 
