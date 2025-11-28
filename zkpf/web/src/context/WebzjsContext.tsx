@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 import { del, get, set } from 'idb-keyval';
-import initWebzjsWallet, {
-  type WalletSummary,
-  WebWallet,
-  initThreadPool,
-} from '@chainsafe/webzjs-wallet';
+import type { WalletSummary, WebWallet } from '@chainsafe/webzjs-wallet';
 import initWebzjsKeys from '@chainsafe/webzjs-keys';
+import { detectBrowser, getWalletModeMessage } from '../utils/browserCompat';
+import { 
+  loadWalletWasm, 
+  createWebWallet, 
+  getWasmEnvironmentInfo,
+  isThreadedMode,
+} from '../wasm/wallet-loader';
 
 type WebZjsState = {
   webWallet: WebWallet | null;
@@ -102,62 +105,23 @@ const getLightwalletdUrl = (): string => {
   return 'https://zcash-mainnet.chainsafe.dev';
 };
 
-// Check if SharedArrayBuffer is fully available for WASM atomics
-// This requires both the API to exist AND cross-origin isolation headers to be set
-const isSharedArrayBufferAvailable = (): boolean => {
-  try {
-    // Log diagnostic info for debugging
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    console.info('[SharedArrayBuffer Check]');
-    console.info(`  Browser: ${isSafari ? 'Safari' : 'Other'}`);
-    console.info(`  crossOriginIsolated: ${typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'undefined'}`);
-    console.info(`  isSecureContext: ${window.isSecureContext}`);
-    console.info(`  location: ${window.location.origin}`);
-    
-    // Check if SharedArrayBuffer exists
-    if (typeof SharedArrayBuffer === 'undefined') {
-      console.warn('[SAB] SharedArrayBuffer API is not defined');
-      if (isSafari) {
-        console.warn('  Safari requires server to send COOP/COEP headers.');
-        console.warn('  This works on Vercel but may not work on localhost.');
-      }
-      return false;
-    }
-
-    // Check if we're in a cross-origin isolated context
-    // This is required for SharedArrayBuffer to work with WASM atomics
-    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) {
-      console.warn('[SAB] Not cross-origin isolated (crossOriginIsolated=false)');
-      if (isSafari) {
-        console.warn('  Safari does NOT support service worker header injection.');
-        console.warn('  Server must send headers:');
-        console.warn('    Cross-Origin-Opener-Policy: same-origin');
-        console.warn('    Cross-Origin-Embedder-Policy: credentialless');
-        console.warn('  For localhost: Use Chrome/Firefox, or run "npm run preview" after building.');
-      } else {
-        console.warn('  The COI service worker should inject headers.');
-        console.warn('  Try hard refresh (Ctrl+Shift+R).');
-      }
-      return false;
-    }
-
-    // Try to create a SharedArrayBuffer and use Atomics on it
-    // This tests actual usability, not just API presence
-    const sab = new SharedArrayBuffer(4);
-    const view = new Int32Array(sab);
-    // Use Atomics.store/load which are required by wasm-bindgen-rayon
-    Atomics.store(view, 0, 42);
-    const result = Atomics.load(view, 0);
-    if (result !== 42) {
-      console.warn('[SAB] Atomics operations failed');
-      return false;
-    }
-
-    console.info('[SAB] SharedArrayBuffer and Atomics available!');
-    return true;
-  } catch (err) {
-    console.warn('[SAB] Check failed:', err);
-    return false;
+// Log environment diagnostics for debugging
+const logEnvironmentInfo = (): void => {
+  const browser = detectBrowser();
+  const modeInfo = getWalletModeMessage();
+  const wasmEnv = getWasmEnvironmentInfo();
+  
+  console.info('[Wallet Environment]');
+  console.info(`  Browser: ${browser.name} ${browser.version}`);
+  console.info(`  Mobile: ${browser.isMobile}`);
+  console.info(`  crossOriginIsolated: ${wasmEnv.isCrossOriginIsolated}`);
+  console.info(`  SharedArrayBuffer: ${wasmEnv.hasSAB}`);
+  console.info(`  Supports Threads: ${wasmEnv.supportsThreads}`);
+  console.info(`  Hardware Concurrency: ${wasmEnv.hardwareConcurrency}`);
+  console.info(`  Wallet Mode: ${modeInfo.mode} - ${modeInfo.title}`);
+  
+  if (browser.technicalReason) {
+    console.info(`  Technical: ${browser.technicalReason}`);
   }
 };
 
@@ -171,54 +135,31 @@ export function WebZjsProvider({ children }: ProviderProps) {
         return;
       }
 
-      // Check for SharedArrayBuffer support - required by the WASM library
-      // which uses wasm-bindgen-rayon for Rust's Mutex/RwLock primitives
-      let hasSharedArrayBuffer = isSharedArrayBufferAvailable();
-      
-      // If not available but we have a service worker, wait a moment for it to activate
-      // The COI service worker may need time to install and reload the page
-      if (!hasSharedArrayBuffer && 'serviceWorker' in navigator && window.isSecureContext) {
-        console.info('⏳ SharedArrayBuffer not available yet, checking for service worker...');
-        
-        // Check if service worker is registered but page hasn't reloaded yet
+      // Log environment info for debugging
+      logEnvironmentInfo();
+
+      // Wait for service worker if needed (for non-Safari browsers that use the COI workaround)
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (!isSafari && 'serviceWorker' in navigator && window.isSecureContext) {
         const registration = await navigator.serviceWorker.getRegistration();
         if (registration?.active && !navigator.serviceWorker.controller) {
-          console.info('🔄 Service worker active but not controlling, page should reload...');
-          // The service worker script should handle the reload, but give it a moment
+          console.info('🔄 Service worker active but not controlling, waiting for reload...');
           await new Promise(resolve => setTimeout(resolve, 500));
-          // Re-check after wait
-          hasSharedArrayBuffer = isSharedArrayBufferAvailable();
-        } else if (!registration) {
-          // Give the service worker a moment to register
-          await new Promise(resolve => setTimeout(resolve, 300));
-          hasSharedArrayBuffer = isSharedArrayBufferAvailable();
         }
       }
-      
-      if (!hasSharedArrayBuffer) {
-        console.warn(
-          '❌ SharedArrayBuffer not available. WebWallet requires cross-origin isolation.\n' +
-          'The COI service worker should enable this automatically.\n' +
-          'Try a hard refresh (Ctrl+Shift+R) or use Chrome/Firefox.\n' +
-          'WebWallet features will be disabled.'
-        );
-        dispatch({ type: 'set-loading', payload: false });
-        // Don't set an error - manual attestation mode still works
-        return;
-      }
 
-      await initWebzjsWallet();
+      // Load the WASM module - the loader will automatically pick the right variant
+      // (threaded if SharedArrayBuffer available, single-threaded otherwise)
+      console.info('📦 Loading wallet WASM module...');
+      await loadWalletWasm();
       await initWebzjsKeys();
-
-      // Initialize thread pool in background (non-blocking)
-      // Thread pool is optional - sync will be slower but still work without it
-      // In dev mode, skip entirely due to Vite worker issues
-      if (!import.meta.env.DEV) {
-        const concurrency = navigator.hardwareConcurrency || 4;
-        // Fire and forget - don't block wallet initialization
-        initThreadPool(concurrency)
-          .then(() => console.info(`Thread pool ready (${concurrency} workers)`))
-          .catch(() => console.info('Using single-threaded sync'));
+      
+      const wasmEnv = getWasmEnvironmentInfo();
+      console.info(`✅ WASM loaded: ${wasmEnv.loadedVariant} variant`);
+      if (wasmEnv.loadedVariant === 'single') {
+        console.info('   Note: Running in single-threaded mode. Sync will be slower but works everywhere.');
+      } else {
+        console.info(`   Thread pool: ${wasmEnv.hardwareConcurrency} workers available`);
       }
 
       const lightwalletdUrl = getLightwalletdUrl();
@@ -230,21 +171,21 @@ export function WebZjsProvider({ children }: ProviderProps) {
       if (bytes) {
         try {
           // Try to restore wallet from saved state
-          wallet = new WebWallet('main', lightwalletdUrl, 1, bytes as Uint8Array);
+          wallet = await createWebWallet('main', lightwalletdUrl, 1, bytes as Uint8Array);
           console.info('Restored wallet from saved state');
         } catch (restoreErr) {
           // Deserialization may fail if the saved state was created with
-          // SharedArrayBuffer support but current env doesn't have it.
+          // a different WASM variant (threaded vs single-threaded).
           // Clear the incompatible data and create a fresh wallet.
           console.warn(
-            'Failed to restore wallet from saved state (likely SharedArrayBuffer mismatch). Creating fresh wallet.',
+            'Failed to restore wallet from saved state. Creating fresh wallet.',
             restoreErr
           );
           await del('zkpf-webwallet-db');
-          wallet = new WebWallet('main', lightwalletdUrl, 1);
+          wallet = await createWebWallet('main', lightwalletdUrl, 1);
         }
       } else {
-        wallet = new WebWallet('main', lightwalletdUrl, 1);
+        wallet = await createWebWallet('main', lightwalletdUrl, 1);
         console.info('Created new wallet (no saved state found)');
       }
 
@@ -287,17 +228,23 @@ export function WebZjsProvider({ children }: ProviderProps) {
 
       dispatch({ type: 'set-loading', payload: false });
     } catch (err) {
-      // Check for SharedArrayBuffer-related errors
       const errMsg = String(err);
+      
+      // Check if this is a WASM loading error that might be recoverable
       if (errMsg.includes('shared') || errMsg.includes('SharedArrayBuffer') || 
-          errMsg.includes('Atomics')) {
+          errMsg.includes('Atomics') || errMsg.includes('WebAssembly.Memory')) {
+        // This shouldn't happen with the dual-build approach, but handle gracefully
         console.warn(
-          'WebWallet initialization failed due to SharedArrayBuffer limitations.\n' +
-          'Manual attestation mode is still available.',
+          '⚠️ WASM initialization failed - both threaded and single-threaded variants failed.\n' +
+          'This is unexpected. Please report this issue.',
           err
         );
+        // Try to provide useful diagnostic info
+        const wasmEnv = getWasmEnvironmentInfo();
+        console.warn('Environment info:', wasmEnv);
+        
         dispatch({ type: 'set-loading', payload: false });
-        // Don't set error - manual mode works
+        // Don't set blocking error - P2P and verification features still work
         return;
       }
       

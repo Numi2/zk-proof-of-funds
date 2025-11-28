@@ -1,0 +1,73 @@
+//! zkpf-near-tee
+//!
+//! NEAR TEE-backed private AI agent for zkpf wallet intelligence.
+//!
+//! # Design Philosophy
+//!
+//! NEAR provides TEE (Trusted Execution Environment) capabilities that enable:
+//! - **Private AI inference**: Run AI models in confidential compute enclaves
+//! - **Wallet intelligence**: Smart suggestions without exposing transaction data
+//! - **Secure key management**: TEE-protected key derivation and signing
+//! - **Cross-chain orchestration**: Coordinate multi-chain operations privately
+//!
+//! # Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                        NEAR TEE Agent Architecture                       │
+//! ├─────────────────────────────────────────────────────────────────────────┤
+//! │                                                                          │
+//! │  ┌──────────────────┐    ┌───────────────────┐    ┌──────────────────┐ │
+//! │  │   TEE Enclave    │    │   AI Inference    │    │  Key Management  │ │
+//! │  │                  │    │                   │    │                  │ │
+//! │  │ • Intel SGX/TDX  │    │ • Local LLM       │    │ • Key derivation │ │
+//! │  │ • AMD SEV        │    │ • Privacy filter  │    │ • Signing ops    │ │
+//! │  │ • Attestation    │    │ • Intent parsing  │    │ • Rotation       │ │
+//! │  └────────┬─────────┘    └─────────┬─────────┘    └────────┬─────────┘ │
+//! │           │                        │                       │           │
+//! │           └────────────────────────┼───────────────────────┘           │
+//! │                                    │                                    │
+//! │                                    ▼                                    │
+//! │                         ┌────────────────────┐                          │
+//! │                         │   Agent Contract   │                          │
+//! │                         │   (NEAR Account)   │                          │
+//! │                         │                    │                          │
+//! │                         │ • State storage    │                          │
+//! │                         │ • Access control   │                          │
+//! │                         │ • Cross-chain msg  │                          │
+//! │                         └────────────────────┘                          │
+//! │                                                                          │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! # Security Model
+//!
+//! 1. **Data never leaves TEE**: All sensitive operations happen in the enclave
+//! 2. **Attestation required**: Agent proves it's running in genuine TEE
+//! 3. **Minimal disclosure**: AI outputs are filtered to prevent data leakage
+//! 4. **Key isolation**: Private keys never exist outside the TEE
+
+pub mod agent;
+pub mod attestation;
+pub mod crypto;
+pub mod error;
+pub mod inference;
+pub mod rpc;
+pub mod types;
+
+pub use agent::{NearAgent, AgentConfig, AgentCapability};
+pub use attestation::{TeeAttestation, TeeProvider, verify_attestation};
+pub use crypto::{TeeKeyManager, EncryptedPayload, SignedMessage};
+pub use error::NearTeeError;
+pub use inference::{AiInference, InferenceRequest, InferenceResult, PrivacyFilter};
+pub use types::*;
+
+/// Version of the NEAR TEE agent protocol.
+pub const NEAR_TEE_VERSION: u32 = 1;
+
+/// Default TEE attestation validity (1 hour).
+pub const DEFAULT_ATTESTATION_VALIDITY_SECS: u64 = 3600;
+
+/// Maximum AI response tokens.
+pub const MAX_INFERENCE_TOKENS: usize = 2048;
+

@@ -79,21 +79,25 @@ export default function () {
   },
   resolve: {
     alias: {
-      // WebWallet WASM bindings built from `zkpf/webwallet/crates/webzjs-wallet`
+      // WebWallet WASM bindings - THREADED variant (requires SharedArrayBuffer)
       // Build with: cd zkpf/webwallet && ./build-wasm.sh
-      '@chainsafe/webzjs-wallet': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg/webzjs_wallet.js'),
+      // The threaded build is the default for backwards compatibility
+      '@chainsafe/webzjs-wallet': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg-threads/webzjs_wallet_threads.js'),
+      // WebWallet WASM bindings - SINGLE-THREADED variant (works on all browsers)
+      // Used as fallback when SharedArrayBuffer is unavailable
+      '@chainsafe/webzjs-wallet-single': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg-single/webzjs_wallet_single.js'),
       // WebKeys WASM bindings built from `zkpf/webwallet/crates/webzjs-keys`
       '@chainsafe/webzjs-keys': path.resolve(__dirname, '../webwallet/crates/webzjs-keys/pkg/webzjs_keys.js'),
       // Chat WASM bindings built from `zkpf/zkpf-chat/browser-wasm`
-      // Build with either:
-      //   cd zkpf/zkpf-chat && cargo make build-browser-wasm
-      // or directly (from zkpf/):
-      //   cd zkpf/zkpf-chat && wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
-      'chat-browser': path.resolve(__dirname, '../zkpf-chat/pkg/chat_browser.js'),
+      // Build with (requires LLVM with WASM target):
+      //   cd zkpf/zkpf-chat && CC_wasm32_unknown_unknown="/opt/homebrew/opt/llvm/bin/clang" \
+      //     AR_wasm32_unknown_unknown="/opt/homebrew/opt/llvm/bin/llvm-ar" \
+      //     wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
+      'chat-browser': path.resolve(__dirname, '../zkpf-chat/browser-wasm/pkg/chat_browser.js'),
     },
   },
   optimizeDeps: {
     // Exclude WASM modules from pre-bundling
-    exclude: ['@chainsafe/webzjs-wallet', '@chainsafe/webzjs-keys', 'chat-browser'],
+    exclude: ['@chainsafe/webzjs-wallet', '@chainsafe/webzjs-wallet-single', '@chainsafe/webzjs-keys', 'chat-browser'],
   },
 });

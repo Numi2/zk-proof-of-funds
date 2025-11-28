@@ -35,6 +35,10 @@ members = [
     "zkpf-uri-payment",
     # Wallet state machine with ZK proofs
     "zkpf-wallet-state",
+    # Unified multi-chain Tachyon wallet
+    "zkpf-tachyon-wallet",
+    # NEAR TEE-backed private AI agent
+    "zkpf-near-tee",
 ]
 
 [patch.crates-io]

@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "chat-browser": "file:../zkpf-chat/pkg",
+    "chat-browser": "file:../zkpf-chat/browser-wasm/pkg",
     "@metamask/providers": "^18.2.0",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",

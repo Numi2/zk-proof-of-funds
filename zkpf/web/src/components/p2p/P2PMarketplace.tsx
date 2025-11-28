@@ -162,7 +162,7 @@ function QuickCreateModal({
           >
             <span className="option-icon">📤</span>
             <span className="option-title">Sell ZEC</span>
-            <span className="option-desc">Get cash, crypto, goods, or services for your ZEC</span>
+
           </button>
           
           <button 
@@ -171,22 +171,11 @@ function QuickCreateModal({
           >
             <span className="option-icon">📥</span>
             <span className="option-title">Buy ZEC</span>
-            <span className="option-desc">Offer cash, crypto, goods, or services for ZEC</span>
+
           </button>
         </div>
         
-        <div className="quick-examples">
-          <p className="examples-title">People trade ZEC for:</p>
-          <div className="example-tags">
-            <span>USD 💵</span>
-            <span>EUR 💶</span>
-            <span>Bitcoin ₿</span>
-            <span>Gift cards 🎁</span>
-            <span>Cash in person 🤝</span>
-            <span>Freelance work ⚡</span>
-            <span>Local currency 🌍</span>
-          </div>
-        </div>
+        
       </div>
     </div>
   );
@@ -538,7 +527,7 @@ export function P2PMarketplace() {
       
       {/* How it works - simpler */}
       <section className="how-section">
-        <h2>Simple, trust-based trading</h2>
+        <h2>Marketplace</h2>
         <div className="how-grid">
           <div className="how-item">
             <span className="how-icon">💬</span>

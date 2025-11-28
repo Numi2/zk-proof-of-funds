@@ -18,14 +18,16 @@ default = ["native", "multicore"]
 
 multicore = ["zcash_proofs/multicore", "zcash_primitives/multicore", "zcash_client_memory/multicore"]
 
-
 # WASM specific features
 wasm = ["console_error_panic_hook", "dep:tracing-web", "zcash_client_backend/wasm-bindgen"]
-wasm-parallel = ["wasm", "wasm-bindgen-rayon", "multicore"]
+# Threaded WASM build (requires SharedArrayBuffer + cross-origin isolation)
+wasm-parallel = ["wasm", "wasm-bindgen-rayon", "multicore", "dep:rayon", "dep:wasm_thread"]
+# Single-threaded WASM build (works on all browsers, slower sync/proving)
+wasm-single-thread = ["wasm"]
 native = ["tonic/channel", "tonic/gzip", "tonic/tls-webpki-roots", "tokio/macros", "tokio/rt", "tokio/rt-multi-thread"]
 sqlite-db = ["dep:zcash_client_sqlite"]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
-no-bundler = ["wasm-bindgen-rayon?/no-bundler", "wasm_thread/no-bundler"]
+no-bundler = ["wasm-bindgen-rayon?/no-bundler", "wasm_thread?/no-bundler"]
 
 [dependencies]
 webzjs-common = { path = "../webzjs-common" }
@@ -84,9 +86,10 @@ nonempty = "0.11"
 hex = "0.4.3"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing = "0.1.40"
-rayon = { version = "1.8", features = ["web_spin_lock"] }
+# Threading dependencies - only used in wasm-parallel builds
+rayon = { version = "1.8", features = ["web_spin_lock"], optional = true }
 subtle = "2.6.1"
-wasm_thread = { git = "https://github.com/ec2/wasm_thread", rev = "9e432077948d927d49373d1d039c23447d3648df", default-features = false, features = ["keep_worker_alive", "es_modules"] }
+wasm_thread = { git = "https://github.com/ec2/wasm_thread", rev = "9e432077948d927d49373d1d039c23447d3648df", default-features = false, features = ["keep_worker_alive", "es_modules"], optional = true }
 
 wasm_sync = "0.1.2"
 http = { version = "1.1.0", default-features = false }

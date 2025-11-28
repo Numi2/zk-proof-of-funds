@@ -1,12 +1,23 @@
 /**
  * Browser compatibility utilities for SharedArrayBuffer/WebWallet support
+ * 
+ * The Zcash WASM wallet requires SharedArrayBuffer for multi-threaded operations.
+ * This file provides detection and fallback guidance for different browser environments:
+ * 
+ * - Full support: Desktop Chrome/Firefox/Edge with cross-origin isolation
+ * - Limited support: Safari (requires proper server headers, no SW workaround)
+ * - No support: iOS Safari, older browsers (use "lite mode" features)
  */
+
+export type WalletMode = 'full' | 'lite' | 'unknown';
 
 export interface BrowserInfo {
   name: string;
   version: string;
   isSupported: boolean;
   isMobile: boolean;
+  /** The recommended wallet mode based on browser capabilities */
+  walletMode: WalletMode;
   supportDetails: {
     hasSharedArrayBuffer: boolean;
     hasCrossOriginIsolation: boolean;
@@ -18,13 +29,37 @@ export interface BrowserInfo {
   suggestedActions: SuggestedAction[];
   /** Features that still work without SharedArrayBuffer */
   availableFeatures: string[];
+  /** Why the browser can't use full mode (detailed technical reason) */
+  technicalReason: string | null;
 }
 
 export interface SuggestedAction {
   label: string;
   description: string;
-  action: 'refresh' | 'clear-cache' | 'use-chrome' | 'use-firefox' | 'use-desktop' | 'check-headers' | 'manual-mode';
+  action: 'refresh' | 'clear-cache' | 'use-chrome' | 'use-firefox' | 'use-desktop' | 'check-headers' | 'manual-mode' | 'lite-mode';
 }
+
+/**
+ * Features available in "lite mode" (no SharedArrayBuffer required)
+ */
+export const LITE_MODE_FEATURES = [
+  'P2P Marketplace - post and respond to offers',
+  'Verify proof bundles from others',
+  'View and manage attestations',
+  'Browse policy catalog',
+  'Share offers via links',
+  'Encrypted chat (if WASM loads)',
+] as const;
+
+/**
+ * Features that require full wallet mode (SharedArrayBuffer)
+ */
+export const FULL_MODE_FEATURES = [
+  'Zcash wallet sync with blockchain',
+  'Generate ZK proofs locally',
+  'Create shielded transactions',
+  'View shielded balance',
+] as const;
 
 /**
  * Detect the current browser and its capabilities
@@ -35,8 +70,10 @@ export function detectBrowser(): BrowserInfo {
   let version = '';
   let isSupported = false;
   let recommendation: string | null = null;
+  let technicalReason: string | null = null;
   const suggestedActions: SuggestedAction[] = [];
   const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const isProduction = !isLocalhost && window.location.protocol === 'https:';
 
   // Detect browser
   if (ua.includes('Firefox/')) {
@@ -66,52 +103,74 @@ export function detectBrowser(): BrowserInfo {
     isSupported = hasMinVersion && !isMobileSafari();
     
     if (isMobileSafari()) {
-      recommendation = 'Safari on iOS does not support SharedArrayBuffer. Please use Chrome or Firefox on desktop.';
-      suggestedActions.push({
-        label: 'Use Desktop',
-        description: 'Open this page on a desktop computer with Chrome or Firefox',
-        action: 'use-desktop',
-      });
+      const iosVersion = getIOSVersion();
+      const iosHasSAB = iosSupportsSharedArrayBuffer();
+      
+      if (iosHasSAB) {
+        // iOS 15.2+ supports SAB with cross-origin isolation
+        isSupported = true;
+        if (!supportDetails.hasCrossOriginIsolation) {
+          technicalReason = `iOS ${iosVersion?.major}.${iosVersion?.minor} supports SharedArrayBuffer, but page is not cross-origin isolated.`;
+          recommendation = 'Cross-origin isolation headers may be missing. Try refreshing or contact support.';
+          isSupported = false;
+        }
+      } else {
+        technicalReason = `iOS ${iosVersion?.major || '?'}.${iosVersion?.minor || '?'} is below 15.2 - SharedArrayBuffer requires iOS 15.2+.`;
+        recommendation = 'Please update iOS to 15.2 or later, or use a desktop browser for full wallet features.';
+        suggestedActions.push({
+          label: 'Continue in Lite Mode',
+          description: 'P2P trading, verification, and more work on any device',
+          action: 'lite-mode',
+        });
+        suggestedActions.push({
+          label: 'Open on Desktop',
+          description: 'For full wallet sync, use Chrome or Firefox on a computer',
+          action: 'use-desktop',
+        });
+      }
     } else if (!hasMinVersion) {
+      technicalReason = `Safari ${version || 'version'} is too old. SharedArrayBuffer requires Safari 15.2+.`;
       recommendation = 'Please update Safari to version 15.2 or later, or use Chrome/Firefox.';
       suggestedActions.push({
         label: 'Use Chrome',
-        description: 'Chrome has better support for WebAssembly features',
+        description: 'Chrome has full support for all features',
         action: 'use-chrome',
       });
     } else if (isLocalhost) {
-      // Safari on localhost - explain the technical limitation
-      recommendation = 
+      // Safari on localhost - explain the technical limitation clearly
+      technicalReason = 
         'Safari cannot use the service worker workaround for cross-origin isolation. ' +
-        'The Vite dev server sends the correct headers, but Safari may need a cache clear.';
+        'Unlike Chrome/Firefox, Safari requires the actual HTTP server to send COOP/COEP headers.';
+      recommendation = 
+        'For local development with Safari, use "npm run build && npm run preview" which serves with proper headers. ' +
+        'Or use Chrome/Firefox for development.';
+      suggestedActions.push({
+        label: 'Use Chrome/Firefox',
+        description: 'These browsers support the service worker workaround for local dev',
+        action: 'use-chrome',
+      });
+      suggestedActions.push({
+        label: 'Run Preview Build',
+        description: 'Run "npm run build && npm run preview" for proper headers',
+        action: 'check-headers',
+      });
+      suggestedActions.push({
+        label: 'Continue in Lite Mode',
+        description: 'Use P2P marketplace and verification without full wallet',
+        action: 'lite-mode',
+      });
+    } else if (isProduction) {
+      // Safari on deployed site - headers should be there, might need cache clear
+      recommendation = 
+        'Safari should work on this site. If you see this message, try clearing your cache.';
       suggestedActions.push({
         label: 'Clear Cache & Refresh',
-        description: 'Press Cmd+Option+E to clear cache, then Cmd+Shift+R to hard refresh',
+        description: 'Press Cmd+Option+E, then Cmd+Shift+R',
         action: 'clear-cache',
       });
       suggestedActions.push({
         label: 'Check Headers',
-        description: 'Verify the server is sending COOP/COEP headers',
-        action: 'check-headers',
-      });
-      suggestedActions.push({
-        label: 'Use Chrome/Firefox',
-        description: 'These browsers support the service worker workaround',
-        action: 'use-chrome',
-      });
-    } else {
-      // Safari on deployed site - headers should be there
-      recommendation = 
-        'Safari requires the server to send Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers. ' +
-        'These should be configured on the deployment, but may need a hard refresh.';
-      suggestedActions.push({
-        label: 'Hard Refresh',
-        description: 'Press Cmd+Shift+R to bypass cache',
-        action: 'refresh',
-      });
-      suggestedActions.push({
-        label: 'Check Headers',
-        description: 'Verify the server is sending COOP/COEP headers',
+        description: 'Verify COOP/COEP headers in Network tab',
         action: 'check-headers',
       });
     }
@@ -131,11 +190,14 @@ export function detectBrowser(): BrowserInfo {
   if (supportDetails.hasSharedArrayBuffer && supportDetails.hasCrossOriginIsolation) {
     isSupported = true;
     recommendation = null;
+    technicalReason = null;
     suggestedActions.length = 0; // Clear actions if everything works
   } else if (!isSupported && !recommendation) {
     if (!supportDetails.isSecureContext) {
+      technicalReason = 'SharedArrayBuffer requires a secure context (HTTPS or localhost).';
       recommendation = 'This page must be served over HTTPS.';
     } else if (!supportDetails.hasCrossOriginIsolation) {
+      technicalReason = 'The page is not cross-origin isolated. COOP/COEP headers are missing or incorrect.';
       recommendation = 'Cross-origin isolation is required for SharedArrayBuffer.';
       if (name !== 'Safari') {
         suggestedActions.push({
@@ -145,7 +207,8 @@ export function detectBrowser(): BrowserInfo {
         });
       }
     } else if (!supportDetails.hasSharedArrayBuffer) {
-      recommendation = 'Your browser does not support SharedArrayBuffer. Please use Chrome, Firefox, or Edge.';
+      technicalReason = 'Your browser does not expose the SharedArrayBuffer API.';
+      recommendation = 'Please use Chrome, Firefox, or Edge for full wallet support.';
       suggestedActions.push({
         label: 'Use Chrome',
         description: 'Chrome has full support for all features',
@@ -154,53 +217,94 @@ export function detectBrowser(): BrowserInfo {
     }
   }
 
-  // Mobile-specific recommendations
+  // Mobile-specific handling
+  // Note: Modern mobile browsers (iOS 15.2+, Android Chrome 92+) DO support SAB with cross-origin isolation
   if (isMobile && !isSupported) {
-    if (name === 'Safari') {
-      recommendation = 'iOS Safari does not support the required features. Please use this app on a desktop browser.';
-    } else {
-      recommendation = 'Mobile browsers have limited support. For best experience, use a desktop browser.';
+    // Only show mobile-specific messaging if we're actually blocked
+    if (supportDetails.hasCrossOriginIsolation && !supportDetails.hasSharedArrayBuffer) {
+      // Cross-origin isolation works but SAB is unavailable - likely old browser
+      if (name === 'Safari') {
+        technicalReason = 'iOS version too old for SharedArrayBuffer. Requires iOS 15.2+.';
+        recommendation = 'Update iOS to 15.2+ for full wallet support, or use Lite Mode.';
+      } else {
+        technicalReason = 'Browser version does not support SharedArrayBuffer.';
+        recommendation = 'Update your browser for full wallet support, or use Lite Mode.';
+      }
+    } else if (!supportDetails.hasCrossOriginIsolation) {
+      // Cross-origin isolation is the issue
+      technicalReason = 'Page is not cross-origin isolated (COOP/COEP headers may be missing).';
+      recommendation = 'This may be a server configuration issue. Try refreshing.';
     }
-    suggestedActions.length = 0;
+    
+    if (!suggestedActions.some(a => a.action === 'lite-mode')) {
+      suggestedActions.push({
+        label: 'Use Lite Mode',
+        description: 'P2P trading, verification, and more - works on all devices',
+        action: 'lite-mode',
+      });
+    }
+    if (!suggestedActions.some(a => a.action === 'use-desktop')) {
+      suggestedActions.push({
+        label: 'Open on Desktop',
+        description: 'For full wallet sync and proof generation',
+        action: 'use-desktop',
+      });
+    }
+  }
+
+  // Always add lite mode as a fallback option if not supported
+  if (!isSupported && !suggestedActions.some(a => a.action === 'lite-mode')) {
     suggestedActions.push({
-      label: 'Use Desktop Browser',
-      description: 'The wallet requires a desktop browser for full functionality',
-      action: 'use-desktop',
+      label: 'Use Lite Mode',
+      description: 'P2P marketplace, proof verification, and more - works everywhere',
+      action: 'lite-mode',
     });
   }
 
-  // Always add manual mode as a fallback option if not supported
-  if (!isSupported) {
-    suggestedActions.push({
-      label: 'Use Manual Mode',
-      description: 'You can still verify proofs and upload pre-built bundles',
-      action: 'manual-mode',
-    });
-  }
+  // Determine wallet mode
+  const walletMode: WalletMode = isSupported ? 'full' : 'lite';
 
   // Features that work without SharedArrayBuffer
-  const availableFeatures = isSupported ? [] : [
-    'Verify proof bundles',
-    'Upload and check attestations',
-    'View policy catalog',
-    'Download sample bundles',
-  ];
+  const availableFeatures = isSupported ? [] : [...LITE_MODE_FEATURES];
 
   return {
     name,
     version,
     isSupported,
     isMobile,
+    walletMode,
     supportDetails,
     recommendation,
     suggestedActions,
     availableFeatures,
+    technicalReason,
   };
 }
 
 function isMobileSafari(): boolean {
   const ua = navigator.userAgent;
   return /iPhone|iPad|iPod/.test(ua) && ua.includes('Safari') && !ua.includes('Chrome');
+}
+
+/**
+ * Get iOS version if on iOS, otherwise null
+ */
+function getIOSVersion(): { major: number; minor: number } | null {
+  const ua = navigator.userAgent;
+  const match = ua.match(/OS (\d+)_(\d+)/);
+  if (match && /iPhone|iPad|iPod/.test(ua)) {
+    return { major: parseInt(match[1]), minor: parseInt(match[2]) };
+  }
+  return null;
+}
+
+/**
+ * Check if iOS version supports SharedArrayBuffer (15.2+)
+ */
+function iosSupportsSharedArrayBuffer(): boolean {
+  const version = getIOSVersion();
+  if (!version) return false;
+  return version.major > 15 || (version.major === 15 && version.minor >= 2);
 }
 
 /**
@@ -314,20 +418,92 @@ export function getSafariTroubleshootingSteps(): string[] {
   if (isLocalhost) {
     return [
       '1. Safari does NOT support the service worker header injection workaround.',
-      '2. For local development, please use Chrome or Firefox instead.',
-      '3. Alternatively, run `npm run build && npm run preview` which serves with proper headers.',
-      '4. If you must use Safari locally, ensure your dev server sends:',
-      '   • Cross-Origin-Opener-Policy: same-origin',
-      '   • Cross-Origin-Embedder-Policy: credentialless',
+      '2. For local development with full wallet, use Chrome or Firefox instead.',
+      '3. Or run `npm run build && npm run preview` which serves with proper headers.',
+      '4. Lite Mode (P2P, verification) works in Safari without special headers.',
     ];
   }
 
   return [
     '1. Clear Safari cache: Develop menu → Empty Caches (or Cmd+Option+E)',
     '2. Hard refresh: Cmd+Shift+R',
-    '3. Check if the site sends COOP/COEP headers (use Safari Web Inspector → Network tab)',
-    '4. If headers are missing, this is a server configuration issue.',
-    '5. As a workaround, use Chrome or Firefox which support the service worker fallback.',
+    '3. Check COOP/COEP headers in Safari Web Inspector → Network tab',
+    '4. If headers are correct but still failing, try a private window',
+    '5. Lite Mode is always available as a fallback',
   ];
+}
+
+/**
+ * Determine if we're running on iOS (iPhone, iPad, iPod)
+ */
+export function isIOSDevice(): boolean {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua);
+}
+
+/**
+ * Determine if we're running on Android
+ */
+export function isAndroidDevice(): boolean {
+  const ua = navigator.userAgent;
+  return /Android/i.test(ua);
+}
+
+/**
+ * Check if the current environment supports full wallet mode
+ */
+export function supportsFullWallet(): boolean {
+  try {
+    if (typeof SharedArrayBuffer === 'undefined') return false;
+    if (typeof crossOriginIsolated !== 'undefined' && !crossOriginIsolated) return false;
+    
+    // Quick functional test
+    const sab = new SharedArrayBuffer(4);
+    const view = new Int32Array(sab);
+    Atomics.store(view, 0, 42);
+    return Atomics.load(view, 0) === 42;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get a user-friendly message about the current wallet mode
+ */
+export function getWalletModeMessage(): { mode: WalletMode; title: string; description: string } {
+  const browser = detectBrowser();
+  
+  if (browser.isSupported) {
+    return {
+      mode: 'full',
+      title: 'Full Wallet Mode',
+      description: 'All features available including Zcash wallet sync and local proof generation.',
+    };
+  }
+  
+  if (browser.isMobile) {
+    return {
+      mode: 'lite',
+      title: 'Lite Mode (Mobile)',
+      description: 'P2P trading, proof verification, and messaging work on mobile. Full wallet sync requires a desktop browser.',
+    };
+  }
+  
+  if (browser.name === 'Safari') {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      return {
+        mode: 'lite',
+        title: 'Lite Mode (Safari Dev)',
+        description: 'Safari on localhost needs proper server headers for full wallet. Use Chrome/Firefox for local dev, or run "npm run preview".',
+      };
+    }
+  }
+  
+  return {
+    mode: 'lite',
+    title: 'Lite Mode',
+    description: 'P2P marketplace, proof verification, and messaging are available. For full wallet sync, use Chrome, Firefox, or Edge.',
+  };
 }
 

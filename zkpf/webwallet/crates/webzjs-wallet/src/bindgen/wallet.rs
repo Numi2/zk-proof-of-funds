@@ -10,7 +10,11 @@ use tonic_web_wasm_client::Client;
 use crate::error::Error;
 use crate::wallet::usk_from_seed_str;
 use crate::{bindgen::proposal::Proposal, Wallet, PRUNING_DEPTH};
+
+// Threading imports - only available in wasm-parallel builds
+#[cfg(feature = "wasm-parallel")]
 use wasm_thread as thread;
+
 use webzjs_common::{Network, Pczt};
 use webzjs_keys::{ProofGenerationKey, SeedFingerprint};
 use zcash_address::ZcashAddress;
@@ -262,9 +266,10 @@ impl WebWallet {
     ///
     /// Start a background sync task which will fetch and scan blocks from the connected lighwalletd server
     ///
-    /// IMPORTANT: This will spawn a new webworker which will handle the sync task. The sync task will continue to run in the background until the sync process is complete.
-    /// During this time the main thread will not block but certain wallet methods may temporarily block while the wallet is being written to during the sync.
+    /// IMPORTANT: In threaded builds, this will spawn a new webworker which will handle the sync task.
+    /// In single-threaded builds, this runs synchronously on the main thread (slower but works everywhere).
     ///
+    #[cfg(feature = "wasm-parallel")]
     pub async fn sync(&self) -> Result<(), Error> {
         assert!(!thread::is_web_worker_thread());
 
@@ -285,6 +290,14 @@ impl WebWallet {
             .unwrap_throw()
             .join_async();
         sync_handler.await.unwrap();
+        Ok(())
+    }
+
+    /// Single-threaded sync implementation (no web workers)
+    #[cfg(not(feature = "wasm-parallel"))]
+    pub async fn sync(&self) -> Result<(), Error> {
+        tracing::debug!("Running sync in single-threaded mode");
+        self.inner.sync().await?;
         Ok(())
     }
 
@@ -327,7 +340,8 @@ impl WebWallet {
 
     /// Generate a valid Zcash transaction from a given proposal
     ///
-    /// IMPORTANT: This will spawn a new webworker which will handle the proving task which may take 10s of seconds
+    /// IMPORTANT: In threaded builds, this spawns a new webworker for the proving task.
+    /// In single-threaded builds, this runs on the main thread (slower but works everywhere).
     ///
     /// # Arguments
     ///
@@ -347,6 +361,7 @@ impl WebWallet {
     /// const proposal = await wallet.propose_transfer(1, "u18rakpts0de589sx9dkamcjms3apruqqax9k2s6e7zjxx9vv5kc67pks2trg9d3nrgd5acu8w8arzjjuepakjx38dyxl6ahd948w0mhdt9jxqsntan6px3ysz80s04a87pheg2mqvlzpehrgup7568nfd6ez23xd69ley7802dfvplnfn7c07vlyumcnfjul4pvv630ac336rjhjyak5", 100000000);
     /// const authorized_txns = await wallet.create_proposed_transactions(proposal, "...", 1);
     /// ```
+    #[cfg(feature = "wasm-parallel")]
     pub async fn create_proposed_transactions(
         &self,
         proposal: Proposal,
@@ -377,6 +392,25 @@ impl WebWallet {
             .unwrap_throw()
             .join_async();
         let txids = sync_handler.await.unwrap();
+
+        let flattened_txid_bytes = txids.iter().flat_map(|&x| x.as_ref().clone()).collect();
+        Ok(flattened_txid_bytes)
+    }
+
+    /// Single-threaded transaction creation (no web workers)
+    #[cfg(not(feature = "wasm-parallel"))]
+    pub async fn create_proposed_transactions(
+        &self,
+        proposal: Proposal,
+        seed_phrase: &str,
+        account_hd_index: u32,
+    ) -> Result<Vec<u8>, Error> {
+        tracing::debug!("Creating transactions in single-threaded mode");
+        let (usk, _) = usk_from_seed_str(seed_phrase, account_hd_index, &self.inner.network)?;
+        
+        let txids = self.inner
+            .create_proposed_transactions(proposal.into(), &usk)
+            .await?;
 
         let flattened_txid_bytes = txids.iter().flat_map(|&x| x.as_ref().clone()).collect();
         Ok(flattened_txid_bytes)
