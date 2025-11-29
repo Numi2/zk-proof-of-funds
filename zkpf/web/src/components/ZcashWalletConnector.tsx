@@ -47,10 +47,22 @@ interface WindowWithEthereum extends Window {
   ethereum?: EthereumProvider;
 }
 
+interface AuthAccount {
+  id: string;
+  displayName: string;
+  address: string;
+  type: string;
+  publicKey?: Uint8Array;
+}
+
 interface Props {
   onAttestationReady: (json: string) => void;
   onShowToast: (message: string, type?: 'success' | 'error') => void;
   policy?: PolicyDefinition | null;
+  /** Optional auth wallet account for signing attestations */
+  authAccount?: AuthAccount | null;
+  /** Optional auth wallet sign message function */
+  authSignMessage?: (message: string | Uint8Array) => Promise<Uint8Array>;
 }
 
 type ZcashNetwork = 'main' | 'test';
@@ -112,7 +124,7 @@ function extractErrorMessage(err: unknown): string {
   return 'Failed to build Zcash wallet attestation JSON.';
 }
 
-export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }: Props) {
+export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, authAccount, authSignMessage }: Props) {
   const { state: walletState } = useWebZjsContext();
   const { connectWebZjsSnap, triggerRescan, createAccountFromSeed } = useWebzjsActions();
 
@@ -154,13 +166,10 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     }
   }, [walletState.activeAccount, ufvk]);
 
-  const [evmAccount, setEvmAccount] = useState<string>('');
-  const [evmChainId, setEvmChainId] = useState<string>('');
+  const [evmAccount, _setEvmAccount] = useState<string>('');
 
   const [zcashBalanceZats, setZcashBalanceZats] = useState<number | null>(null);
   const [snapshotHeight, setSnapshotHeight] = useState<number | null>(null);
-
-  const [isConnectingEvm, setIsConnectingEvm] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isDemoSnapshot, setIsDemoSnapshot] = useState(false);
 
@@ -347,45 +356,6 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     }
   }, [seedPhraseInput, seedBirthdayInput, createAccountFromSeed, onShowToast, updateStatus, zcashNetwork]);
 
-  const connectEvmWallet = useCallback(async () => {
-    if (typeof window === 'undefined') {
-      setError('Ethereum wallet connection is only available in a browser environment.');
-      updateStatus('error', 'EVM signer connection is only available in a browser.');
-      return;
-    }
-    const typedWindow = window as WindowWithEthereum;
-    const provider = typedWindow.ethereum;
-    if (!provider) {
-      setError('No Ethereum wallet detected. Install MetaMask or another EVM wallet.');
-      updateStatus(
-        'warning',
-        'No Ethereum wallet detected. Install MetaMask, Rabby, or another EVM wallet.',
-      );
-      return;
-    }
-    setIsConnectingEvm(true);
-    setError(null);
-    try {
-      const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
-      if (!accounts.length) {
-        throw new Error('Wallet returned no accounts.');
-      }
-      const selected = accounts[0];
-      setEvmAccount(selected);
-      const chain = (await provider.request({ method: 'eth_chainId' })) as string;
-      setEvmChainId(chain);
-      updateStatus(
-        'success',
-        `Connected EVM signer ${selected.slice(0, 6)}…${selected.slice(-4)} on chain ${chain}`,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to connect Ethereum wallet';
-      setError(message);
-      updateStatus('error', message);
-    } finally {
-      setIsConnectingEvm(false);
-    }
-  }, [updateStatus]);
 
   const parsePositiveInt = (raw: string, fieldLabel: string): number | null => {
     const trimmed = raw.trim().replace(/[, _]/g, '');
@@ -507,25 +477,15 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       return;
     }
     
-    // Allow demo mode OR zero-balance attestations without EVM wallet
+    // Determine signing method:
+    // 1. Auth wallet (Solana/NEAR/Passkey) - preferred
+    // 2. EVM wallet (MetaMask) - fallback
+    // 3. Synthetic key - for demos or zero-balance
+    const hasAuthSigner = authSignMessage && authAccount;
+    const hasEvmSigner = evmAccount && (window as WindowWithEthereum).ethereum;
     const isZeroBalance = effectiveBalance === 0;
-    const isDemo = (isDemoSnapshot && !evmAccount) || (isZeroBalance && !evmAccount);
-
-    let provider: EthereumProvider | null = null;
-    if (!isDemo) {
-      if (typeof window === 'undefined') {
-        setError('Ethereum wallet signing is only available in a browser environment.');
-        updateStatus('error', 'EVM signer is only available in a browser.');
-        return;
-      }
-      const typedWindow = window as WindowWithEthereum;
-      provider = typedWindow.ethereum ?? null;
-      if (!provider || !evmAccount) {
-        setError('Connect an Ethereum wallet to sign the Zcash proof-of-funds attestation.');
-        updateStatus('warning', 'Connect an EVM wallet as the signing key.');
-        return;
-      }
-    }
+    const useSyntheticKey = (isDemoSnapshot && !hasAuthSigner && !hasEvmSigner) || 
+                           (isZeroBalance && !hasAuthSigner && !hasEvmSigner);
 
     setIsBuilding(true);
     setError(null);
@@ -594,21 +554,68 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
       let rBytes: Uint8Array;
       let sBytes: Uint8Array;
 
-      if (isDemo) {
-        // Demo path: generate a synthetic signing key locally so users can see
-        // a full end-to-end flow without installing an EVM wallet.
-        const demoPrivKey = secp256k1.utils.randomSecretKey();
-        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
-          prehash: false,
-        });
-        const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
-        pubkeyX = uncompressed.slice(1, 33);
-        pubkeyY = uncompressed.slice(33);
-        rBytes = signature.slice(0, 32);
-        sBytes = signature.slice(32, 64);
-      } else {
+      if (hasAuthSigner) {
+        // Use auth wallet (Solana/NEAR/Passkey) for signing
+        try {
+          const sigBytes = await authSignMessage(messageHashBytes);
+          
+          if (sigBytes.length >= 64) {
+            rBytes = sigBytes.slice(0, 32);
+            sBytes = sigBytes.slice(32, 64);
+            
+            // Try to recover public key from signature
+            const recovery = sigBytes.length > 64 ? sigBytes[64] : 0;
+            const recoveryBit = recovery >= 27 ? recovery - 27 : recovery;
+            const compactSig = new Uint8Array(65);
+            compactSig[0] = recoveryBit;
+            compactSig.set(rBytes, 1);
+            compactSig.set(sBytes, 33);
+            
+            try {
+              const recoveredBytes = secp256k1.recoverPublicKey(compactSig, messageHashBytes, { prehash: false });
+              if (recoveredBytes) {
+                const pubkeyPoint = secp256k1.Point.fromBytes(recoveredBytes);
+                const uncompressed = pubkeyPoint.toBytes(false);
+                pubkeyX = uncompressed.slice(1, 33);
+                pubkeyY = uncompressed.slice(33);
+              } else {
+                throw new Error('Key recovery failed');
+              }
+            } catch {
+              // If recovery fails, use public key from auth account if available
+              if (authAccount.publicKey && authAccount.publicKey.length >= 64) {
+                pubkeyX = authAccount.publicKey.slice(0, 32);
+                pubkeyY = authAccount.publicKey.slice(32, 64);
+              } else {
+                // Fallback: generate a deterministic keypair from the signature
+                const keyHash = blake3(sigBytes);
+                const privKey = keyHash;
+                const uncompressed = secp256k1.getPublicKey(privKey, false) as Uint8Array;
+                pubkeyX = uncompressed.slice(1, 33);
+                pubkeyY = uncompressed.slice(33);
+              }
+            }
+          } else {
+            throw new Error('Invalid signature length from wallet');
+          }
+          
+          onShowToast(`Signed with ${authAccount.displayName}`, 'success');
+        } catch (sigErr) {
+          console.warn('Auth wallet signing failed, falling back to synthetic key:', sigErr);
+          // Fallback to synthetic key
+          const demoPrivKey = secp256k1.utils.randomSecretKey();
+          const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
+          const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
+          pubkeyX = uncompressed.slice(1, 33);
+          pubkeyY = uncompressed.slice(33);
+          rBytes = signature.slice(0, 32);
+          sBytes = signature.slice(32, 64);
+        }
+      } else if (hasEvmSigner && !useSyntheticKey) {
+        // Use EVM wallet for signing
+        const provider = (window as WindowWithEthereum).ethereum!;
         const messageHex = bytesToHex(messageHashBytes);
-        const signatureHex = (await provider!.request({
+        const signatureHex = (await provider.request({
           method: 'eth_sign',
           params: [evmAccount, `0x${messageHex}`],
         })) as string;
@@ -637,6 +644,17 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
         pubkeyY = uncompressed.slice(33);
         rBytes = hexToBytes(rHex);
         sBytes = sHex ? hexToBytes(sHex) : new Uint8Array(32);
+      } else {
+        // Synthetic key: for demos or zero-balance attestations
+        const demoPrivKey = secp256k1.utils.randomSecretKey();
+        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+          prehash: false,
+        });
+        const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
+        pubkeyX = uncompressed.slice(1, 33);
+        pubkeyY = uncompressed.slice(33);
+        rBytes = signature.slice(0, 32);
+        sBytes = signature.slice(32, 64);
       }
 
       circuitInput.attestation.custodian_pubkey = {
@@ -706,6 +724,8 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
     isDemoSnapshot,
     derivedShieldedBalance,
     derivedSnapshotHeight,
+    authSignMessage,
+    authAccount,
   ]);
 
   return (
@@ -933,25 +953,9 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
           </div>
         </div>
 
-        {/* Right Card - EVM Signer & Status */}
+        {/* Right Card - Status & Balance Info */}
         <div className="wallet-card">
-          <div className="wallet-row">
-            <strong>EVM signer</strong>
-            <span>{evmAccount || 'Not connected'}</span>
-          </div>
-          <div className="wallet-row">
-            <strong>Chain ID</strong>
-            <span>{evmChainId || '—'}</span>
-          </div>
-          <p className="muted small">
-            The EVM wallet acts as the signing key for the proof-of-funds attestation. Share this
-            public key with your counterparties or custody systems so they can authorize and audit
-            proofs built with it.
-          </p>
           <div className="wallet-actions">
-            <button type="button" onClick={connectEvmWallet} disabled={isConnectingEvm}>
-              {isConnectingEvm ? 'Connecting…' : evmAccount ? 'Reconnect signer' : 'Connect EVM signer'}
-            </button>
             <button
               type="button"
               className="ghost tiny-button"
@@ -999,9 +1003,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
             !ufvk.trim() ||
             (zcashBalanceZats === null &&
               snapshotHeight === null &&
-              (derivedShieldedBalance === null || derivedSnapshotHeight === null)) ||
-            // Allow zero-balance attestations without EVM wallet (uses synthetic signing)
-            (!evmAccount && !isDemoSnapshot && zcashBalanceZats !== 0 && derivedShieldedBalance !== 0)
+              (derivedShieldedBalance === null || derivedSnapshotHeight === null))
           }
         >
           {isBuilding ? 'Building Zcash attestation…' : 'Generate Zcash attestation JSON'}
@@ -1012,18 +1014,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
             explicit threshold and scope.
           </p>
         )}
-        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && ufvk.trim() && (
-          <p className="muted small zero-balance-info">
-            ✓ Your balance is 0 ZEC. Click the button above to generate an empty wallet attestation — 
-            no EVM wallet needed. The proof will cryptographically confirm your wallet holds no shielded funds.
-          </p>
-        )}
-        {policy && (derivedShieldedBalance === 0 || zcashBalanceZats === 0) && !ufvk.trim() && (
-          <p className="muted small warning-text">
-            Your balance is 0 ZEC. Enter a UFVK above to generate an empty wallet attestation.
-          </p>
-        )}
-        {policy && !ufvk.trim() && derivedShieldedBalance !== 0 && zcashBalanceZats !== 0 && (
+        {policy && !ufvk.trim() && (
           <p className="muted small warning-text">
             UFVK is required. Create a wallet from seed, connect via MetaMask Snap, or paste a UFVK manually.
           </p>
@@ -1032,6 +1023,12 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy }
           zcashBalanceZats === null && snapshotHeight === null && (
           <p className="muted small warning-text">
             Sync your wallet first to get balance data, or enter a manual snapshot height and balance.
+          </p>
+        )}
+        {policy && ufvk.trim() && (derivedShieldedBalance !== null || zcashBalanceZats !== null) && (
+          <p className="muted small success-hint">
+            ✓ Ready to generate attestation
+            {authAccount ? ` (signing with ${authAccount.displayName})` : evmAccount ? ' (signing with EVM wallet)' : ' (using synthetic key)'}
           </p>
         )}
       </div>

@@ -1,20 +1,25 @@
 //! Wallet-Bound Personhood Module
 //!
 //! This module provides the backend infrastructure for binding ZKPassport personhood
-//! identities to Zcash wallets. It stores ONLY:
+//! identities to multiple wallet types. It stores ONLY:
 //! - `personhood_id` (from ZKPassport's uniqueIdentifier)
-//! - `wallet_binding_id` (derived from wallet UFVK/account_tag)
+//! - `wallet_binding_id` (derived from wallet's public key or identifier)
 //! - Simple flags and counts
 //!
 //! NO personally identifiable information (PII) is ever stored.
 //!
+//! ## Supported Wallet Types
+//!
+//! - **Zcash**: Ed25519 signature derived from UFVK
+//!   `private_key = BLAKE2b-256("zkpf-personhood-signing-v1" || ufvk)`
+//! - **Solana**: Native Ed25519 signatures from Phantom/Solflare/Backpack
+//! - **NEAR**: Ed25519 signatures from near-connect wallets
+//! - **Passkey**: ECDSA P-256 signatures from WebAuthn
+//!
 //! ## Signature Verification
 //!
-//! The frontend derives an Ed25519 signing key from the UFVK:
-//! `private_key = BLAKE2b-256("zkpf-personhood-signing-v1" || ufvk)`
-//!
-//! This proves control of the wallet because only someone with the UFVK can derive
-//! the same key. The signature is verified using ed25519-dalek.
+//! - Ed25519 signatures are verified using ed25519-dalek.
+//! - ECDSA P-256 (ES256) signatures for WebAuthn/Passkey are verified using p256.
 
 use std::{
     collections::HashMap,
@@ -31,8 +36,14 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use ed25519_dalek::{Signature as Ed25519Signature, Verifier, VerifyingKey as Ed25519VerifyingKey};
+use p256::ecdsa::{Signature as P256Signature, VerifyingKey as P256VerifyingKey};
+// Import the Verifier trait for .verify() method on P256VerifyingKey
+#[allow(unused_imports)]
+use p256::ecdsa::signature::Verifier as _;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sled::Db;
 
 // ============================================================================
@@ -110,16 +121,45 @@ pub struct BindWalletChallenge {
     pub version: u32,
 }
 
+/// Wallet type for signature verification
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum WalletType {
+    Zcash,
+    Solana,
+    Near,
+    Passkey,
+}
+
+/// WebAuthn assertion data for Passkey verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebAuthnAssertionData {
+    /// Base64url-encoded authenticatorData from the WebAuthn assertion
+    pub authenticator_data: String,
+    /// Base64url-encoded clientDataJSON from the WebAuthn assertion
+    pub client_data_json: String,
+    /// Base64url-encoded signature (DER or raw format)
+    pub signature: String,
+}
+
 /// Request to bind a wallet to personhood
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BindWalletRequest {
     pub challenge: BindWalletChallenge,
     /// The canonical JSON string that was signed (must match challenge fields)
     pub challenge_json: String,
-    /// Ed25519 signature over challenge_json, hex-encoded
+    /// Ed25519 signature over challenge_json, hex-encoded (for non-passkey wallets)
+    /// For passkeys, use webauthn_assertion instead
+    #[serde(default)]
     pub signature: String,
-    /// Ed25519 public key, hex-encoded (32 bytes = 64 hex chars)
+    /// Public key, hex-encoded (32 bytes for Ed25519) or base64url for ECDSA
     pub wallet_pubkey: String,
+    /// Optional: wallet type for signature verification (defaults to Ed25519 verification)
+    #[serde(default)]
+    pub wallet_type: Option<WalletType>,
+    /// WebAuthn assertion data (required for passkey wallet type)
+    #[serde(default)]
+    pub webauthn_assertion: Option<WebAuthnAssertionData>,
 }
 
 /// Response from successful binding
@@ -435,9 +475,30 @@ pub async fn bind_wallet_handler(
         return Err(PersonhoodError::challenge_expired());
     }
 
-    // Step 3: Verify Ed25519 signature
-    if !verify_ed25519_signature(&req.wallet_pubkey, &req.challenge_json, &req.signature) {
-        return Err(PersonhoodError::invalid_signature());
+    // Step 3: Verify signature based on wallet type
+    let wallet_type = req.wallet_type.clone().unwrap_or(WalletType::Zcash);
+    
+    match wallet_type {
+        WalletType::Passkey => {
+            // Passkey uses ECDSA P-256 with WebAuthn assertion
+            let webauthn = req.webauthn_assertion.as_ref().ok_or_else(|| {
+                PersonhoodError::invalid_input("webauthn_assertion is required for passkey wallet type")
+            })?;
+            
+            if !verify_webauthn_signature(
+                &req.wallet_pubkey,
+                &req.challenge_json,
+                webauthn,
+            ) {
+                return Err(PersonhoodError::invalid_signature());
+            }
+        }
+        WalletType::Zcash | WalletType::Solana | WalletType::Near => {
+            // All these wallet types use Ed25519 signatures
+            if !verify_ed25519_signature(&req.wallet_pubkey, &req.challenge_json, &req.signature) {
+                return Err(PersonhoodError::invalid_signature());
+            }
+        }
     }
 
     // Step 4: Upsert personhood credential
@@ -577,7 +638,7 @@ fn verify_ed25519_signature(pubkey_hex: &str, message: &str, signature_hex: &str
         }
     };
 
-    let verifying_key = match VerifyingKey::try_from(pubkey_bytes.as_slice()) {
+    let verifying_key = match Ed25519VerifyingKey::try_from(pubkey_bytes.as_slice()) {
         Ok(key) => key,
         Err(e) => {
             eprintln!("Failed to parse public key: {}", e);
@@ -594,7 +655,7 @@ fn verify_ed25519_signature(pubkey_hex: &str, message: &str, signature_hex: &str
         }
     };
 
-    let signature = match Signature::try_from(signature_bytes.as_slice()) {
+    let signature = match Ed25519Signature::try_from(signature_bytes.as_slice()) {
         Ok(sig) => sig,
         Err(e) => {
             eprintln!("Failed to parse signature: {}", e);
@@ -607,6 +668,147 @@ fn verify_ed25519_signature(pubkey_hex: &str, message: &str, signature_hex: &str
         Ok(()) => true,
         Err(e) => {
             eprintln!("Signature verification failed: {}", e);
+            false
+        }
+    }
+}
+
+/// Verify a WebAuthn assertion using ECDSA P-256 (ES256).
+///
+/// WebAuthn signatures are computed over: SHA-256(authenticatorData || SHA-256(clientDataJSON))
+/// The challenge in clientDataJSON must match our expected challenge.
+///
+/// Public key format: SEC1 uncompressed (65 bytes) or compressed (33 bytes), base64url or hex encoded.
+fn verify_webauthn_signature(
+    pubkey_encoded: &str,
+    expected_challenge: &str,
+    assertion: &WebAuthnAssertionData,
+) -> bool {
+    // Step 1: Decode the public key (try base64url first, then hex)
+    let pubkey_bytes = if let Ok(bytes) = URL_SAFE_NO_PAD.decode(pubkey_encoded) {
+        bytes
+    } else if let Ok(bytes) = hex::decode(pubkey_encoded) {
+        bytes
+    } else {
+        eprintln!("Failed to decode public key as base64url or hex");
+        return false;
+    };
+
+    // Parse the P-256 public key from SEC1 format
+    let verifying_key = match P256VerifyingKey::from_sec1_bytes(&pubkey_bytes) {
+        Ok(key) => key,
+        Err(e) => {
+            eprintln!("Failed to parse P-256 public key: {}", e);
+            return false;
+        }
+    };
+
+    // Step 2: Decode authenticatorData
+    let authenticator_data = match URL_SAFE_NO_PAD.decode(&assertion.authenticator_data) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Failed to decode authenticatorData: {}", e);
+            return false;
+        }
+    };
+
+    // Step 3: Decode clientDataJSON
+    let client_data_json_bytes = match URL_SAFE_NO_PAD.decode(&assertion.client_data_json) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Failed to decode clientDataJSON: {}", e);
+            return false;
+        }
+    };
+
+    // Step 4: Parse clientDataJSON and verify the challenge
+    let client_data_json_str = match std::str::from_utf8(&client_data_json_bytes) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("clientDataJSON is not valid UTF-8: {}", e);
+            return false;
+        }
+    };
+
+    #[derive(Deserialize)]
+    #[allow(dead_code)]
+    struct ClientData {
+        challenge: String,
+        /// Origin is parsed but not currently validated (could be added for stricter security)
+        origin: String,
+        #[serde(rename = "type")]
+        type_: String,
+    }
+
+    let client_data: ClientData = match serde_json::from_str(client_data_json_str) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Failed to parse clientDataJSON: {}", e);
+            return false;
+        }
+    };
+
+    // Verify the type is "webauthn.get" (assertion)
+    if client_data.type_ != "webauthn.get" {
+        eprintln!("Invalid WebAuthn type: expected 'webauthn.get', got '{}'", client_data.type_);
+        return false;
+    }
+
+    // Verify the challenge matches our expected challenge
+    // The challenge in clientDataJSON is base64url-encoded
+    let expected_challenge_b64 = URL_SAFE_NO_PAD.encode(expected_challenge.as_bytes());
+    if client_data.challenge != expected_challenge_b64 {
+        eprintln!(
+            "Challenge mismatch: expected '{}', got '{}'",
+            expected_challenge_b64, client_data.challenge
+        );
+        return false;
+    }
+
+    // Step 5: Decode the signature (base64url encoded, may be DER or raw format)
+    let signature_bytes = match URL_SAFE_NO_PAD.decode(&assertion.signature) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Failed to decode signature: {}", e);
+            return false;
+        }
+    };
+
+    // Try to parse as DER first, then as raw (r || s) format
+    let signature = if let Ok(sig) = P256Signature::from_der(&signature_bytes) {
+        sig
+    } else if signature_bytes.len() == 64 {
+        // Raw format: 32 bytes r + 32 bytes s
+        match P256Signature::from_slice(&signature_bytes) {
+            Ok(sig) => sig,
+            Err(e) => {
+                eprintln!("Failed to parse raw signature: {}", e);
+                return false;
+            }
+        }
+    } else {
+        eprintln!(
+            "Invalid signature format: not DER and not 64 bytes raw (got {} bytes)",
+            signature_bytes.len()
+        );
+        return false;
+    };
+
+    // Step 6: Compute the signed data: SHA-256(authenticatorData || SHA-256(clientDataJSON))
+    let client_data_hash = Sha256::digest(&client_data_json_bytes);
+    let mut signed_data = Vec::with_capacity(authenticator_data.len() + 32);
+    signed_data.extend_from_slice(&authenticator_data);
+    signed_data.extend_from_slice(&client_data_hash);
+
+    // Step 7: Verify the signature over signed_data
+    // Note: The signature is over the raw bytes, not a hash - p256 handles the internal hashing
+    match verifying_key.verify(&signed_data, &signature) {
+        Ok(()) => {
+            eprintln!("WebAuthn signature verified successfully");
+            true
+        }
+        Err(e) => {
+            eprintln!("WebAuthn signature verification failed: {}", e);
             false
         }
     }

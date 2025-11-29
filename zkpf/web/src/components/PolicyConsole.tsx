@@ -19,14 +19,17 @@ interface Props {
   client: ZkpfClient;
 }
 
-type CategoryFilter = 'ALL' | 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'ZASHI';
+type CategoryFilter = 'ALL' | 'DEMO' | 'FIAT' | 'ZCASH_ORCHARD' | 'ZASHI' | 'STARKNET' | 'USDC' | 'OTHER';
 
 const FILTER_LABELS: Record<CategoryFilter, string> = {
-  ALL: 'All policies',
+  ALL: 'All',
+  DEMO: 'Demo',
   FIAT: 'Fiat',
-  ONCHAIN: 'On-chain',
   ZCASH_ORCHARD: 'Orchard',
   ZASHI: 'Zashi',
+  STARKNET: 'Starknet',
+  USDC: 'USDC',
+  OTHER: 'Other',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,8 +57,23 @@ export function PolicyConsole({ client }: Props) {
 
   const filteredPolicies = useMemo(() => {
     return policies.filter((policy) => {
-      const matchesCategory =
-        categoryFilter === 'ALL' ? true : (policy.category?.toUpperCase() ?? 'UNSPECIFIED') === categoryFilter;
+      const category = policy.category?.toUpperCase() ?? 'UNSPECIFIED';
+      let matchesCategory = false;
+      if (categoryFilter === 'ALL') {
+        matchesCategory = true;
+      } else if (categoryFilter === 'OTHER') {
+        // "Other" captures categories not in our main filters
+        const mainCategories = ['DEMO', 'FIAT', 'ZCASH_ORCHARD', 'ZASHI', 'STARKNET', 'USDC', 'USDC_STARKNET'];
+        matchesCategory = !mainCategories.includes(category);
+      } else if (categoryFilter === 'STARKNET') {
+        // Include both STARKNET and STARKNET_DEFI
+        matchesCategory = category === 'STARKNET' || category === 'STARKNET_DEFI';
+      } else if (categoryFilter === 'USDC') {
+        // Include both USDC and USDC_STARKNET
+        matchesCategory = category === 'USDC' || category === 'USDC_STARKNET';
+      } else {
+        matchesCategory = category === categoryFilter;
+      }
       return matchesCategory && matchesPolicyQuery(policy, searchQuery);
     });
   }, [policies, categoryFilter, searchQuery]);
@@ -139,12 +157,17 @@ export function PolicyConsole({ client }: Props) {
   const maxThresholdLabel = maxThresholdPolicy ? formatPolicyThreshold(maxThresholdPolicy).formatted : '—';
   const categoryCounts = useMemo(() => {
     const groups = groupPoliciesByCategory(policies);
+    const mainCategories = ['DEMO', 'FIAT', 'ZCASH_ORCHARD', 'ZASHI', 'STARKNET', 'STARKNET_DEFI', 'USDC', 'USDC_STARKNET'];
+    const otherCount = policies.filter(p => !mainCategories.includes(p.category?.toUpperCase() ?? '')).length;
     return {
       ALL: policies.length,
+      DEMO: groups.DEMO?.length ?? 0,
       FIAT: groups.FIAT?.length ?? 0,
-      ONCHAIN: groups.ONCHAIN?.length ?? 0,
       ZCASH_ORCHARD: groups.ZCASH_ORCHARD?.length ?? 0,
       ZASHI: groups.ZASHI?.length ?? 0,
+      STARKNET: (groups.STARKNET?.length ?? 0) + (groups.STARKNET_DEFI?.length ?? 0),
+      USDC: (groups.USDC?.length ?? 0) + (groups.USDC_STARKNET?.length ?? 0),
+      OTHER: otherCount,
     } satisfies Record<CategoryFilter, number>;
   }, [policies]);
 
@@ -309,8 +332,18 @@ export function PolicyConsole({ client }: Props) {
               <>
                 <div className="policy-inspector-summary">
                   <p className="policy-inspector-label">{policyDisplayName(inspectorPolicy)}</p>
-                  <p className="muted small">{policyNarrative(inspectorPolicy)}</p>
+                  {inspectorPolicy.description ? (
+                    <p className="policy-inspector-description">{inspectorPolicy.description}</p>
+                  ) : (
+                    <p className="muted small">{policyNarrative(inspectorPolicy)}</p>
+                  )}
                 </div>
+                {inspectorPolicy.purpose && (
+                  <div className="policy-inspector-purpose">
+                    <span className="purpose-label">Purpose:</span>
+                    <span>{inspectorPolicy.purpose}</span>
+                  </div>
+                )}
                 <div className="policy-inspector-grid">
                   <div>
                     <span>Policy ID</span>
@@ -333,6 +366,16 @@ export function PolicyConsole({ client }: Props) {
                     <strong>{policyRailLabel(inspectorPolicy)}</strong>
                   </div>
                 </div>
+                {inspectorPolicy.useCases && inspectorPolicy.useCases.length > 0 && (
+                  <div className="policy-inspector-use-cases">
+                    <span className="use-cases-title">Use cases</span>
+                    <ul className="use-cases-list">
+                      {inspectorPolicy.useCases.map((useCase, idx) => (
+                        <li key={idx}>{useCase}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {policyOptions && (
                   <details className="policy-options-block">
                     <summary>Rail options</summary>

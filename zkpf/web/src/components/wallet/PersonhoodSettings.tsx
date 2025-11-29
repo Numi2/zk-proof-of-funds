@@ -10,7 +10,7 @@
  * - Real operations only (no demo mode)
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePersonhood, type PersonhoodFlowStatus, type PersonhoodFlowError } from '../../hooks/usePersonhood';
 import './PersonhoodSettings.css';
@@ -211,6 +211,11 @@ interface ErrorModalProps {
 function ErrorModal({ error, onRetry, onDismiss }: ErrorModalProps) {
   const message = getErrorMessage(error);
   const canRetry = error?.type !== 'wallet_unavailable';
+  
+  // Check for too_many_wallet_bindings error code
+  const isTooManyWallets = error?.type === 'binding_failed' && 
+    'code' in error && 
+    error.code === 'too_many_wallet_bindings';
 
   return (
     <div className="personhood-modal-overlay" onClick={onDismiss}>
@@ -222,7 +227,7 @@ function ErrorModal({ error, onRetry, onDismiss }: ErrorModalProps) {
         <div className="modal-content">
           <p className="error-message">{message}</p>
           
-          {error?.type === 'too_many_wallet_bindings' && (
+          {isTooManyWallets && (
             <p className="error-help">
               Each person can verify up to 3 wallets. If you need help, please contact support.
             </p>
@@ -230,7 +235,7 @@ function ErrorModal({ error, onRetry, onDismiss }: ErrorModalProps) {
         </div>
 
         <footer className="modal-footer">
-          {canRetry && (
+          {canRetry && !isTooManyWallets && (
             <button 
               className="primary-button"
               onClick={onRetry}
@@ -242,7 +247,7 @@ function ErrorModal({ error, onRetry, onDismiss }: ErrorModalProps) {
             className="secondary-button"
             onClick={onDismiss}
           >
-            {canRetry ? 'Close' : 'OK'}
+            {canRetry && !isTooManyWallets ? 'Close' : 'OK'}
           </button>
         </footer>
       </div>
@@ -304,13 +309,13 @@ function SuccessModal({ personhoodId, bindingsCount, onDismiss }: SuccessModalPr
 export function PersonhoodSettings() {
   const {
     status,
-    walletBindingId,
     personhoodId,
     bindingsCount,
     error,
     zkPassportUrl,
     isWalletReady,
     isLoading,
+    activeWalletType,
     startVerification,
     cancelVerification,
     refreshStatus,
@@ -395,7 +400,15 @@ export function PersonhoodSettings() {
 
         {!isWalletReady && (
           <p className="wallet-hint">
-            Create or import a wallet to enable verification.
+            Connect a wallet (Zcash, Solana, NEAR, or Passkey) to enable verification.
+          </p>
+        )}
+        
+        {isWalletReady && activeWalletType && status !== 'verified' && (
+          <p className="wallet-type-indicator">
+            Using {activeWalletType === 'zcash' ? 'Zcash' : 
+                   activeWalletType === 'solana' ? 'Solana' :
+                   activeWalletType === 'near' ? 'NEAR' : 'Passkey'} wallet
           </p>
         )}
       </div>

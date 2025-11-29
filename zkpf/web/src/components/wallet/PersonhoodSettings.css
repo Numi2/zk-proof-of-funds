@@ -165,6 +165,25 @@
   font-style: italic;
 }
 
+.wallet-type-indicator {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, #888888);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wallet-warning {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-warning, #ffc107);
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 193, 7, 0.2);
+}
+
 /* ============================================================================
    Modal Overlay
    ============================================================================ */

@@ -174,7 +174,6 @@ export function BoundIdentityBuilder({
   const [isCreating, setIsCreating] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showWalletHelp, setShowWalletHelp] = useState(false);
   
   // ZKPassport state
   const [zkPassport] = useState(() => new ZKPassport('zkpf.dev'));

@@ -55,6 +55,22 @@ export interface WalletBindingChallenge {
   version: 1;
 }
 
+/** Wallet type for signature verification */
+export type WalletTypeForBinding = 'zcash' | 'solana' | 'near' | 'passkey';
+
+/**
+ * WebAuthn assertion data for Passkey verification.
+ * All fields are base64url-encoded.
+ */
+export interface WebAuthnAssertionData {
+  /** Base64url-encoded authenticatorData from the WebAuthn assertion */
+  authenticator_data: string;
+  /** Base64url-encoded clientDataJSON from the WebAuthn assertion */
+  client_data_json: string;
+  /** Base64url-encoded signature (DER format for ECDSA P-256) */
+  signature: string;
+}
+
 /**
  * Request to bind a wallet to a personhood ID.
  */
@@ -63,10 +79,14 @@ export interface BindWalletRequest {
   challenge: WalletBindingChallenge;
   /** Canonical JSON string of the challenge (for signature verification) */
   challenge_json: string;
-  /** Ed25519 signature over challenge_json (hex-encoded) */
+  /** Signature over challenge_json (hex-encoded) - for non-passkey wallets */
   signature: string;
-  /** Ed25519 public key (hex-encoded) */
+  /** Public key (hex-encoded for Ed25519, base64url for ECDSA) */
   wallet_pubkey: string;
+  /** Optional: wallet type for signature verification */
+  wallet_type?: WalletTypeForBinding;
+  /** WebAuthn assertion data (required for passkey wallet type) */
+  webauthn_assertion?: WebAuthnAssertionData;
 }
 
 // ============================================================================

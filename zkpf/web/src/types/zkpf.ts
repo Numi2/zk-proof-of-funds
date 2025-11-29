@@ -68,13 +68,19 @@ export interface PolicyDefinition {
   rail_id?: string | null;
   label?: string | null;
   options?: Record<string, unknown> | null;
+  /** Human-readable description of what this policy verifies */
+  description?: string | null;
+  /** The intended purpose/use case for this policy */
+  purpose?: string | null;
+  /** Example use cases for this policy */
+  useCases?: string[] | null;
 }
 
 export interface PoliciesResponse {
   policies: PolicyDefinition[];
 }
 
-export type PolicyCategory = 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'ZASHI';
+export type PolicyCategory = 'DEMO' | 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'ZASHI' | 'STARKNET' | 'STARKNET_DEFI' | 'USDC' | 'USDC_STARKNET' | 'BOUND_IDENTITY' | 'AXELAR_INTERCHAIN' | 'MINA_HUB' | 'MINA_AGGREGATED';
 
 export type ProviderSessionStatus = 'PENDING' | 'PROVING' | 'READY' | 'INVALID' | 'EXPIRED';
 

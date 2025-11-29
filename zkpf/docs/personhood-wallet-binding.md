@@ -4,11 +4,20 @@ This document describes the wallet-bound personhood system, which allows users t
 
 ## Overview
 
-The personhood system uses [ZKPassport](https://zkpassport.id) to verify that a user has a valid passport, then binds that verification to their Zcash wallet. The result is:
+The personhood system uses [ZKPassport](https://zkpassport.id) to verify that a user has a valid passport, then binds that verification to their wallet. The result is:
 
 - **For users**: A "Verified as unique person" badge in their wallet
 - **For the system**: Protection against bots and sybil attacks
 - **For privacy**: No personal information is ever stored or transmitted
+
+## Supported Wallet Types
+
+| Wallet Type | Signature Scheme | Status |
+|-------------|------------------|--------|
+| **Zcash** | Ed25519 (derived from UFVK) | ✅ Supported |
+| **Solana** | Ed25519 (native) | ✅ Supported |
+| **NEAR** | Ed25519 (native) | ✅ Supported |
+| **Passkey** | ECDSA P-256 (WebAuthn ES256) | ✅ Supported |
 
 ## Identifiers
 
@@ -23,14 +32,23 @@ A unique identifier from ZKPassport that represents "this is a unique person."
 
 ### wallet_binding_id
 
-A deterministic identifier for a wallet, derived from the UFVK (Unified Full Viewing Key).
+A deterministic identifier for a wallet, derived from the wallet's public key or unique identifier.
 
+For **Zcash** wallets:
 ```
 wallet_binding_id = BLAKE2b-256("zkpf-wallet-binding" || ufvk)
 ```
 
+For **Solana**, **NEAR**, and **Passkey** wallets:
+```
+wallet_binding_id = BLAKE2b-256("zkpf-wallet-binding:{chain_type}" || public_key)
+```
+
+Where `chain_type` is one of: `solana`, `near`, `passkey`, `zcash`
+
 - Stable across sessions
-- Doesn't expose the viewing key
+- Chain-specific domain separation prevents cross-chain collisions
+- Doesn't expose the underlying keys
 - Allows us to track which wallets are verified
 
 ## User Flow
@@ -123,6 +141,8 @@ Check personhood status for a wallet.
 
 ## Signature Scheme
 
+### Zcash Wallets
+
 Since the Zcash web wallet only stores viewing keys (not spending keys), we derive an Ed25519 signing key from the UFVK:
 
 ```
@@ -134,6 +154,34 @@ This proves control of the wallet because:
 - Only someone with the UFVK can derive this key
 - The derivation is deterministic
 - The UFVK is secret (stored in localStorage)
+
+### Solana Wallets
+
+Solana wallets (Phantom, Solflare, Backpack) use native Ed25519 signatures via the `signMessage` API. The wallet prompts the user to approve the signature.
+
+### NEAR Wallets
+
+NEAR wallets connected via near-connect use Ed25519 signatures. The `signMessage` API is called with:
+- The challenge JSON as the message
+- A random nonce for replay protection
+- The recipient address
+
+### Passkey (WebAuthn)
+
+Passkeys use ECDSA with the P-256 curve (ES256). The WebAuthn flow works as follows:
+
+1. **Challenge**: The challenge JSON is passed to `navigator.credentials.get()` as the challenge parameter
+2. **Signing**: WebAuthn computes the signature over: `SHA-256(authenticatorData || SHA-256(clientDataJSON))`
+3. **Verification**: The backend verifies:
+   - The challenge in `clientDataJSON` matches the expected challenge (base64url encoded)
+   - The signature is valid ECDSA P-256 over the signed data
+   - The public key matches the stored credential
+
+The assertion data sent to the backend includes:
+- `authenticator_data`: Base64url-encoded authenticatorData
+- `client_data_json`: Base64url-encoded clientDataJSON
+- `signature`: Base64url-encoded DER or raw (r||s) signature
+- `wallet_pubkey`: SEC1-encoded public key (base64url)
 
 ## Policy
 

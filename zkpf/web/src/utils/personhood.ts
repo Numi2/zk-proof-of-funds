@@ -2,9 +2,15 @@
  * Wallet-Bound Personhood Utilities
  * 
  * Production-grade utilities for:
- * - Computing wallet binding IDs from UFVK/account_tag
+ * - Computing wallet binding IDs from various wallet types
  * - Running the ZKPassport verification flow
  * - Completing the wallet binding process with REAL signatures
+ * 
+ * Supports multiple wallet types:
+ * - Zcash (via UFVK with Ed25519 derived key)
+ * - Solana (via Phantom/Solflare Ed25519)
+ * - NEAR (via near-connect Ed25519)
+ * - Passkey (via WebAuthn ECDSA - note: requires different backend verification)
  * 
  * NO demo modes. NO mock signatures. All paths must work for real users.
  */
@@ -22,12 +28,50 @@ import type {
   PersonhoodStatusResponse,
   PersonhoodFlowError,
   PersonhoodVerificationResult,
+  WebAuthnAssertionData,
 } from '../types/personhood';
 import {
   WALLET_BINDING_SCOPE,
   ZKPASSPORT_TIMEOUT_MS,
   PERSONHOOD_CACHE_KEY,
 } from '../types/personhood';
+import type { AuthContextValue } from '../types/auth';
+
+// ============================================================================
+// Base64URL Helpers
+// ============================================================================
+
+/**
+ * Convert ArrayBuffer to base64url string (no padding).
+ */
+function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+/**
+ * Convert base64url string to ArrayBuffer.
+ */
+function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
+  // Add padding if needed
+  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 // ============================================================================
 // Wallet Binding ID Computation
@@ -76,8 +120,44 @@ export function computeWalletBindingId(ufvkOrAccountTag: string | Uint8Array): W
     .join('');
 }
 
+/**
+ * Compute wallet binding ID from a public key with chain-specific domain separation.
+ * 
+ * This ensures that the same public key on different chains produces different
+ * binding IDs, preventing cross-chain binding collisions.
+ * 
+ * @param publicKey - The wallet's public key bytes
+ * @param chainType - The blockchain type ('solana' | 'near' | 'passkey' | 'zcash')
+ * @returns A hex-encoded wallet binding ID
+ */
+export function computeWalletBindingIdFromPublicKey(
+  publicKey: Uint8Array,
+  chainType: 'solana' | 'near' | 'passkey' | 'zcash'
+): WalletBindingId {
+  if (!publicKey || publicKey.length === 0) {
+    throw new Error('Cannot compute wallet binding ID: empty public key');
+  }
+
+  const encoder = new TextEncoder();
+  // Chain-specific domain separator ensures uniqueness across chains
+  const domainSep = encoder.encode(`zkpf-wallet-binding:${chainType}`);
+  
+  // Concatenate domain separator and public key
+  const preimage = new Uint8Array(domainSep.length + publicKey.length);
+  preimage.set(domainSep, 0);
+  preimage.set(publicKey, domainSep.length);
+  
+  // Hash with BLAKE2b-256
+  const hash = blake2b(preimage, { dkLen: 32 });
+  
+  // Convert to lowercase hex
+  return Array.from(hash)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // ============================================================================
-// Signing Key Derivation
+// Signing Key Derivation (Zcash only)
 // ============================================================================
 
 /**
@@ -136,6 +216,16 @@ export function signMessageWithUfvk(ufvk: string, message: string): string {
 // ============================================================================
 
 /**
+ * Result from WebAuthn signing for Passkeys.
+ */
+export interface WebAuthnSignResult {
+  /** Full WebAuthn assertion data for backend verification */
+  assertion: WebAuthnAssertionData;
+  /** Public key in SEC1 format (base64url encoded) */
+  publicKey: string;
+}
+
+/**
  * Interface for the web wallet core required for personhood binding.
  * 
  * This abstraction allows the personhood flow to work with different
@@ -144,16 +234,24 @@ export function signMessageWithUfvk(ufvk: string, message: string): string {
 export interface WalletCore {
   /** Get the account tag or UFVK for wallet identification */
   getAccountTagOrUfvk(): Promise<string>;
-  /** Sign a message with the wallet's key */
+  /** Sign a message with the wallet's key (hex-encoded signature for Ed25519) */
   signMessage(message: string): Promise<string>;
-  /** Get the public key for signature verification */
+  /** Get the public key for signature verification (hex-encoded for Ed25519) */
   getPublicKey(): Promise<string>;
+  /** Optional: The wallet type for backend signature verification */
+  walletType?: 'zcash' | 'solana' | 'near' | 'passkey';
+  /** 
+   * For Passkey wallets: sign with WebAuthn and return full assertion data.
+   * This is required because WebAuthn signatures include authenticatorData 
+   * and clientDataJSON which must be sent to the backend.
+   */
+  signWithWebAuthn?(challenge: string): Promise<WebAuthnSignResult>;
 }
 
 /**
  * Create a WalletCore adapter from a stored UFVK.
  * 
- * This is the production implementation that uses real Ed25519 signatures.
+ * This is the production implementation for Zcash that uses real Ed25519 signatures.
  */
 export function createWalletCoreFromUfvk(ufvk: string): WalletCore {
   if (!ufvk || ufvk.trim().length === 0) {
@@ -161,10 +259,136 @@ export function createWalletCoreFromUfvk(ufvk: string): WalletCore {
   }
 
   return {
+    walletType: 'zcash',
     getAccountTagOrUfvk: async () => ufvk,
     signMessage: async (message: string) => signMessageWithUfvk(ufvk, message),
     getPublicKey: async () => getPublicKeyFromUfvk(ufvk),
   };
+}
+
+/**
+ * Create a WalletCore adapter from the AuthContext (Solana, NEAR, Passkey).
+ * 
+ * This bridges the useAuth hook's signing capabilities to the personhood flow.
+ * For Passkeys, it implements full WebAuthn assertion signing.
+ */
+export function createWalletCoreFromAuthContext(
+  auth: AuthContextValue,
+  walletType: 'solana' | 'near' | 'passkey'
+): WalletCore {
+  if (!auth.account) {
+    throw new Error('Cannot create wallet core: no account connected');
+  }
+
+  const account = auth.account;
+
+  // Base wallet core for Ed25519 wallets (Solana, NEAR)
+  const baseCore: WalletCore = {
+    walletType,
+    getAccountTagOrUfvk: async () => {
+      // Return address as identifier
+      return `${walletType}:${account.address}`;
+    },
+    signMessage: async (message: string) => {
+      // Use auth context's signMessage which handles all wallet types
+      const signatureBytes = await auth.signMessage(message);
+      // Convert to hex string
+      return Array.from(signatureBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    },
+    getPublicKey: async () => {
+      // Return public key as hex if available
+      if (account.publicKey) {
+        return Array.from(account.publicKey)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+      throw new Error('No public key available for this wallet');
+    },
+  };
+
+  // For Passkey wallets, add WebAuthn signing capability
+  if (walletType === 'passkey') {
+    baseCore.signWithWebAuthn = async (challenge: string): Promise<WebAuthnSignResult> => {
+      // Get stored passkeys for allowCredentials
+      const storedPasskeys = getStoredPasskeysForBinding();
+      
+      if (storedPasskeys.length === 0) {
+        throw new Error('No passkeys found. Please register a passkey first.');
+      }
+
+      // The challenge is the JSON string we want to sign
+      // Convert it to base64url for WebAuthn
+      const challengeBytes = new TextEncoder().encode(challenge);
+      
+      // Request WebAuthn assertion
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: challengeBytes.buffer,
+          rpId: window.location.hostname,
+          allowCredentials: storedPasskeys.map(p => ({
+            id: base64UrlToArrayBuffer(p.credentialId),
+            type: 'public-key' as const,
+          })),
+          userVerification: 'required',
+          timeout: 60000,
+        },
+      }) as PublicKeyCredential | null;
+
+      if (!credential) {
+        throw new Error('WebAuthn assertion was cancelled or failed');
+      }
+
+      const response = credential.response as AuthenticatorAssertionResponse;
+      
+      // Get the public key from stored passkeys
+      const matchedPasskey = storedPasskeys.find(
+        p => p.credentialId === arrayBufferToBase64Url(credential.rawId)
+      );
+      
+      if (!matchedPasskey || !matchedPasskey.publicKey) {
+        throw new Error('Could not find public key for this passkey');
+      }
+
+      // Return the full assertion data
+      return {
+        assertion: {
+          authenticator_data: arrayBufferToBase64Url(response.authenticatorData),
+          client_data_json: arrayBufferToBase64Url(response.clientDataJSON),
+          signature: arrayBufferToBase64Url(response.signature),
+        },
+        publicKey: matchedPasskey.publicKey,
+      };
+    };
+  }
+
+  return baseCore;
+}
+
+/**
+ * Interface for stored passkey data (matches AuthContext storage format)
+ */
+interface StoredPasskeyForBinding {
+  credentialId: string;
+  username: string;
+  publicKey: string;
+  createdAt: number;
+}
+
+/** localStorage key for passkey credentials (must match AuthContext) */
+const PASSKEY_CREDENTIALS_KEY = 'zkpf_passkey_credentials';
+
+/**
+ * Get stored passkeys for binding verification.
+ */
+function getStoredPasskeysForBinding(): StoredPasskeyForBinding[] {
+  try {
+    const stored = localStorage.getItem(PASSKEY_CREDENTIALS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
 }
 
 // ============================================================================
@@ -253,7 +477,7 @@ export function runZkPassportForWalletBinding(options?: {
         zkPassport = new ZKPassport(domain);
 
         const builder = await zkPassport.request({
-          name: 'zkpf Zcash Wallet',
+          name: 'zkpf Wallet',
           logo: '/zkpf.png',
           purpose: 'Prove you are a unique person without sharing your personal details.',
           scope: WALLET_BINDING_SCOPE,
@@ -411,7 +635,7 @@ export function buildChallengeJson(challenge: WalletBindingChallenge): string {
  * 
  * This function:
  * 1. Creates the binding challenge
- * 2. Signs it with the wallet (REAL Ed25519 signature)
+ * 2. Signs it with the wallet (Ed25519 or WebAuthn ECDSA)
  * 3. Submits to the backend
  * 4. Handles all error cases with clear messages
  * 
@@ -440,13 +664,22 @@ export async function completeWalletBinding(
 
   const challengeJson = buildChallengeJson(challenge);
 
-  // Step 2: Sign the challenge with real Ed25519 signature
-  let signature: string;
+  // Step 2: Sign the challenge
+  let signature: string = '';
   let walletPubkey: string;
+  let webauthnAssertion: WebAuthnAssertionData | undefined;
   
   try {
-    signature = await walletCore.signMessage(challengeJson);
-    walletPubkey = await walletCore.getPublicKey();
+    // For Passkey wallets, use WebAuthn signing
+    if (walletCore.walletType === 'passkey' && walletCore.signWithWebAuthn) {
+      const webauthnResult = await walletCore.signWithWebAuthn(challengeJson);
+      webauthnAssertion = webauthnResult.assertion;
+      walletPubkey = webauthnResult.publicKey;
+    } else {
+      // For Ed25519 wallets (Zcash, Solana, NEAR)
+      signature = await walletCore.signMessage(challengeJson);
+      walletPubkey = await walletCore.getPublicKey();
+    }
   } catch (error) {
     return {
       success: false,
@@ -465,6 +698,8 @@ export async function completeWalletBinding(
     challenge_json: challengeJson,
     signature,
     wallet_pubkey: walletPubkey,
+    wallet_type: walletCore.walletType,
+    webauthn_assertion: webauthnAssertion,
   };
 
   try {
@@ -484,8 +719,10 @@ export async function completeWalletBinding(
         throw new Error(`Server error: ${response.status}`);
       }
 
-      // Map error codes to user-friendly messages
+      // Map error codes to user-friendly messages and appropriate error types
       let userMessage: string;
+      let errorType: PersonhoodFlowError['type'] = 'binding_failed';
+      
       switch (errorData.error_code) {
         case 'challenge_expired':
           userMessage = 'The verification took too long. Please try again.';
@@ -495,7 +732,15 @@ export async function completeWalletBinding(
           break;
         case 'too_many_wallet_bindings':
           userMessage = 'This passport has already been used with too many wallets. If this is unexpected, please contact support.';
-          break;
+          // Use a specific type for this error so UI can handle it specially
+          return {
+            success: false,
+            error: {
+              type: 'binding_failed',
+              message: userMessage,
+              code: 'too_many_wallet_bindings',
+            },
+          };
         case 'personhood_not_active':
           userMessage = 'Your identity verification is no longer active. Please contact support.';
           break;
@@ -506,7 +751,7 @@ export async function completeWalletBinding(
       return {
         success: false,
         error: {
-          type: 'binding_failed',
+          type: errorType,
           message: userMessage,
           code: errorData.error_code,
         },

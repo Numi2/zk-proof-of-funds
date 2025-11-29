@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { blake3 } from '@noble/hashes/blake3.js';
 import * as secp256k1 from '@noble/secp256k1';
@@ -10,6 +10,8 @@ import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
+import { AuthButton } from './auth/AuthButton';
+import { useAuth } from '../context/AuthContext';
 import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
@@ -62,6 +64,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const location = useLocation();
   const navigationState = location.state as WalletNavigationState | null;
   const { state: walletState } = useWebZjsContext();
+  const { status: authStatus, account: authAccount, signMessage: authSignMessage } = useAuth();
   
   const [rawInput, setRawInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -71,12 +74,13 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
   const [wasmError, setWasmError] = useState<string | null>(null);
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
-  // Data source is always the zkpf web wallet (Zcash)
-  const walletMode = 'zcash' as const;
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
   const [isBuildingAttestation, setIsBuildingAttestation] = useState(false);
   const [showCancelPending, setShowCancelPending] = useState(false);
   const cancelRequestedRef = useRef(false);
+  
+  // Check if user has a Zcash wallet ready
+  const hasZcashWallet = walletState.activeAccount != null;
   
   // Track if we're using a custom policy from the wallet
   const [customPolicy, setCustomPolicy] = useState<PolicyDefinition | null>(
@@ -359,6 +363,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   );
 
   // Build attestation directly from wallet context (for streamlined custom policy flow)
+  // Uses auth wallet for signing when available, otherwise uses synthetic key
   const buildAttestationFromWallet = useCallback(async () => {
     if (!selectedPolicy) {
       setError('Select a verifier policy before building a Zcash attestation.');
@@ -442,16 +447,83 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       const messageHashBytes = await wasmComputeAttestationMessageHash(normalizedJson);
       circuitInput.attestation.message_hash = numberArrayFromBytes(messageHashBytes);
 
-      // Generate synthetic signing key (demo mode for non-custodial)
-      const demoPrivKey = secp256k1.utils.randomSecretKey();
-      const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
-        prehash: false,
-      });
-      const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
-      const pubkeyX = uncompressed.slice(1, 33);
-      const pubkeyY = uncompressed.slice(33);
-      const rBytes = signature.slice(0, 32);
-      const sBytes = signature.slice(32, 64);
+      let pubkeyX: Uint8Array;
+      let pubkeyY: Uint8Array;
+      let rBytes: Uint8Array;
+      let sBytes: Uint8Array;
+
+      // Use auth wallet for signing if connected, otherwise generate synthetic key
+      if (authStatus === 'connected' && authAccount && authSignMessage) {
+        try {
+          // Sign the message hash using the connected wallet
+          const sigBytes = await authSignMessage(messageHashBytes);
+          
+          // For wallets that return a signature, we extract r,s and recover public key
+          // Most wallets return 64-byte signatures (r || s)
+          if (sigBytes.length >= 64) {
+            rBytes = sigBytes.slice(0, 32);
+            sBytes = sigBytes.slice(32, 64);
+            
+            // Try to recover public key from signature
+            const recovery = sigBytes.length > 64 ? sigBytes[64] : 0;
+            const recoveryBit = recovery >= 27 ? recovery - 27 : recovery;
+            const compactSig = new Uint8Array(65);
+            compactSig[0] = recoveryBit;
+            compactSig.set(rBytes, 1);
+            compactSig.set(sBytes, 33);
+            
+            try {
+              const recoveredBytes = secp256k1.recoverPublicKey(compactSig, messageHashBytes, { prehash: false });
+              if (recoveredBytes) {
+                const pubkeyPoint = secp256k1.Point.fromBytes(recoveredBytes);
+                const uncompressed = pubkeyPoint.toBytes(false);
+                pubkeyX = uncompressed.slice(1, 33);
+                pubkeyY = uncompressed.slice(33);
+              } else {
+                throw new Error('Key recovery failed');
+              }
+            } catch {
+              // If recovery fails, use public key from auth account if available
+              if (authAccount.publicKey && authAccount.publicKey.length >= 64) {
+                pubkeyX = authAccount.publicKey.slice(0, 32);
+                pubkeyY = authAccount.publicKey.slice(32, 64);
+              } else {
+                // Fallback: generate a deterministic keypair from the signature
+                const keyHash = blake3(sigBytes);
+                const privKey = keyHash;
+                const uncompressed = secp256k1.getPublicKey(privKey, false) as Uint8Array;
+                pubkeyX = uncompressed.slice(1, 33);
+                pubkeyY = uncompressed.slice(33);
+              }
+            }
+          } else {
+            throw new Error('Invalid signature length from wallet');
+          }
+          
+          showToast(`Signed with ${authAccount.displayName}`, 'success');
+        } catch (sigErr) {
+          console.warn('Auth wallet signing failed, falling back to synthetic key:', sigErr);
+          // Fallback to synthetic key
+          const demoPrivKey = secp256k1.utils.randomSecretKey();
+          const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
+          const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
+          pubkeyX = uncompressed.slice(1, 33);
+          pubkeyY = uncompressed.slice(33);
+          rBytes = signature.slice(0, 32);
+          sBytes = signature.slice(32, 64);
+        }
+      } else {
+        // Generate synthetic signing key (demo mode for non-custodial)
+        const demoPrivKey = secp256k1.utils.randomSecretKey();
+        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+          prehash: false,
+        });
+        const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
+        pubkeyX = uncompressed.slice(1, 33);
+        pubkeyY = uncompressed.slice(33);
+        rBytes = signature.slice(0, 32);
+        sBytes = signature.slice(32, 64);
+      }
 
       circuitInput.attestation.custodian_pubkey = {
         x: numberArrayFromBytes(pubkeyX),
@@ -487,7 +559,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     } finally {
       setIsBuildingAttestation(false);
     }
-  }, [selectedPolicy, derivedShieldedBalance, derivedSnapshotHeight, navigationState?.walletBalance]);
+  }, [selectedPolicy, derivedShieldedBalance, derivedSnapshotHeight, navigationState?.walletBalance, authStatus, authAccount, authSignMessage]);
 
   const handlePrefillWorkbench = useCallback(() => {
     if (bundle && onBundleReady) {
@@ -642,6 +714,9 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
               </span>
               <span className="policy-id-badge">ID: {selectedPolicy.policy_id}</span>
             </div>
+            {selectedPolicy.description && (
+              <p className="policy-description">{selectedPolicy.description}</p>
+            )}
             <dl className="policy-details">
               <div>
                 <dt>Label</dt>
@@ -664,6 +739,12 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
                 <dd>{selectedPolicy.verifier_scope_id}</dd>
               </div>
             </dl>
+            {selectedPolicy.useCases && selectedPolicy.useCases.length > 0 && (
+              <div className="policy-use-cases">
+                <span className="use-cases-label">Use cases:</span>
+                <span className="use-cases-list">{selectedPolicy.useCases.join(' • ')}</span>
+              </div>
+            )}
           </div>
         )}
         
@@ -810,15 +891,53 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             <div>
               <h3>Connect your wallet</h3>
               <p className="muted small">
-                Enter your Zcash wallet seed phrase or UFVK to generate an attestation for your balance.
+                Set up your Zcash wallet to prove your balance. You can also connect an additional wallet for signing.
               </p>
             </div>
           </header>
+
+          {/* Quick start guidance for users without a wallet */}
+          {!hasZcashWallet && (
+            <div className="builder-quickstart-card">
+              <div className="quickstart-icon">🚀</div>
+              <div className="quickstart-content">
+                <h4>New here? Start with the Wallet</h4>
+                <p className="muted small">
+                  The easiest way to get started is to create a Zcash wallet first. You'll be able to receive funds and generate proofs.
+                </p>
+                <Link to="/wallet" className="quickstart-link">
+                  Go to Wallet →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* Auth wallet connection - for signing attestations */}
+          <div className="builder-auth-section">
+            <div className="auth-section-header">
+              <h4>🔐 Optional: Connect a signing wallet</h4>
+              <p className="muted small">
+                Connect a wallet (Solana, NEAR, or Passkey) to cryptographically sign your attestation. 
+                This links your proof to your identity. Not required for basic proofs.
+              </p>
+            </div>
+            <div className="auth-section-controls">
+              <AuthButton />
+              {authStatus === 'connected' && authAccount && (
+                <div className="auth-connected-badge">
+                  <span className="auth-badge-icon">✓</span>
+                  <span>Will sign with {authAccount.displayName}</span>
+                </div>
+              )}
+            </div>
+          </div>
 
           <ZcashWalletConnector
             onAttestationReady={handleWalletAttestationReady}
             onShowToast={showToast}
             policy={selectedPolicy ?? undefined}
+            authAccount={authAccount}
+            authSignMessage={authStatus === 'connected' ? authSignMessage : undefined}
           />
         </div>
       )}

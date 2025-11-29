@@ -3,10 +3,16 @@
  * 
  * Production-grade React hook for wallet-bound personhood verification.
  * 
+ * Supports multiple wallet types:
+ * - Zcash (via UFVK from localStorage)
+ * - Solana (via Phantom/Solflare/Backpack)
+ * - NEAR (via near-connect or Meteor)
+ * - Passkey (via WebAuthn)
+ * 
  * Features:
  * - Automatic status loading on mount
  * - Full ZKPassport flow integration
- * - Real Ed25519 signatures (no demo mode)
+ * - Real signatures from connected wallets
  * - Clear error handling with user-friendly messages
  * - Cancel support for cleanup
  * 
@@ -15,29 +21,32 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useWebZjsContext } from '../context/WebzjsContext';
+import { useAuth } from '../context/AuthContext';
 import type {
   PersonhoodState,
   PersonhoodFlowStatus,
   PersonhoodFlowError,
-  PersonhoodVerificationResult,
   PersonhoodId,
   WalletBindingId,
 } from '../types/personhood';
 import {
   computeWalletBindingId,
+  computeWalletBindingIdFromPublicKey,
   getPersonhoodStatus,
   runZkPassportForWalletBinding,
   completeWalletBinding,
   createWalletCoreFromUfvk,
+  createWalletCoreFromAuthContext,
   clearPersonhoodCache,
   type ZKPassportError,
+  type WalletCore,
 } from '../utils/personhood';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-/** localStorage key for storing UFVK */
+/** localStorage key for storing UFVK (Zcash) */
 const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
 
 /** API base URL (empty string uses relative paths) */
@@ -64,6 +73,8 @@ export interface UsePersonhoodResult {
   isWalletReady: boolean;
   /** Whether verification is in progress */
   isLoading: boolean;
+  /** Current wallet type being used */
+  activeWalletType: 'zcash' | 'solana' | 'near' | 'passkey' | null;
   /** Start the verification flow */
   startVerification: () => Promise<void>;
   /** Cancel the current verification flow */
@@ -93,26 +104,101 @@ const initialState: PersonhoodState = {
 // ============================================================================
 
 export function usePersonhood(): UsePersonhoodResult {
+  // Zcash wallet context
   const { state: walletState } = useWebZjsContext();
+  
+  // Multi-wallet auth context (Solana, NEAR, Passkey)
+  const auth = useAuth();
   
   const [state, setState] = useState<PersonhoodState>(initialState);
   const cancelRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
 
-  // Check if wallet is ready
-  const isWalletReady = useMemo(() => {
-    if (!walletState.webWallet) return false;
-    if (walletState.activeAccount === null || walletState.activeAccount === undefined) return false;
-    
-    // Check for stored UFVK
-    const storedUfvk = localStorage.getItem(UFVK_STORAGE_KEY);
-    return !!storedUfvk && storedUfvk.length > 0;
-  }, [walletState.webWallet, walletState.activeAccount]);
+  // ========================================
+  // Determine Active Wallet
+  // ========================================
 
-  // Get UFVK from storage
-  const getUfvk = useCallback((): string | null => {
-    return localStorage.getItem(UFVK_STORAGE_KEY);
-  }, []);
+  // Check which wallet type is ready
+  const activeWalletInfo = useMemo(() => {
+    // Priority 1: Check Zcash UFVK (if webWallet is active)
+    if (walletState.webWallet && 
+        walletState.activeAccount !== null && 
+        walletState.activeAccount !== undefined) {
+      const storedUfvk = localStorage.getItem(UFVK_STORAGE_KEY);
+      if (storedUfvk && storedUfvk.length > 0) {
+        return { type: 'zcash' as const, ready: true };
+      }
+    }
+
+    // Priority 2: Check AuthContext for other wallets
+    if (auth.status === 'connected' && auth.account) {
+      const walletType = auth.account.type;
+      if (walletType === 'solana') {
+        return { type: 'solana' as const, ready: true };
+      }
+      if (walletType === 'near' || walletType === 'near-connect') {
+        return { type: 'near' as const, ready: true };
+      }
+      if (walletType === 'passkey') {
+        return { type: 'passkey' as const, ready: true };
+      }
+    }
+
+    return { type: null, ready: false };
+  }, [
+    walletState.webWallet, 
+    walletState.activeAccount, 
+    auth.status, 
+    auth.account
+  ]);
+
+  const isWalletReady = activeWalletInfo.ready;
+  const activeWalletType = activeWalletInfo.type;
+
+  // ========================================
+  // Get Wallet Core for Signing
+  // ========================================
+
+  const getWalletCore = useCallback(async (): Promise<{ 
+    core: WalletCore; 
+    bindingId: WalletBindingId 
+  } | null> => {
+    if (activeWalletType === 'zcash') {
+      const ufvk = localStorage.getItem(UFVK_STORAGE_KEY);
+      if (!ufvk) return null;
+      
+      const core = createWalletCoreFromUfvk(ufvk);
+      const bindingId = computeWalletBindingId(ufvk);
+      return { core, bindingId };
+    }
+
+    if (activeWalletType === 'solana' || 
+        activeWalletType === 'near' || 
+        activeWalletType === 'passkey') {
+      if (!auth.account?.publicKey && !auth.account?.address) {
+        return null;
+      }
+      
+      // Compute binding ID from public key or address
+      let bindingId: WalletBindingId;
+      if (auth.account.publicKey) {
+        bindingId = computeWalletBindingIdFromPublicKey(
+          auth.account.publicKey,
+          activeWalletType
+        );
+      } else {
+        // Fallback to address-based binding ID
+        bindingId = computeWalletBindingId(
+          `${activeWalletType}:${auth.account.address}`
+        );
+      }
+
+      const core = createWalletCoreFromAuthContext(auth, activeWalletType);
+      return { core, bindingId };
+    }
+
+    return null;
+  }, [activeWalletType, auth]);
 
   // ========================================
   // Status Loading
@@ -121,8 +207,8 @@ export function usePersonhood(): UsePersonhoodResult {
   const refreshStatus = useCallback(async () => {
     if (!mountedRef.current) return;
 
-    const ufvk = getUfvk();
-    if (!ufvk) {
+    const walletInfo = await getWalletCore();
+    if (!walletInfo) {
       setState(prev => ({
         ...prev,
         status: 'not_verified',
@@ -137,8 +223,8 @@ export function usePersonhood(): UsePersonhoodResult {
     setState(prev => ({ ...prev, status: 'loading_status', error: null }));
 
     try {
-      const walletBindingId = computeWalletBindingId(ufvk);
-      const statusResponse = await getPersonhoodStatus(walletBindingId, API_BASE_URL);
+      const { bindingId } = walletInfo;
+      const statusResponse = await getPersonhoodStatus(bindingId, API_BASE_URL);
 
       if (!mountedRef.current) return;
 
@@ -146,7 +232,7 @@ export function usePersonhood(): UsePersonhoodResult {
         setState(prev => ({
           ...prev,
           status: 'verified',
-          walletBindingId,
+          walletBindingId: bindingId,
           personhoodId: statusResponse.personhood_id,
           bindingsCount: statusResponse.bindings_count_for_person,
           error: null,
@@ -155,7 +241,7 @@ export function usePersonhood(): UsePersonhoodResult {
         setState(prev => ({
           ...prev,
           status: 'not_verified',
-          walletBindingId,
+          walletBindingId: bindingId,
           personhoodId: null,
           bindingsCount: null,
           error: null,
@@ -165,15 +251,15 @@ export function usePersonhood(): UsePersonhoodResult {
       if (!mountedRef.current) return;
 
       // On error, just show not verified - don't block the user
-      const ufvkNow = getUfvk();
+      const walletInfoNow = await getWalletCore();
       setState(prev => ({
         ...prev,
         status: 'not_verified',
-        walletBindingId: ufvkNow ? computeWalletBindingId(ufvkNow) : null,
+        walletBindingId: walletInfoNow?.bindingId ?? null,
         error: null, // Don't show network errors on status check
       }));
     }
-  }, [getUfvk]);
+  }, [getWalletCore]);
 
   // Load status on mount and when wallet changes
   useEffect(() => {
@@ -194,7 +280,7 @@ export function usePersonhood(): UsePersonhoodResult {
     return () => {
       mountedRef.current = false;
     };
-  }, [isWalletReady, refreshStatus]);
+  }, [isWalletReady, activeWalletType, refreshStatus]);
 
   // ========================================
   // Verification Flow
@@ -227,35 +313,21 @@ export function usePersonhood(): UsePersonhoodResult {
   const startVerification = useCallback(async () => {
     if (!mountedRef.current) return;
 
-    // Step 1: Check wallet readiness
-    const ufvk = getUfvk();
-    if (!ufvk) {
+    // Step 1: Get wallet core and binding ID
+    const walletInfo = await getWalletCore();
+    if (!walletInfo) {
       setState(prev => ({
         ...prev,
         status: 'error',
         error: {
           type: 'wallet_unavailable',
-          message: 'Please set up your wallet first before verifying.',
+          message: 'Please connect a wallet first before verifying.',
         },
       }));
       return;
     }
 
-    // Compute wallet binding ID
-    let walletBindingId: WalletBindingId;
-    try {
-      walletBindingId = computeWalletBindingId(ufvk);
-    } catch (err) {
-      setState(prev => ({
-        ...prev,
-        status: 'error',
-        error: {
-          type: 'wallet_unavailable',
-          message: 'Could not identify your wallet. Please try reconnecting.',
-        },
-      }));
-      return;
-    }
+    const { core: walletCore, bindingId: walletBindingId } = walletInfo;
 
     setState(prev => ({
       ...prev,
@@ -347,8 +419,6 @@ export function usePersonhood(): UsePersonhoodResult {
     // Step 3: Sign and submit
     setState(prev => ({ ...prev, status: 'signing' }));
 
-    const walletCore = createWalletCoreFromUfvk(ufvk);
-    
     setState(prev => ({ ...prev, status: 'submitting' }));
 
     const bindingResult = await completeWalletBinding(
@@ -378,7 +448,7 @@ export function usePersonhood(): UsePersonhoodResult {
       }));
     }
 
-  }, [getUfvk]);
+  }, [getWalletCore]);
 
   // ========================================
   // Reset
@@ -422,6 +492,7 @@ export function usePersonhood(): UsePersonhoodResult {
     zkPassportUrl: state.zkPassportUrl,
     isWalletReady,
     isLoading,
+    activeWalletType,
     startVerification,
     cancelVerification,
     refreshStatus,
