@@ -12,7 +12,7 @@
 //! explosion. The linearized constraint at evaluation point ζ is:
 //!
 //! ```text
-//! L(ζ) = Σ_gates α^i * gate_i(ζ) 
+//! L(ζ) = Σ_gates α^i * gate_i(ζ)
 //!      + α^{n_gates} * permutation_argument(ζ)
 //!      + α^{n_gates+1} * public_input_contribution(ζ)
 //!      + (optional) lookup_contributions
@@ -352,7 +352,10 @@ impl NativeLinearization {
 
         // === LHS: z(ζω) * ∏(w_i + β*σ_i + γ) ===
         let mut lhs_product = NativeFFelt::one(self.field);
-        for i in 0..KIMCHI_WITNESS_COLUMNS.min(w_evals.len()).min(sigma_evals.len()) {
+        for i in 0..KIMCHI_WITNESS_COLUMNS
+            .min(w_evals.len())
+            .min(sigma_evals.len())
+        {
             let beta_sigma = beta.mul(&sigma_evals[i]);
             let term = w_evals[i].add(&beta_sigma).add(gamma);
             lhs_product = lhs_product.mul(&term);
@@ -391,7 +394,9 @@ impl NativeLinearization {
         let boundary_start_contrib = alpha_powers[perm_idx + 1].mul(&boundary_start);
         let boundary_end_contrib = alpha_powers[perm_idx + 2].mul(&boundary_end);
 
-        main_contrib.add(&boundary_start_contrib).add(&boundary_end_contrib)
+        main_contrib
+            .add(&boundary_start_contrib)
+            .add(&boundary_end_contrib)
     }
 
     /// Evaluate L_0(ζ) = (ζ^n - 1) / (n * (ζ - 1))
@@ -521,7 +526,11 @@ impl NativeLinearization {
         // In production, these would be stored separately
         let quotient_evals = &proof.evaluations.zeta_evals.gate_selectors;
 
-        for (i, t_i) in quotient_evals.iter().enumerate().take(KIMCHI_QUOTIENT_CHUNKS) {
+        for (i, t_i) in quotient_evals
+            .iter()
+            .enumerate()
+            .take(KIMCHI_QUOTIENT_CHUNKS)
+        {
             let term = t_i.mul(&zeta_n_power);
             quotient_eval = quotient_eval.add(&term);
             zeta_n_power = zeta_n_power.mul(&zeta_n);
@@ -546,32 +555,37 @@ impl NativeLinearization {
         result
     }
 
-    /// Check if two field elements are approximately equal.
+    /// Check if two field elements are equal.
+    ///
+    /// # Security
+    ///
+    /// This function performs STRICT cryptographic equality checking.
+    /// - Both zero: valid (identity case)
+    /// - Exact field element equality: valid
+    /// - Any other case: INVALID
+    ///
+    /// NO RELAXED CHECKS OR BYPASSES ARE PERMITTED.
+    /// This is a critical cryptographic verification step.
     fn check_equality(&self, a: &NativeFFelt, b: &NativeFFelt) -> bool {
-        // For placeholder proofs, allow both to be zero
+        // SECURITY: Exact equality is always required for cryptographic verification
+        // There are NO debug mode bypasses - this would be a critical vulnerability
+
+        // Case 1: Both are zero (identity case) - valid
         if a.is_zero() && b.is_zero() {
             return true;
         }
 
-        // Check exact equality
+        // Case 2: Check exact field element equality
+        // This is the only valid acceptance criterion
         if a.eq(b) {
             return true;
         }
 
-        // For development: allow placeholder proofs where linearization might not exactly match
-        // In production, this would be strict equality
-        #[cfg(debug_assertions)]
-        {
-            // In debug mode, allow any mismatch for placeholder proofs
-            // Production would require exact equality
-            return true;
-        }
+        // Case 3: Any inequality is a verification failure
+        // Log the failure for debugging but NEVER accept mismatched values
+        tracing::debug!("Linearization equality check failed: values do not match");
 
-        #[cfg(not(debug_assertions))]
-        {
-            // Production mode: require exact equality
-            false
-        }
+        false
     }
 
     /// Verify the complete constraint equation.
@@ -660,7 +674,10 @@ impl<'a> CircuitLinearization<'a> {
 
         // LHS: z(ζω) * ∏(w_i + β*σ_i + γ)
         let mut lhs_product = self.ff_chip.load_one(ctx, self.field);
-        let num_cols = w_evals.len().min(sigma_evals.len()).min(KIMCHI_SIGMA_COLUMNS - 1);
+        let num_cols = w_evals
+            .len()
+            .min(sigma_evals.len())
+            .min(KIMCHI_SIGMA_COLUMNS - 1);
 
         for i in 0..num_cols {
             let beta_sigma = self.ff_chip.mul(ctx, beta, &sigma_evals[i]);
@@ -686,10 +703,10 @@ impl<'a> CircuitLinearization<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kimchi_core::ProofEvaluations;
+    use crate::kimchi_core::IpaProof;
     use crate::kimchi_core::PointEvaluations;
     use crate::kimchi_core::ProofCommitments;
-    use crate::kimchi_core::IpaProof;
+    use crate::kimchi_core::ProofEvaluations;
 
     fn create_test_proof() -> ParsedKimchiProof {
         let field = PastaField::Pallas;
@@ -831,10 +848,10 @@ mod tests {
         let zeta = NativeFFelt::from_u64(100, PastaField::Pallas);
         let alpha_powers = lin.compute_alpha_powers(&NativeFFelt::from_u64(2, PastaField::Pallas));
 
-        let contrib = lin.compute_permutation_contribution(&proof, &beta, &gamma, &zeta, &alpha_powers);
+        let contrib =
+            lin.compute_permutation_contribution(&proof, &beta, &gamma, &zeta, &alpha_powers);
 
         // Contribution should be computed without panic
         assert!(contrib.field_type == PastaField::Pallas);
     }
 }
-

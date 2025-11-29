@@ -33,9 +33,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use thiserror::Error;
+use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 use crate::pcd_keeper::{KeeperEvent, KeeperStatus, PcdKeeperConfig};
 
@@ -367,9 +370,9 @@ pub struct KeeperWsServer {
     /// Keeper event receiver.
     event_rx: Option<broadcast::Receiver<KeeperEvent>>,
     /// Status fetcher.
-    status_fetcher: Option<Box<dyn Fn() -> KeeperStatus + Send + Sync>>,
+    status_fetcher: Option<Arc<dyn Fn() -> KeeperStatus + Send + Sync>>,
     /// Request handler.
-    request_handler: Option<Box<dyn Fn(WsInboundMessage) + Send + Sync>>,
+    request_handler: Option<Arc<dyn Fn(WsInboundMessage) + Send + Sync>>,
 }
 
 impl KeeperWsServer {
@@ -394,16 +397,16 @@ impl KeeperWsServer {
     where
         F: Fn() -> KeeperStatus + Send + Sync + 'static,
     {
-        self.status_fetcher = Some(Box::new(fetcher));
+        self.status_fetcher = Some(Arc::new(fetcher));
         self
     }
 
-    /// Start the server.
+    /// Start the WebSocket server.
     ///
-    /// Note: This is a simplified implementation. For production use,
-    /// integrate with `axum` or `warp` WebSocket handlers.
+    /// Binds to the configured address and accepts WebSocket connections.
+    /// Each connection receives keeper events in real-time.
     pub async fn start(self) -> Result<WsServerHandle, WsServerError> {
-        let (command_tx, mut command_rx) = mpsc::channel(32);
+        let (command_tx, mut command_rx) = mpsc::channel::<WsCommand>(32);
         let stats = Arc::new(WsServerStats::default());
 
         let handle = WsServerHandle {
@@ -411,30 +414,74 @@ impl KeeperWsServer {
             stats: stats.clone(),
         };
 
-        // Spawn the server task
+        // Channel for broadcasting messages to all connected clients
+        let (broadcast_tx, _) = broadcast::channel::<String>(256);
+
         let config = self.config.clone();
         let event_rx = self.event_rx;
+        let status_fetcher = self.status_fetcher.clone();
+        let request_handler = self.request_handler.clone();
 
+        // Bind TCP listener
+        let listener = TcpListener::bind(&config.bind_addr)
+            .await
+            .map_err(|e| WsServerError::BindFailed(e.to_string()))?;
+
+        tracing::info!(
+            addr = %config.bind_addr,
+            "PCD Keeper WebSocket server listening"
+        );
+
+        let _broadcast_tx_clone = broadcast_tx.clone();
+        let stats_clone = stats.clone();
+
+        // Spawn the main server loop
         tokio::spawn(async move {
-            tracing::info!(
-                addr = %config.bind_addr,
-                "PCD Keeper WebSocket server starting"
-            );
-
-            // In a real implementation, this would:
-            // 1. Bind to the socket
-            // 2. Accept connections
-            // 3. Handle WebSocket upgrade
-            // 4. Forward events to connected clients
-            //
-            // For now, we just handle commands and forward events
-
             let mut event_rx = event_rx;
             let mut status_interval = tokio::time::interval(config.status_interval);
+            
+            // Track connected client senders
+            let clients: Arc<RwLock<HashMap<u64, mpsc::Sender<String>>>> = 
+                Arc::new(RwLock::new(HashMap::new()));
+            let client_counter = Arc::new(AtomicU64::new(0));
 
             loop {
                 tokio::select! {
-                    // Handle commands
+                    // Accept new connections
+                    Ok((stream, addr)) = listener.accept() => {
+                        let client_id = client_counter.fetch_add(1, Ordering::Relaxed);
+                        let (client_tx, client_rx) = mpsc::channel::<String>(64);
+                        
+                        clients.write().await.insert(client_id, client_tx);
+                        stats_clone.total_connections.fetch_add(1, Ordering::Relaxed);
+                        stats_clone.active_connections.fetch_add(1, Ordering::Relaxed);
+                        
+                        tracing::info!(client_id, %addr, "WebSocket client connected");
+                        
+                        let clients_clone = clients.clone();
+                        let stats_ref = stats_clone.clone();
+                        let status_fetcher_ref = status_fetcher.clone();
+                        let request_handler_ref = request_handler.clone();
+                        
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_client(
+                                stream, 
+                                client_id, 
+                                client_rx, 
+                                stats_ref.clone(),
+                                status_fetcher_ref,
+                                request_handler_ref,
+                            ).await {
+                                tracing::warn!(client_id, error = %e, "Client connection error");
+                            }
+                            
+                            clients_clone.write().await.remove(&client_id);
+                            stats_ref.active_connections.fetch_sub(1, Ordering::Relaxed);
+                            tracing::info!(client_id, "WebSocket client disconnected");
+                        });
+                    }
+
+                    // Handle internal commands
                     Some(cmd) = command_rx.recv() => {
                         match cmd {
                             WsCommand::Stop => {
@@ -442,14 +489,17 @@ impl KeeperWsServer {
                                 break;
                             }
                             WsCommand::Broadcast(msg) => {
-                                // In a real implementation, send to all clients
-                                stats.messages_sent.fetch_add(1, Ordering::Relaxed);
-                                tracing::debug!("Would broadcast: {:?}", msg);
+                                let json = serde_json::to_string(&msg).unwrap_or_default();
+                                let clients_guard = clients.read().await;
+                                for (_, tx) in clients_guard.iter() {
+                                    let _ = tx.send(json.clone()).await;
+                                }
+                                stats_clone.messages_sent.fetch_add(clients_guard.len() as u64, Ordering::Relaxed);
                             }
                         }
                     }
 
-                    // Forward keeper events
+                    // Forward keeper events to all clients
                     event = async {
                         if let Some(ref mut rx) = event_rx {
                             rx.recv().await.ok()
@@ -459,15 +509,29 @@ impl KeeperWsServer {
                     } => {
                         if let Some(event) = event {
                             let ws_msg = keeper_event_to_ws_message(event);
-                            stats.messages_sent.fetch_add(1, Ordering::Relaxed);
-                            tracing::debug!("Would send event: {:?}", ws_msg);
+                            let json = serde_json::to_string(&ws_msg).unwrap_or_default();
+                            
+                            let clients_guard = clients.read().await;
+                            for (_, tx) in clients_guard.iter() {
+                                let _ = tx.send(json.clone()).await;
+                            }
+                            stats_clone.messages_sent.fetch_add(clients_guard.len() as u64, Ordering::Relaxed);
                         }
                     }
 
                     // Periodic status updates
                     _ = status_interval.tick() => {
-                        // In a real implementation, fetch status and broadcast
-                        tracing::trace!("Status update tick");
+                        if let Some(ref fetcher) = status_fetcher {
+                            let status = fetcher();
+                            let status_dto = KeeperStatusDto::from(&status);
+                            let msg = WsOutboundMessage::StatusUpdate { status: status_dto };
+                            let json = serde_json::to_string(&msg).unwrap_or_default();
+                            
+                            let clients_guard = clients.read().await;
+                            for (_, tx) in clients_guard.iter() {
+                                let _ = tx.send(json.clone()).await;
+                            }
+                        }
                     }
                 }
             }
@@ -477,6 +541,89 @@ impl KeeperWsServer {
 
         Ok(handle)
     }
+}
+
+/// Handle a single WebSocket client connection.
+async fn handle_client(
+    stream: TcpStream,
+    client_id: u64,
+    mut rx: mpsc::Receiver<String>,
+    stats: Arc<WsServerStats>,
+    status_fetcher: Option<Arc<dyn Fn() -> KeeperStatus + Send + Sync>>,
+    request_handler: Option<Arc<dyn Fn(WsInboundMessage) + Send + Sync>>,
+) -> Result<(), WsServerError> {
+    let ws_stream = accept_async(stream)
+        .await
+        .map_err(|e| WsServerError::ConnectionError(e.to_string()))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send connected message
+    let connected_msg = serde_json::json!({
+        "type": "connected",
+        "data": { "client_id": client_id }
+    });
+    write
+        .send(Message::Text(connected_msg.to_string()))
+        .await
+        .map_err(|e| WsServerError::ConnectionError(e.to_string()))?;
+
+    loop {
+        tokio::select! {
+            // Send outbound messages to client
+            Some(msg) = rx.recv() => {
+                if write.send(Message::Text(msg)).await.is_err() {
+                    break;
+                }
+            }
+
+            // Handle inbound messages from client
+            Some(result) = read.next() => {
+                match result {
+                    Ok(Message::Text(text)) => {
+                        stats.messages_received.fetch_add(1, Ordering::Relaxed);
+
+                        // Parse inbound messages and optionally handle them
+                        if let Ok(msg) = serde_json::from_str::<WsInboundMessage>(&text) {
+                            tracing::debug!(?msg, "Received WebSocket message");
+
+                            // Invoke external request handler callback if configured
+                            if let Some(handler) = &request_handler {
+                                handler(msg.clone());
+                            }
+
+                            // Handle inline GetStatus requests using the status_fetcher
+                            if let WsInboundMessage::GetStatus { request_id } = msg {
+                                if let Some(fetcher) = &status_fetcher {
+                                    let status = fetcher();
+                                    let status_dto = KeeperStatusDto::from(&status);
+                                    let response = WsOutboundMessage::Response {
+                                        request_id,
+                                        success: true,
+                                        data: Some(serde_json::to_value(status_dto).unwrap_or_default()),
+                                        error: None,
+                                    };
+
+                                    let resp_text = serde_json::to_string(&response).unwrap_or_default();
+                                    if write.send(Message::Text(resp_text)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Ok(Message::Close(_)) => break,
+                    Ok(Message::Ping(data)) => {
+                        let _ = write.send(Message::Pong(data)).await;
+                    }
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Convert a keeper event to a WebSocket message.

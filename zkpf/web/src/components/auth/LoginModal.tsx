@@ -3,7 +3,7 @@
  * 
  * Beautiful, unified login interface supporting:
  * - Solana Wallet (Phantom, Solflare, Backpack)
- * - NEAR Wallet via near-connect (HOT, Meteor, MyNearWallet, Nightly, etc.)
+ * - NEAR Wallet via near-connect (HOT, Meteor, Nightly, etc.)
  * - Passkey (WebAuthn/FIDO2)
  */
 
@@ -17,9 +17,11 @@ interface WalletOption {
   id: string;
   name: string;
   icon: string;
+  iconUrl?: string;
   type: 'solana' | 'near' | 'near-connect' | 'passkey';
   description: string;
   available: boolean;
+  featured?: boolean;
 }
 
 export function LoginModal() {
@@ -106,14 +108,26 @@ export function LoginModal() {
   }, []);
 
   // Build NEAR wallet options from near-connect
-  const nearWalletOptions: WalletOption[] = nearConnectWallets.map(w => ({
-    id: w.id,
-    name: w.name,
-    icon: w.icon,
-    type: 'near-connect' as const,
-    description: w.description || 'NEAR wallet',
-    available: true,
-  }));
+  const nearWalletOptions: WalletOption[] = nearConnectWallets
+    .map(w => ({
+      id: w.id,
+      name: w.name,
+      icon: w.icon,
+      iconUrl: w.iconUrl,
+      type: 'near-connect' as const,
+      description: w.description || 'NEAR wallet',
+      available: true,
+      featured: w.id === 'hot-wallet' || w.id === 'meteor-wallet',
+    }))
+    .sort((a, b) => {
+      // Custom order: put HOT Wallet after Nightly Wallet
+      const order = ['meteor-wallet', 'intear-wallet', 'okx-wallet', 'near-mobile-wallet', 'nightly-wallet', 'hot-wallet'];
+      const aIndex = order.indexOf(a.id);
+      const bIndex = order.indexOf(b.id);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
 
   const handleConnect = useCallback(async (option: WalletOption) => {
     if (!option.available && option.type !== 'passkey') {
@@ -236,6 +250,40 @@ export function LoginModal() {
         <div className="login-modal-content">
           {activeTab === 'connect' && (
             <>
+              {/* Passkey */}
+              {passkey && (
+                <div className="wallet-section passkey-section">
+                  <div className="wallet-section-header">
+                    <span className="wallet-section-icon">🔐</span>
+                    <span>Passkey</span>
+                  </div>
+                  <div className="wallet-options">
+                    <button
+                      className={`wallet-option passkey-option ${!passkey.available ? 'unavailable' : ''} ${connecting === 'passkey' ? 'connecting' : ''} ${!hasStoredPasskeys ? 'no-passkeys' : ''}`}
+                      onClick={() => hasStoredPasskeys ? handleConnect(passkey) : setActiveTab('passkey-register')}
+                      disabled={status === 'connecting' || !passkey.available}
+                    >
+                      <span className="wallet-option-icon">{passkey.icon}</span>
+                      <div className="wallet-option-info">
+                        <span className="wallet-option-name">
+                          {hasStoredPasskeys ? 'Sign in with Passkey' : 'Create a Passkey'}
+                        </span>
+                        <span className="wallet-option-status">
+                          {!passkey.available 
+                            ? 'Not supported in this browser' 
+                            : hasStoredPasskeys 
+                              ? 'Face ID, Touch ID, or security key'
+                              : 'Set up biometric authentication'}
+                        </span>
+                      </div>
+                      {connecting === 'passkey' && (
+                        <span className="wallet-option-spinner" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Solana Wallets */}
               <div className="wallet-section">
                 <div className="wallet-section-header">
@@ -270,72 +318,81 @@ export function LoginModal() {
 
               {/* NEAR Wallets via near-connect */}
               <div className="wallet-section near-connect-section">
-                <div className="wallet-section-header">
-                  <span className="wallet-section-icon">Ⓝ</span>
-                  <span>NEAR</span>
+                <div className="near-connect-header">
+                  <div className="near-connect-branding">
+                    <div className="near-logo-container">
+                      <span className="near-logo">Ⓝ</span>
+                      <div className="near-logo-glow" />
+                    </div>
+                    <div className="near-header-text">
+                      <span className="near-header-title">NEAR Protocol</span>
+                      <span className="near-header-subtitle">Fast, secure blockchain wallets</span>
+                    </div>
+                  </div>
                   {!nearConnectReady && (
-                    <span className="wallet-section-loading">
-                      <span className="wallet-option-spinner" />
-                    </span>
+                    <div className="near-loading-indicator">
+                      <span className="near-loading-spinner" />
+                      <span className="near-loading-text">Loading wallets...</span>
+                    </div>
                   )}
                 </div>
-                <div className="wallet-options near-wallet-grid">
+                <div className="near-wallet-grid">
                   {nearWalletOptions.map(wallet => (
                     <button
                       key={wallet.id}
-                      className={`wallet-option near-connect-wallet ${connecting === wallet.id ? 'connecting' : ''}`}
+                      className={`near-wallet-card ${connecting === wallet.id ? 'connecting' : ''}`}
                       onClick={() => handleConnect(wallet)}
                       disabled={status === 'connecting' || !nearConnectReady}
+                      title={wallet.description}
                     >
-                      <span className="wallet-option-icon">{wallet.icon}</span>
-                      <div className="wallet-option-info">
-                        <span className="wallet-option-name">{wallet.name}</span>
-                        <span className="wallet-option-status">{wallet.description}</span>
+                      <div className="near-wallet-icon-wrapper">
+                        {wallet.iconUrl ? (
+                          <img
+                            src={wallet.iconUrl}
+                            alt={`${wallet.name} logo`}
+                            className="near-wallet-icon-img"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const fallback = target.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <span 
+                          className="near-wallet-icon-fallback"
+                          style={{ display: wallet.iconUrl ? 'none' : 'flex' }}
+                        >
+                          {wallet.icon}
+                        </span>
+                        {connecting === wallet.id && (
+                          <div className="near-wallet-connecting-overlay">
+                            <span className="near-connect-spinner" />
+                          </div>
+                        )}
                       </div>
-                      {connecting === wallet.id && (
-                        <span className="wallet-option-spinner" />
-                      )}
+                      <span className="near-wallet-name">{wallet.name}</span>
                     </button>
                   ))}
                 </div>
-                <p className="near-connect-powered">
-                  Powered by <a href="https://github.com/azbang/near-connect" target="_blank" rel="noopener noreferrer">near-connect</a>
-                </p>
-              </div>
-
-              {/* Passkey */}
-              {passkey && (
-                <div className="wallet-section passkey-section">
-                  <div className="wallet-section-header">
-                    <span className="wallet-section-icon">🔐</span>
-                    <span>Passkey</span>
+                <div className="near-connect-footer">
+                  <div className="near-connect-security">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M7 1L2 3v4c0 3.31 2.13 6.41 5 7 2.87-.59 5-3.69 5-7V3L7 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M5 7l1.5 1.5L9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>Secure connection</span>
                   </div>
-                  <div className="wallet-options">
-                    <button
-                      className={`wallet-option passkey-option ${!passkey.available ? 'unavailable' : ''} ${connecting === 'passkey' ? 'connecting' : ''} ${!hasStoredPasskeys ? 'no-passkeys' : ''}`}
-                      onClick={() => hasStoredPasskeys ? handleConnect(passkey) : setActiveTab('passkey-register')}
-                      disabled={status === 'connecting' || !passkey.available}
-                    >
-                      <span className="wallet-option-icon">{passkey.icon}</span>
-                      <div className="wallet-option-info">
-                        <span className="wallet-option-name">
-                          {hasStoredPasskeys ? 'Sign in with Passkey' : 'Create a Passkey'}
-                        </span>
-                        <span className="wallet-option-status">
-                          {!passkey.available 
-                            ? 'Not supported in this browser' 
-                            : hasStoredPasskeys 
-                              ? 'Face ID, Touch ID, or security key'
-                              : 'Set up biometric authentication'}
-                        </span>
-                      </div>
-                      {connecting === 'passkey' && (
-                        <span className="wallet-option-spinner" />
-                      )}
-                    </button>
-                  </div>
+                  <a 
+                    href="https://github.com/azbang/near-connect" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="near-connect-attribution"
+                  >
+                    Powered by near-connect
+                  </a>
                 </div>
-              )}
+              </div>
             </>
           )}
 

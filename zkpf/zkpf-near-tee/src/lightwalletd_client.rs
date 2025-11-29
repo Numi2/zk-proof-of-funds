@@ -16,7 +16,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::pcd_keeper::{BlockDelta, NoteIdentifier, NullifierIdentifier, PcdKeeperError};
+use crate::pcd_keeper::{BlockDelta, PcdKeeperError};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERRORS
@@ -303,7 +303,7 @@ impl LightwalletdClient {
     /// done separately in the wallet layer.
     pub async fn fetch_block_delta(
         &self,
-        from_height: u64,
+        _from_height: u64,
         to_height: u64,
     ) -> Result<BlockDelta, LightwalletdError> {
         // Get tree state at target height for the new anchor

@@ -19,7 +19,9 @@ use std::{
 use anyhow::{ensure, Context as AnyhowContext, Result};
 use halo2_base::{
     gates::{
-        circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, BaseConfig, CircuitBuilderStage},
+        circuit::{
+            builder::BaseCircuitBuilder, BaseCircuitParams, BaseConfig, CircuitBuilderStage,
+        },
         range::RangeChip,
         GateInstructions, RangeInstructions,
     },
@@ -561,18 +563,17 @@ pub fn create_starknet_proof(
         )));
     }
 
-    // Try to load artifacts
-    let artifacts = match STARKNET_PROVER_ARTIFACTS.as_ref() {
-        Ok(artifacts) => artifacts.clone(),
-        Err(e) => {
-            // Fall back to placeholder proof if artifacts not available
-            eprintln!(
-                "Warning: Starknet artifacts not loaded ({}), using placeholder proof",
+    // Load artifacts - fail if not available
+    let artifacts = STARKNET_PROVER_ARTIFACTS
+        .as_ref()
+        .map_err(|e| {
+            StarknetRailError::Proof(format!(
+                "Starknet prover artifacts not loaded: {}. \
+                 Set ZKPF_STARKNET_MANIFEST_PATH to the path of manifest.json.",
                 e
-            );
-            return create_starknet_placeholder_proof(input);
-        }
-    };
+            ))
+        })?
+        .clone();
 
     // Generate real proof
     create_starknet_proof_with_artifacts(&artifacts, input)
@@ -662,17 +663,22 @@ pub fn load_starknet_verifier_artifacts_from_path(
 ///
 /// # Returns
 /// `true` if the proof is valid, `false` otherwise.
+///
+/// # Security
+/// Placeholder proofs (starting with magic bytes) are always rejected.
 pub fn verify_starknet_proof(
     params: &ParamsKZG<Bn256>,
     vk: &plonk::VerifyingKey<G1Affine>,
     proof_bytes: &[u8],
     public_inputs: &VerifierPublicInputs,
 ) -> Result<bool, StarknetRailError> {
-    // Check for placeholder proof
+    // SECURITY: Always reject placeholder proofs - they bypass cryptographic verification
     if proof_bytes.starts_with(b"STARKNET_POF_V1") {
-        // Placeholder proofs are always valid in development
-        // In production, this should return false
-        return Ok(true);
+        return Err(StarknetRailError::Proof(
+            "Placeholder proofs (STARKNET_POF_V1) are not accepted. \
+             Generate real proofs using the circuit."
+                .into(),
+        ));
     }
 
     // Convert public inputs to instances
@@ -705,13 +711,20 @@ pub fn verify_starknet_proof(
 /// Verify a Starknet proof using globally loaded artifacts.
 ///
 /// Convenience function that loads artifacts automatically.
+///
+/// # Security
+/// Placeholder proofs are always rejected.
 pub fn verify_starknet_proof_with_loaded_artifacts(
     proof_bytes: &[u8],
     public_inputs: &VerifierPublicInputs,
 ) -> Result<bool, StarknetRailError> {
-    // Check for placeholder proof first
+    // SECURITY: Always reject placeholder proofs - they bypass cryptographic verification
     if proof_bytes.starts_with(b"STARKNET_POF_V1") {
-        return Ok(true);
+        return Err(StarknetRailError::Proof(
+            "Placeholder proofs (STARKNET_POF_V1) are not accepted. \
+             Generate real proofs using the circuit."
+                .into(),
+        ));
     }
 
     // Load artifacts
@@ -726,8 +739,6 @@ pub fn verify_starknet_proof_with_loaded_artifacts(
 pub struct StarknetVerificationResult {
     /// Whether the proof is valid.
     pub valid: bool,
-    /// Whether this was a placeholder proof.
-    pub is_placeholder: bool,
     /// Error message if verification failed.
     pub error: Option<String>,
 }
@@ -739,19 +750,21 @@ pub fn verify_starknet_proof_detailed(
     proof_bytes: &[u8],
     public_inputs: &VerifierPublicInputs,
 ) -> StarknetVerificationResult {
-    // Check for placeholder proof
+    // SECURITY: Always reject placeholder proofs - they bypass cryptographic verification
     if proof_bytes.starts_with(b"STARKNET_POF_V1") {
         return StarknetVerificationResult {
-            valid: true,
-            is_placeholder: true,
-            error: None,
+            valid: false,
+            error: Some(
+                "Placeholder proofs (STARKNET_POF_V1) are not accepted. \
+                 Generate real proofs using the circuit."
+                    .to_string(),
+            ),
         };
     }
 
     match verify_starknet_proof(params, vk, proof_bytes, public_inputs) {
         Ok(valid) => StarknetVerificationResult {
             valid,
-            is_placeholder: false,
             error: if valid {
                 None
             } else {
@@ -760,32 +773,14 @@ pub fn verify_starknet_proof_detailed(
         },
         Err(e) => StarknetVerificationResult {
             valid: false,
-            is_placeholder: false,
             error: Some(e.to_string()),
         },
     }
 }
 
-/// Create a placeholder proof (for development/testing when artifacts are not available).
-fn create_starknet_placeholder_proof(
-    input: &StarknetPofCircuitInput,
-) -> Result<Vec<u8>, StarknetRailError> {
-    let mut proof = vec![];
-
-    // Magic bytes to identify Starknet rail proofs
-    proof.extend_from_slice(b"STARKNET_POF_V1");
-
-    // Hash of public inputs (for development/testing)
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&input.public_inputs.threshold_raw.to_le_bytes());
-    hasher.update(&input.public_inputs.nullifier);
-    for value in &input.account_values {
-        hasher.update(&value.to_le_bytes());
-    }
-    proof.extend_from_slice(hasher.finalize().as_bytes());
-
-    Ok(proof)
-}
+// REMOVED: create_starknet_placeholder_proof function
+// Placeholder proofs are a security vulnerability and have been removed.
+// All proofs must be generated using real cryptographic circuits.
 
 // === WASM support ==============================================================================
 
@@ -851,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_starknet_proof() {
+    fn test_create_starknet_proof_requires_artifacts() {
         let input = StarknetPofCircuitInput {
             public_inputs: VerifierPublicInputs {
                 threshold_raw: 1_000_000,
@@ -869,15 +864,24 @@ mod tests {
             account_values: vec![5_000_000, 3_000_000],
         };
 
-        let proof = create_starknet_proof(&input).expect("should succeed");
-        // Proof should be non-empty
-        assert!(!proof.is_empty());
-        // Either a real proof (longer, no magic bytes) or placeholder (has magic bytes)
-        if proof.starts_with(b"STARKNET_POF_V1") {
-            // Placeholder proof (artifacts not loaded)
-            assert!(proof.len() >= 15 + 32);
+        // Without artifacts loaded, proof creation should fail (no placeholder fallback)
+        let result = create_starknet_proof(&input);
+        // Either succeeds with real artifacts, or fails with clear error about missing artifacts
+        if result.is_err() {
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("artifacts") || err.contains("ZKPF_STARKNET_MANIFEST_PATH"),
+                "Error should indicate missing artifacts, got: {}",
+                err
+            );
         } else {
-            // Real Halo2 proof (should be much larger)
+            // If artifacts are loaded, proof should be a real Halo2 proof (not placeholder)
+            let proof = result.unwrap();
+            assert!(!proof.is_empty());
+            assert!(
+                !proof.starts_with(b"STARKNET_POF_V1"),
+                "Placeholder proofs should never be generated"
+            );
             assert!(proof.len() > 1000, "Real proof should be larger than 1KB");
         }
     }

@@ -347,13 +347,11 @@ pub fn verify_mina_proof(bundle: &ProofBundle) -> Result<bool, MinaRailError> {
         return Ok(false);
     }
 
-    // Check for placeholder proof (development mode)
+    // SECURITY: Always reject placeholder proofs - they bypass cryptographic verification
     if bundle.proof.starts_with(b"MINA_RECURSIVE_V1") {
-        // SECURITY: Placeholder proofs cannot be accepted as valid.
-        // These proofs contain magic bytes but no actual cryptographic proof.
         return Err(MinaRailError::Proof(
-            "placeholder recursive proofs (MINA_RECURSIVE_V1) cannot be verified - \
-             these are development-only proofs without cryptographic security".into()
+            "Placeholder proofs (MINA_RECURSIVE_V1) are not accepted. \
+             Generate real proofs using the circuit.".into()
         ));
     }
 
@@ -638,12 +636,11 @@ pub fn verify_proof_of_state_bundle(bundle: &ProofBundle) -> Result<bool, MinaRa
         )));
     }
 
-    // Check for wrapper proof marker - these are placeholder proofs without cryptographic verification
+    // SECURITY: Always reject placeholder wrapper proofs - they bypass cryptographic verification
     if bundle.proof.starts_with(b"MINA_POS_WRAPPER_V1") {
-        // SECURITY: Placeholder proofs cannot be accepted as valid.
         return Err(MinaRailError::Proof(
-            "placeholder wrapper proofs (MINA_POS_WRAPPER_V1) cannot be verified - \
-             these are development-only proofs without cryptographic security".into()
+            "Placeholder wrapper proofs are not accepted. \
+             Generate real proofs using the circuit.".into()
         ));
     }
 

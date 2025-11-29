@@ -49,14 +49,14 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 use crate::agent::{AgentConfig, NearAgent};
-use crate::attestation::{TeeAttestation, TeeProvider};
+use crate::attestation::TeeAttestation;
 use crate::crypto::TeeKeyManager;
 use crate::error::NearTeeError;
 use crate::pcd_keeper::{
     KeeperHandle, KeeperStatus, PcdKeeper, PcdKeeperConfig, PcdKeeperError,
     PcdState as KeeperPcdState, Tachystamp, EpochStrategy,
 };
-use crate::types::{AccountId, AgentAction, AgentResponse, KeyType};
+use crate::types::{AgentAction, AgentResponse, KeyType};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHADE AGENT ERRORS
@@ -718,35 +718,50 @@ impl ShadeAgentCoordinator {
     }
 
     /// Estimate gas for an operation on a chain.
+    ///
+    /// # Note
+    /// Uses static estimates. In production, integrate with chain RPCs and
+    /// price oracles for accurate gas estimation and token conversion.
     pub async fn estimate_gas(
         &self,
         chain: ChainType,
-        _operation: &str,
+        operation: &str,
         gas_config: Option<GasConfig>,
     ) -> Result<GasEstimate, ShadeAgentError> {
         let config = gas_config.unwrap_or_else(|| self.config.gas_config.clone());
 
-        // In production, this would query chain RPCs
-        // For now, return placeholder estimates
+        // Base gas estimates per chain (conservative values for safety margin)
+        // TODO: Query chain RPCs for operation-specific estimates
         let (gas_units, gas_price) = match chain {
-            ChainType::Zcash => (10_000, 1_000),           // Zcash is cheap
-            ChainType::Mina => (5_000, 100_000_000),       // Mina slot-based
-            ChainType::Starknet => (100_000, 1_000_000),   // Starknet gas
+            ChainType::Zcash => (10_000, 1_000),             // Zcash is cheap
+            ChainType::Mina => (5_000, 100_000_000),         // Mina slot-based
+            ChainType::Starknet => (100_000, 1_000_000),     // Starknet gas
             ChainType::Ethereum => (21_000, 30_000_000_000), // ~30 gwei
-            ChainType::Near => (30_000_000_000_000, 1),    // NEAR gas
-            ChainType::Aztec => (50_000, 10_000),
-            ChainType::Cosmos => (200_000, 25),
+            ChainType::Near => (30_000_000_000_000, 1),      // NEAR gas model
+            ChainType::Aztec => (50_000, 10_000),            // Aztec L2
+            ChainType::Cosmos => (200_000, 25),              // Cosmos SDK
         };
 
         let total_native = gas_units as u128 * gas_price;
 
         // Calculate payment token equivalent if gas abstraction enabled
         let total_payment_token = if config.payment_token != GasPaymentToken::Native {
-            // Would use price oracle in production
-            Some(total_native / 1_000) // Placeholder conversion
+            // TODO: Integrate with price oracle (e.g., Pyth, Chainlink, RedStone)
+            // Current: simple 1:1000 placeholder ratio
+            Some(total_native / 1_000)
         } else {
             None
         };
+
+        tracing::debug!(
+            ?chain,
+            %operation,
+            gas_units,
+            gas_price,
+            total_native,
+            ?total_payment_token,
+            "Estimated gas for operation"
+        );
 
         Ok(GasEstimate {
             chain,

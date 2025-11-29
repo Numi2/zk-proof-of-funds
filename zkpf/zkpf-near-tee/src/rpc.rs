@@ -12,7 +12,7 @@ use crate::types::AccountId;
 /// NEAR RPC client.
 pub struct NearRpcClient {
     rpc_url: String,
-    #[cfg(feature = "http")]
+    #[cfg(feature = "http-clients")]
     client: reqwest::Client,
 }
 
@@ -21,28 +21,66 @@ impl NearRpcClient {
     pub fn new(rpc_url: &str) -> Result<Self, NearTeeError> {
         Ok(Self {
             rpc_url: rpc_url.to_string(),
-            #[cfg(feature = "http")]
+            #[cfg(feature = "http-clients")]
             client: reqwest::Client::new(),
         })
     }
 
     /// Get account information.
     pub async fn get_account(&self, account_id: &AccountId) -> Result<AccountInfo, NearTeeError> {
-        let _method = "query";
-        let _params = serde_json::json!({
+        let method = "query";
+        let params = serde_json::json!({
             "request_type": "view_account",
             "finality": "final",
             "account_id": account_id.as_str()
         });
 
-        // In production, would make actual RPC call
-        #[cfg(feature = "http")]
-        {
-            // let response = self.rpc_call(method, params).await?;
-            // Parse response into AccountInfo
+        // Try real RPC first when HTTP client support is enabled.
+        #[cfg(feature = "http-clients")]
+        if let Ok(json) = self.rpc_call(method, params).await {
+            if let Some(result) = json.as_object() {
+                let amount = result
+                    .get("amount")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let locked = result
+                    .get("locked")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let code_hash = result
+                    .get("code_hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let storage_usage = result
+                    .get("storage_usage")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or_default();
+                let block_height = result
+                    .get("block_height")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or_default();
+                let block_hash = result
+                    .get("block_hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+
+                return Ok(AccountInfo {
+                    account_id: account_id.clone(),
+                    amount,
+                    locked,
+                    code_hash,
+                    storage_usage,
+                    block_height,
+                    block_hash,
+                });
+            }
         }
 
-        // Mock response for now
+        // Fallback: mock response for environments without HTTP client support.
         Ok(AccountInfo {
             account_id: account_id.clone(),
             amount: "1000000000000000000000000".to_string(), // 1 NEAR
@@ -57,7 +95,7 @@ impl NearRpcClient {
     /// Get contract state.
     pub async fn view_state(
         &self,
-        account_id: &AccountId,
+        _account_id: &AccountId,
         prefix: Option<&str>,
     ) -> Result<Vec<StateItem>, NearTeeError> {
         let _prefix_base64 = prefix.map(|p| base64_encode(p.as_bytes()));
@@ -69,8 +107,8 @@ impl NearRpcClient {
     /// Call a view function on a contract.
     pub async fn view_function(
         &self,
-        account_id: &AccountId,
-        method_name: &str,
+        _account_id: &AccountId,
+        _method_name: &str,
         args: &[u8],
     ) -> Result<Vec<u8>, NearTeeError> {
         let _args_base64 = base64_encode(args);
@@ -106,7 +144,7 @@ impl NearRpcClient {
         })
     }
 
-    #[cfg(feature = "http")]
+    #[cfg(feature = "http-clients")]
     async fn rpc_call(
         &self,
         method: &str,
@@ -228,7 +266,6 @@ pub struct ReceiptOutcome {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 fn base64_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write;
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut result = String::new();

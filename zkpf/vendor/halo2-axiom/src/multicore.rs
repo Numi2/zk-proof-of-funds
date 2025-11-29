@@ -9,7 +9,7 @@ compile_error!(
 
 pub use maybe_rayon::{
     iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
-    join, scope, Scope,
+    join, scope,
 };
 
 #[cfg(feature = "multicore")]

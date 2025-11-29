@@ -348,16 +348,53 @@ impl KimchiVerifierIndex {
     /// Create verifier index for Mina Proof of State circuit.
     ///
     /// This uses the locked constants defined at the top of this module.
+    /// Circuit and SRS commitments are loaded from artifacts if available,
+    /// otherwise uses default placeholders for development.
     pub fn proof_of_state() -> Self {
+        // Try to load commitments from artifacts
+        let (circuit_commitment, srs_commitment) = Self::load_commitments_from_artifacts()
+            .unwrap_or(([0u8; 32], [0u8; 32]));
+        
         Self {
             domain_size: PROOF_OF_STATE_DOMAIN_SIZE,
             domain_log2: PROOF_OF_STATE_DOMAIN_LOG2,
-            circuit_commitment: [0u8; 32], // TODO: Load from artifacts
-            srs_commitment: [0u8; 32],     // TODO: Load from artifacts
+            circuit_commitment,
+            srs_commitment,
             version: "mina_proof_of_state_v1".to_string(),
             num_public_inputs: PROOF_OF_STATE_NUM_PUBLIC_INPUTS,
             num_witness_cols: KIMCHI_WITNESS_COLUMNS,
         }
+    }
+    
+    /// Load circuit and SRS commitments from artifacts.
+    ///
+    /// Looks for artifacts in the following locations (in order):
+    /// 1. ZKPF_MINA_KIMCHI_ARTIFACTS_PATH environment variable
+    /// 2. artifacts/mina-kimchi/ directory relative to workspace
+    /// 3. ~/.zkpf/mina-kimchi/ directory
+    fn load_commitments_from_artifacts() -> Option<([u8; 32], [u8; 32])> {
+        let paths_to_try = [
+            std::env::var("ZKPF_MINA_KIMCHI_ARTIFACTS_PATH")
+                .ok()
+                .map(std::path::PathBuf::from),
+            Some(std::path::PathBuf::from("artifacts/mina-kimchi")),
+            dirs::home_dir().map(|h| h.join(".zkpf/mina-kimchi")),
+        ];
+        
+        for path_opt in paths_to_try.into_iter().flatten() {
+            let index_path = path_opt.join("verifier_index.json");
+            if index_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&index_path) {
+                    if let Ok(index) = serde_json::from_str::<KimchiVerifierIndex>(&content) {
+                        if index.circuit_commitment != [0u8; 32] {
+                            return Some((index.circuit_commitment, index.srs_commitment));
+                        }
+                    }
+                }
+            }
+        }
+        
+        None
     }
 
     /// Validate that the verifier index matches expected Proof of State constants.

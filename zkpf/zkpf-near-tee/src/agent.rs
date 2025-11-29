@@ -1,7 +1,5 @@
 //! NEAR TEE Agent implementation.
 
-use std::collections::HashMap;
-
 use crate::attestation::{TeeAttestation, TeeProvider};
 use crate::crypto::TeeKeyManager;
 use crate::error::NearTeeError;

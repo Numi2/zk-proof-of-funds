@@ -62,63 +62,7 @@ async function computeStateCommitment(state: WalletState): Promise<string> {
   return hashBytesToFieldElement(new Uint8Array(hashBuffer));
 }
 
-/**
- * Generate a mock proof (64 random bytes as hex).
- * In production, this would be a real ZK proof from the backend.
- */
-function generateMockProof(): string {
-  const bytes = new Uint8Array(64);
-  crypto.getRandomValues(bytes);
-  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Generate a deterministic commitment for a set of notes.
- * Returns a valid BN256 field element in little-endian hex format.
- */
-async function computeNotesRoot(notes: NoteIdentifier[]): Promise<string> {
-  if (notes.length === 0) {
-    return '0x' + '0'.repeat(64); // Zero element
-  }
-  const encoder = new TextEncoder();
-  const data = encoder.encode(notes.map(n => n.commitment).sort().join(''));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return hashBytesToFieldElement(new Uint8Array(hashBuffer));
-}
-
-/**
- * Generate a zero field element in little-endian hex format.
- */
-function zeroFieldElement(): string {
-  return '0x' + '0'.repeat(64);
-}
-
-/**
- * Create a genesis PCD state (client-side mock).
- */
-async function createMockGenesisPcd(initialNotes: NoteIdentifier[] = []): Promise<PcdState> {
-  const notesRoot = await computeNotesRoot(initialNotes);
-  
-  const genesisState: WalletState = {
-    height: 0,
-    anchor: zeroFieldElement(), // Empty anchor
-    notes_root: notesRoot,
-    nullifiers_root: zeroFieldElement(), // No nullifiers
-    version: 1,
-  };
-  
-  const sGenesis = await computeStateCommitment(genesisState);
-  const mockProof = generateMockProof();
-  
-  return {
-    wallet_state: genesisState,
-    s_current: sGenesis,
-    proof_current: mockProof,
-    circuit_version: 1,
-    s_genesis: sGenesis,
-    chain_length: 1,
-  };
-}
+// All PCD state and proofs must come from the backend
 
 /**
  * Check if an error indicates the backend is unavailable.
@@ -295,7 +239,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
     async (initialNotes: NoteIdentifier[] = []) => {
       dispatch({ type: 'set-status', payload: 'generating_proof' });
       try {
-        // Try the backend first
+        // Backend is required - no mock fallback
         const response = await client.pcdInit(initialNotes);
         dispatch({ type: 'set-pcd-state', payload: response.pcd_state });
         dispatch({ type: 'set-notes', payload: initialNotes });
@@ -303,31 +247,17 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
         dispatch({ type: 'set-initialized', payload: true });
         dispatch({ type: 'set-last-sync', payload: Date.now() });
         dispatch({ type: 'set-status', payload: 'idle' });
-        console.info('[PCD] Initialized new chain via backend, genesis:', response.pcd_state.s_genesis);
+        console.info('[PCD] Initialized via backend, genesis:', response.pcd_state.s_genesis);
       } catch (err) {
-        // Check if it's a 404 or connection error - use client-side mock
-        if (isBackendUnavailableError(err)) {
-          console.warn('[PCD] Backend unavailable, using client-side mock initialization');
-          try {
-            const mockPcdState = await createMockGenesisPcd(initialNotes);
-            dispatch({ type: 'set-pcd-state', payload: mockPcdState });
-            dispatch({ type: 'set-notes', payload: initialNotes });
-            dispatch({ type: 'set-nullifiers', payload: [] });
-            dispatch({ type: 'set-initialized', payload: true });
-            dispatch({ type: 'set-last-sync', payload: Date.now() });
-            dispatch({ type: 'set-status', payload: 'idle' });
-            console.info('[PCD] Initialized new chain via mock, genesis:', mockPcdState.s_genesis);
-            return;
-          } catch (mockErr) {
-            console.error('[PCD] Mock initialization failed:', mockErr);
-          }
-        }
+        const errorMessage = isBackendUnavailableError(err)
+          ? 'Backend unavailable. Please ensure zkpf-backend is running.'
+          : err instanceof Error ? err.message : 'Failed to initialize PCD';
         
         dispatch({
           type: 'set-error',
-          payload: err instanceof Error ? err.message : 'Failed to initialize PCD',
+          payload: errorMessage,
         });
-        throw err;
+        throw new Error(errorMessage);
       }
     },
     [client]
@@ -364,38 +294,6 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
 
       dispatch({ type: 'set-status', payload: 'syncing' });
       
-      // Helper to update state
-      const applyDelta = async (pcdState: PcdState): Promise<PcdState> => {
-        // Update notes: remove spent, add new
-        const spentCommitments = new Set(
-          delta.spent_nullifiers.map((nf) => nf.note_commitment)
-        );
-        const updatedNotes = state.notes
-          .filter((n) => !spentCommitments.has(n.commitment))
-          .concat(delta.new_notes);
-        
-        const notesRoot = await computeNotesRoot(updatedNotes);
-        
-        const newWalletState: WalletState = {
-          height: delta.block_height,
-          anchor: delta.anchor_new,
-          notes_root: notesRoot,
-          nullifiers_root: pcdState.wallet_state.nullifiers_root, // Simplified
-          version: pcdState.wallet_state.version,
-        };
-        
-        const sNew = await computeStateCommitment(newWalletState);
-        
-        return {
-          wallet_state: newWalletState,
-          s_current: sNew,
-          proof_current: generateMockProof(),
-          circuit_version: pcdState.circuit_version,
-          s_genesis: pcdState.s_genesis,
-          chain_length: pcdState.chain_length + 1,
-        };
-      };
-      
       try {
         const response = await client.pcdUpdate({
           pcd_state: state.pcdState,
@@ -431,38 +329,15 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
           response.pcd_state.chain_length
         );
       } catch (err) {
-        // Check if backend is unavailable - use client-side mock
-        if (isBackendUnavailableError(err) && state.pcdState) {
-          console.warn('[PCD] Backend unavailable, using client-side mock update');
-          try {
-            const newPcdState = await applyDelta(state.pcdState);
-            
-            const spentCommitments = new Set(
-              delta.spent_nullifiers.map((nf) => nf.note_commitment)
-            );
-            const updatedNotes = state.notes
-              .filter((n) => !spentCommitments.has(n.commitment))
-              .concat(delta.new_notes);
-            const updatedNullifiers = state.nullifiers.concat(delta.spent_nullifiers);
-            
-            dispatch({ type: 'set-pcd-state', payload: newPcdState });
-            dispatch({ type: 'set-notes', payload: updatedNotes });
-            dispatch({ type: 'set-nullifiers', payload: updatedNullifiers });
-            dispatch({ type: 'set-last-sync', payload: Date.now() });
-            dispatch({ type: 'set-status', payload: 'idle' });
-            
-            console.info('[PCD] Updated via mock to height:', newPcdState.wallet_state.height);
-            return;
-          } catch (mockErr) {
-            console.error('[PCD] Mock update failed:', mockErr);
-          }
-        }
+        const errorMessage = isBackendUnavailableError(err)
+          ? 'Backend unavailable. Please ensure zkpf-backend is running.'
+          : err instanceof Error ? err.message : 'Failed to update PCD';
         
         dispatch({
           type: 'set-error',
-          payload: err instanceof Error ? err.message : 'Failed to update PCD',
+          payload: errorMessage,
         });
-        throw err;
+        throw new Error(errorMessage);
       }
     },
     [client, state.pcdState, state.notes, state.nullifiers, isValidFieldElement]

@@ -238,10 +238,28 @@ impl LightwalletdVerifier {
 
     #[cfg(feature = "lightwalletd-grpc")]
     async fn fetch_transaction_grpc(&self, txid_bytes: &[u8]) -> X402Result<Option<(u64, String, u32, u32)>> {
-        // This would be the actual gRPC implementation
-        // For now, placeholder that returns NotFound
-        // In production, this connects to lightwalletd and fetches the tx
-        todo!("Implement gRPC client - see zkpf-near-tee/src/lightwalletd_client.rs for reference")
+        // gRPC implementation for lightwalletd transaction lookup
+        // See: zkpf-zcash-orchard-wallet/src/sync/lightwalletd_client.rs for reference
+        
+        // For x402, we typically only need to verify transaction existence and confirmations.
+        // The full gRPC client implementation requires:
+        // 1. Compile zcash/lightwalletd protos (compact_formats.proto, service.proto)
+        // 2. Use tonic to connect to the lightwalletd server
+        // 3. Call GetTransaction RPC to fetch tx details
+        //
+        // For now, return NotFound to indicate the transaction lookup is not yet wired.
+        // This is safe because the caller will treat it as "payment not found" which
+        // prompts the client to wait for more confirmations or retry.
+        
+        tracing::warn!(
+            txid = hex::encode(txid_bytes),
+            endpoint = %self.endpoint,
+            "[x402] gRPC transaction lookup not yet implemented - returning NotFound"
+        );
+        
+        // Return None to indicate transaction not found
+        // The x402 verification will return Pending status, prompting retry
+        Ok(None)
     }
 }
 

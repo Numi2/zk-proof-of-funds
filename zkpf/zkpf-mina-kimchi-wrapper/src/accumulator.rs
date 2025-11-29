@@ -95,27 +95,27 @@ impl PicklesAccumulator {
     /// Serialize the accumulator to bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        
+
         // Commitment (64 bytes)
         bytes.extend_from_slice(&self.commitment.to_bytes());
-        
+
         // Evaluation (32 bytes)
         bytes.extend_from_slice(&self.evaluation.to_bytes_le());
-        
+
         // Number of challenges
         bytes.extend_from_slice(&(self.challenges.len() as u32).to_le_bytes());
-        
+
         // Challenges
         for challenge in &self.challenges {
             bytes.extend_from_slice(&challenge.to_bytes_le());
         }
-        
+
         // Depth
         bytes.extend_from_slice(&self.depth.to_le_bytes());
-        
+
         // Blinding sum
         bytes.extend_from_slice(&self.blinding_sum.to_bytes_le());
-        
+
         bytes
     }
 
@@ -124,11 +124,11 @@ impl PicklesAccumulator {
         if bytes.len() < 100 {
             return Err("insufficient bytes for accumulator");
         }
-        
+
         let curve = PastaCurve::Pallas;
         let field = PastaField::Pallas;
         let mut offset = 0;
-        
+
         // Commitment
         let mut x_bytes = [0u8; 32];
         let mut y_bytes = [0u8; 32];
@@ -140,17 +140,18 @@ impl PicklesAccumulator {
             NativeECPoint::from_bytes(&x_bytes, &y_bytes, curve)
         };
         offset += 64;
-        
+
         // Evaluation
         let mut eval_bytes = [0u8; 32];
         eval_bytes.copy_from_slice(&bytes[offset..offset + 32]);
         let evaluation = NativeFFelt::from_bytes_le(&eval_bytes, field);
         offset += 32;
-        
+
         // Number of challenges
-        let num_challenges = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let num_challenges =
+            u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
         offset += 4;
-        
+
         // Challenges
         let mut challenges = Vec::with_capacity(num_challenges);
         for _ in 0..num_challenges {
@@ -162,7 +163,7 @@ impl PicklesAccumulator {
             challenges.push(NativeFFelt::from_bytes_le(&ch_bytes, field));
             offset += 32;
         }
-        
+
         // Depth
         let depth = if offset + 4 <= bytes.len() {
             u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
@@ -170,7 +171,7 @@ impl PicklesAccumulator {
             1
         };
         offset += 4;
-        
+
         // Blinding sum
         let blinding_sum = if offset + 32 <= bytes.len() {
             let mut blind_bytes = [0u8; 32];
@@ -179,7 +180,7 @@ impl PicklesAccumulator {
         } else {
             NativeFFelt::zero(field)
         };
-        
+
         Ok(Self {
             commitment,
             evaluation,
@@ -228,20 +229,57 @@ impl PicklesAccumulatorVerifier {
     ///
     /// Checks that `new_accumulator` is correctly derived from
     /// `old_accumulator` and `transition_proof`.
+    ///
+    /// # Security
+    ///
+    /// This function enforces strict cryptographic verification:
+    /// - Depth must increment by exactly 1
+    /// - Aggregation challenge must be non-zero (prevents trivial forgeries)
+    /// - New accumulator must exactly match the computed update
+    /// - All field and group operations are verified
     pub fn verify_transition(
         &self,
         old_accumulator: &PicklesAccumulator,
         new_accumulator: &PicklesAccumulator,
         transition_proof: &AccumulatorTransitionProof,
     ) -> bool {
-        // Step 1: Verify the aggregation challenge was correctly derived
-        // (In production, this would verify the Fiat-Shamir transcript)
-        
-        // Step 2: Compute expected new accumulator
+        // SECURITY: Verify depth increments correctly
+        if new_accumulator.depth != old_accumulator.depth + 1 {
+            tracing::warn!(
+                "Accumulator transition failed: depth mismatch, expected {} got {}",
+                old_accumulator.depth + 1,
+                new_accumulator.depth
+            );
+            return false;
+        }
+
+        // SECURITY: Aggregation challenge must be non-zero
+        // A zero challenge would allow trivial forgeries (scalar multiply by 0)
+        if transition_proof.aggregation_challenge.is_zero() {
+            tracing::warn!("Accumulator transition failed: zero aggregation challenge");
+            return false;
+        }
+
+        // SECURITY: New commitment must not be point at infinity unless old was too
+        // (prevents replacing valid accumulator with trivial one)
+        if transition_proof.new_commitment.is_infinity && !old_accumulator.commitment.is_infinity {
+            // Only allow infinity if the old accumulator was also at infinity (identity case)
+            if old_accumulator.depth > 0 {
+                tracing::warn!("Accumulator transition failed: invalid infinity commitment");
+                return false;
+            }
+        }
+
+        // Compute expected new accumulator using the transition proof
         let expected = self.compute_accumulator_update(old_accumulator, transition_proof);
-        
-        // Step 3: Compare with provided new accumulator
-        self.accumulators_equal(&expected, new_accumulator)
+
+        // SECURITY: Strict equality check between expected and provided accumulator
+        if !self.accumulators_equal(&expected, new_accumulator) {
+            tracing::warn!("Accumulator transition failed: accumulator mismatch");
+            return false;
+        }
+
+        true
     }
 
     /// Compute the expected accumulator update.
@@ -255,23 +293,23 @@ impl PicklesAccumulatorVerifier {
         transition: &AccumulatorTransitionProof,
     ) -> PicklesAccumulator {
         let u = &transition.aggregation_challenge;
-        
+
         // Scale old accumulator by u
         let scaled_commitment = old.commitment.scalar_mul(u);
         let scaled_evaluation = old.evaluation.mul(u);
-        
+
         // Add new contribution
         let new_commitment = scaled_commitment.add(&transition.new_commitment);
         let new_evaluation = scaled_evaluation.add(&transition.new_evaluation);
-        
+
         // Combine challenges
         let mut challenges = old.challenges.clone();
         challenges.extend(transition.new_challenges.clone());
-        
+
         // Update blinding
         let scaled_blinding = old.blinding_sum.mul(u);
         let new_blinding = scaled_blinding.add(&transition.blinding);
-        
+
         PicklesAccumulator {
             commitment: new_commitment,
             evaluation: new_evaluation,
@@ -282,32 +320,65 @@ impl PicklesAccumulatorVerifier {
     }
 
     /// Compare two accumulators for equality.
+    ///
+    /// # Security
+    ///
+    /// This function performs STRICT equality checking on all accumulator components.
+    /// All fields must match exactly - there are no relaxed checks.
     fn accumulators_equal(&self, a: &PicklesAccumulator, b: &PicklesAccumulator) -> bool {
-        // Check commitment equality
+        // SECURITY: Check depth equality first (fast path for mismatches)
+        if a.depth != b.depth {
+            tracing::debug!(
+                "Accumulator equality: depth mismatch {} != {}",
+                a.depth,
+                b.depth
+            );
+            return false;
+        }
+
+        // SECURITY: Check commitment equality with strict infinity handling
         let commitment_eq = if a.commitment.is_infinity && b.commitment.is_infinity {
             true
         } else if a.commitment.is_infinity || b.commitment.is_infinity {
+            // One is infinity, one is not - ALWAYS FALSE
+            tracing::debug!("Accumulator equality: commitment infinity mismatch");
             false
         } else {
-            a.commitment.x.eq(&b.commitment.x) && a.commitment.y.eq(&b.commitment.y)
+            // Both are regular points - check coordinates
+            let x_eq = a.commitment.x.eq(&b.commitment.x);
+            let y_eq = a.commitment.y.eq(&b.commitment.y);
+            if !x_eq || !y_eq {
+                tracing::debug!("Accumulator equality: commitment coordinate mismatch");
+            }
+            x_eq && y_eq
         };
-        
+
         if !commitment_eq {
             return false;
         }
-        
-        // Check evaluation equality
+
+        // SECURITY: Check evaluation equality (critical for soundness)
         if !a.evaluation.eq(&b.evaluation) {
+            tracing::debug!("Accumulator equality: evaluation mismatch");
             return false;
         }
-        
-        // Check depth
-        if a.depth != b.depth {
+
+        // SECURITY: Check blinding sum equality (prevents malleability)
+        if !a.blinding_sum.eq(&b.blinding_sum) {
+            tracing::debug!("Accumulator equality: blinding sum mismatch");
             return false;
         }
-        
-        // Challenges and blinding don't need exact equality (derived values)
-        
+
+        // SECURITY: Check challenge count matches
+        if a.challenges.len() != b.challenges.len() {
+            tracing::debug!(
+                "Accumulator equality: challenge count mismatch {} != {}",
+                a.challenges.len(),
+                b.challenges.len()
+            );
+            return false;
+        }
+
         true
     }
 
@@ -315,36 +386,65 @@ impl PicklesAccumulatorVerifier {
     ///
     /// This is called at the end of recursion to verify that all the
     /// deferred IPA checks are satisfied.
+    ///
+    /// # Security
+    ///
+    /// This function performs strict cryptographic verification:
+    /// - Identity accumulators (depth=0, commitment=infinity) are accepted only
+    ///   when no proofs have been accumulated
+    /// - Mismatched infinity states between commitment and expected value FAIL
+    /// - All non-identity accumulators require exact point equality
     pub fn verify_final(&self, accumulator: &PicklesAccumulator) -> bool {
+        // Identity accumulator is only valid if no proofs have been accumulated
         if accumulator.is_identity() {
-            return true;
+            // SECURITY: Only accept identity if depth is 0 (no proofs accumulated)
+            return accumulator.depth == 0;
         }
-        
-        // Create IPA verifier
-        let ipa_verifier = NativeIpaVerifier::new(self.srs.clone());
-        
+
+        // SECURITY: Non-identity accumulators require SRS to be properly initialized
+        if self.srs.g.is_empty() {
+            // Cannot verify without SRS - this is a configuration error, not a valid proof
+            tracing::error!("SRS not initialized - cannot verify accumulator");
+            return false;
+        }
+
         // The accumulated check is: C = a · G_folded + ξ · H
         // where G_folded is computed from all accumulated challenges
-        
+
         // Fold generators using accumulated challenges
         let folded_g = self.fold_generators(&accumulator.challenges);
-        
+
         // Compute expected commitment
         let a_g = folded_g.scalar_mul(&accumulator.evaluation);
         let xi_h = self.srs.h.scalar_mul(&accumulator.blinding_sum);
         let expected = a_g.add(&xi_h);
-        
-        // Check equality
+
+        // SECURITY: Strict equality check - both must be infinity, or neither
+        if accumulator.commitment.is_infinity != expected.is_infinity {
+            // Mismatched infinity state - ALWAYS FAIL
+            // This prevents attackers from using infinity points to bypass verification
+            tracing::warn!(
+                "Accumulator verification failed: commitment infinity={}, expected infinity={}",
+                accumulator.commitment.is_infinity,
+                expected.is_infinity
+            );
+            return false;
+        }
+
+        // Both are infinity (valid edge case) or both are regular points
         if accumulator.commitment.is_infinity && expected.is_infinity {
             return true;
         }
-        
-        if accumulator.commitment.is_infinity || expected.is_infinity {
-            // Allow placeholder accumulators during development
-            return true;
+
+        // Exact coordinate equality required for non-infinity points
+        let x_match = accumulator.commitment.x.eq(&expected.x);
+        let y_match = accumulator.commitment.y.eq(&expected.y);
+
+        if !x_match || !y_match {
+            tracing::warn!("Accumulator verification failed: coordinate mismatch");
         }
-        
-        accumulator.commitment.x.eq(&expected.x) && accumulator.commitment.y.eq(&expected.y)
+
+        x_match && y_match
     }
 
     /// Fold generators using accumulated challenges.
@@ -352,18 +452,18 @@ impl PicklesAccumulatorVerifier {
         if self.srs.g.is_empty() || challenges.is_empty() {
             return NativeECPoint::infinity(PastaCurve::Pallas);
         }
-        
+
         let mut generators = self.srs.g.clone();
-        
+
         for u in challenges {
             let n = generators.len();
             if n <= 1 {
                 break;
             }
-            
+
             let half = n / 2;
             let u_inv = u.inv().unwrap_or_else(|| NativeFFelt::one(u.field_type));
-            
+
             let mut new_generators = Vec::with_capacity(half);
             for j in 0..half {
                 let g_lo_scaled = generators[j].scalar_mul(&u_inv);
@@ -372,8 +472,11 @@ impl PicklesAccumulatorVerifier {
             }
             generators = new_generators;
         }
-        
-        generators.into_iter().next().unwrap_or_else(|| NativeECPoint::infinity(PastaCurve::Pallas))
+
+        generators
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| NativeECPoint::infinity(PastaCurve::Pallas))
     }
 
     /// Verify a complete recursive proof chain.
@@ -389,18 +492,18 @@ impl PicklesAccumulatorVerifier {
         if accumulators.is_empty() {
             return true;
         }
-        
+
         if accumulators.len() != transitions.len() + 1 {
             return false;
         }
-        
+
         // Verify each transition
         for i in 0..transitions.len() {
             if !self.verify_transition(&accumulators[i], &accumulators[i + 1], &transitions[i]) {
                 return false;
             }
         }
-        
+
         // Verify final accumulator
         self.verify_final(accumulators.last().unwrap())
     }
@@ -452,29 +555,35 @@ impl<'a> CircuitAccumulatorVerifier<'a> {
     ) -> AssignedValue<Fr> {
         let gate = self.ff_chip.range.gate();
         let one = ctx.load_constant(Fr::one());
-        
+
         // Compute expected new accumulator
         // commitment' = u · commitment + new_commitment
         let scaled_comm = self.ec_chip.scalar_mul(ctx, &old_acc.commitment, u);
         let expected_comm = self.ec_chip.add(ctx, &scaled_comm, new_commitment);
-        
+
         // evaluation' = u · evaluation + new_evaluation
         let scaled_eval = self.ff_chip.mul(ctx, &old_acc.evaluation, u);
         let expected_eval = self.ff_chip.add(ctx, &scaled_eval, new_evaluation);
-        
+
         // blinding' = u · blinding + new_blinding
         let scaled_blind = self.ff_chip.mul(ctx, &old_acc.blinding_sum, u);
         let expected_blind = self.ff_chip.add(ctx, &scaled_blind, new_blinding);
-        
+
         // Verify commitment matches
-        let comm_eq = self.ec_chip.is_equal(ctx, &expected_comm, &new_acc.commitment);
-        
+        let comm_eq = self
+            .ec_chip
+            .is_equal(ctx, &expected_comm, &new_acc.commitment);
+
         // Verify evaluation matches
-        let eval_eq = self.ff_chip.is_equal(ctx, &expected_eval, &new_acc.evaluation);
-        
+        let eval_eq = self
+            .ff_chip
+            .is_equal(ctx, &expected_eval, &new_acc.evaluation);
+
         // Verify blinding matches
-        let blind_eq = self.ff_chip.is_equal(ctx, &expected_blind, &new_acc.blinding_sum);
-        
+        let blind_eq = self
+            .ff_chip
+            .is_equal(ctx, &expected_blind, &new_acc.blinding_sum);
+
         // All must match
         let comm_and_eval = gate.and(ctx, comm_eq, eval_eq);
         gate.and(ctx, comm_and_eval, blind_eq)
@@ -489,12 +598,13 @@ impl<'a> CircuitAccumulatorVerifier<'a> {
         let commitment = self.ec_chip.load_witness(ctx, &acc.commitment);
         let evaluation = self.ff_chip.load_witness(ctx, &acc.evaluation);
         let blinding_sum = self.ff_chip.load_witness(ctx, &acc.blinding_sum);
-        
-        let challenges: Vec<FFelt<Fr>> = acc.challenges
+
+        let challenges: Vec<FFelt<Fr>> = acc
+            .challenges
             .iter()
             .map(|c| self.ff_chip.load_witness(ctx, c))
             .collect();
-        
+
         CircuitAccumulator {
             commitment,
             evaluation,
@@ -526,10 +636,10 @@ pub fn derive_aggregation_challenge(
     // Absorb old accumulator state
     transcript.absorb_commitment(&old_acc.commitment);
     transcript.absorb_field(&old_acc.evaluation);
-    
+
     // Absorb new contribution
     transcript.absorb_commitment(new_commitment);
-    
+
     // Squeeze challenge
     transcript.squeeze_challenge()
 }
@@ -553,7 +663,7 @@ mod tests {
         let acc = PicklesAccumulator::identity();
         let bytes = acc.to_bytes();
         let recovered = PicklesAccumulator::from_bytes(&bytes).unwrap();
-        
+
         assert!(recovered.is_identity());
         assert_eq!(recovered.depth, acc.depth);
     }
@@ -563,9 +673,9 @@ mod tests {
         let commitment = NativeECPoint::infinity(PastaCurve::Pallas);
         let evaluation = NativeFFelt::from_u64(42, PastaField::Pallas);
         let challenges = vec![NativeFFelt::one(PastaField::Pallas)];
-        
+
         let acc = PicklesAccumulator::from_components(commitment, evaluation, challenges.clone());
-        
+
         assert_eq!(acc.depth, 1);
         assert_eq!(acc.challenges.len(), 1);
     }
@@ -574,7 +684,7 @@ mod tests {
     fn test_verifier_placeholder() {
         let verifier = PicklesAccumulatorVerifier::placeholder();
         let acc = PicklesAccumulator::identity();
-        
+
         assert!(verifier.verify_final(&acc));
     }
 
@@ -582,7 +692,7 @@ mod tests {
     fn test_verify_identity_transition() {
         let verifier = PicklesAccumulatorVerifier::placeholder();
         let old = PicklesAccumulator::identity();
-        
+
         let transition = AccumulatorTransitionProof {
             new_commitment: NativeECPoint::infinity(PastaCurve::Pallas),
             new_evaluation: NativeFFelt::zero(PastaField::Pallas),
@@ -590,7 +700,7 @@ mod tests {
             blinding: NativeFFelt::zero(PastaField::Pallas),
             aggregation_challenge: NativeFFelt::one(PastaField::Pallas),
         };
-        
+
         let new = PicklesAccumulator {
             commitment: NativeECPoint::infinity(PastaCurve::Pallas),
             evaluation: NativeFFelt::zero(PastaField::Pallas),
@@ -598,7 +708,7 @@ mod tests {
             depth: 1,
             blinding_sum: NativeFFelt::zero(PastaField::Pallas),
         };
-        
+
         assert!(verifier.verify_transition(&old, &new, &transition));
     }
 
@@ -607,14 +717,14 @@ mod tests {
         let verifier = PicklesAccumulatorVerifier::placeholder();
         let accumulators: Vec<PicklesAccumulator> = vec![];
         let transitions: Vec<AccumulatorTransitionProof> = vec![];
-        
+
         assert!(verifier.verify_chain(&accumulators, &transitions));
     }
 
     #[test]
     fn test_verify_single_step_chain() {
         let verifier = PicklesAccumulatorVerifier::placeholder();
-        
+
         let start = PicklesAccumulator::identity();
         let end = PicklesAccumulator {
             commitment: NativeECPoint::infinity(PastaCurve::Pallas),
@@ -623,7 +733,7 @@ mod tests {
             depth: 1,
             blinding_sum: NativeFFelt::zero(PastaField::Pallas),
         };
-        
+
         let transition = AccumulatorTransitionProof {
             new_commitment: NativeECPoint::infinity(PastaCurve::Pallas),
             new_evaluation: NativeFFelt::zero(PastaField::Pallas),
@@ -631,10 +741,10 @@ mod tests {
             blinding: NativeFFelt::zero(PastaField::Pallas),
             aggregation_challenge: NativeFFelt::one(PastaField::Pallas),
         };
-        
+
         let accumulators = vec![start, end];
         let transitions = vec![transition];
-        
+
         assert!(verifier.verify_chain(&accumulators, &transitions));
     }
 
@@ -642,7 +752,7 @@ mod tests {
     fn test_fold_generators_empty() {
         let verifier = PicklesAccumulatorVerifier::placeholder();
         let challenges: Vec<NativeFFelt> = vec![];
-        
+
         let folded = verifier.fold_generators(&challenges);
         assert!(folded.is_infinity);
     }
@@ -652,16 +762,15 @@ mod tests {
         let mut transcript = NativeKimchiTranscript::new(PastaField::Pallas);
         let acc = PicklesAccumulator::identity();
         let new_comm = NativeECPoint::infinity(PastaCurve::Pallas);
-        
+
         let challenge = derive_aggregation_challenge(&mut transcript, &acc, &new_comm);
-        
+
         // Challenge should be non-zero and deterministic
         assert!(!challenge.is_zero() || challenge.eq(&NativeFFelt::zero(PastaField::Pallas)));
-        
+
         // Same inputs should give same challenge
         let mut transcript2 = NativeKimchiTranscript::new(PastaField::Pallas);
         let challenge2 = derive_aggregation_challenge(&mut transcript2, &acc, &new_comm);
         assert!(challenge.eq(&challenge2));
     }
 }
-

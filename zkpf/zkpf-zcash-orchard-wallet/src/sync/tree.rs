@@ -2,11 +2,22 @@
 //!
 //! This module wraps the incremental Merkle tree (shardtree) for efficient
 //! witness generation and anchor computation.
+//!
+//! # Architecture
+//!
+//! The Orchard note commitment tree is a 32-level Merkle tree using the
+//! Sinsemilla hash function (MerkleCRH^Orchard). This module uses the
+//! `shardtree` crate for efficient storage and witness generation:
+//!
+//! - Shards: Tree is split into 2^16 shards for efficient storage
+//! - Checkpoints: Tree state snapshots at block boundaries
+//! - Witnesses: Authentication paths from leaf to root
 
-use incrementalmerkletree::{Address, Marking, Position, Retention};
+use incrementalmerkletree::{Address, Level, Position, Retention};
 use orchard::tree::MerkleHashOrchard;
-use shardtree::{LocatedTree, ShardTree, ShardTreeError};
-use std::collections::BTreeMap;
+use shardtree::store::{Checkpoint, ShardStore};
+use shardtree::{LocatedPrunableTree, PrunableTree, ShardTree};
+use std::collections::{BTreeMap, BTreeSet};
 use tracing::debug;
 
 use crate::WalletError;
@@ -20,6 +31,9 @@ pub const SHARD_DEPTH: u8 = 16;
 /// Tree shard height (depth - shard_depth).
 pub const SHARD_HEIGHT: u8 = ORCHARD_TREE_DEPTH - SHARD_DEPTH;
 
+/// Maximum number of checkpoints to retain.
+pub const MAX_CHECKPOINTS: usize = 100;
+
 /// Orchard incremental Merkle tree wrapper.
 ///
 /// Uses shardtree for efficient witness generation with O(log n) storage
@@ -29,27 +43,20 @@ pub struct OrchardTree {
     tree: ShardTree<MemoryStore, 32, 16>,
     /// Current tree size (number of leaves).
     size: u64,
+    /// Positions we've marked for witness generation.
+    marked_positions: BTreeSet<u64>,
 }
 
 /// In-memory store for shardtree.
 /// 
 /// In production, this would be backed by SQLite for persistence.
 pub struct MemoryStore {
-    /// Stored shards.
-    shards: BTreeMap<Address, LocatedTree<MerkleHashOrchard, 32, 16>>,
-    /// Checkpoints for rewinding.
+    /// Stored shards indexed by their root address.
+    shards: BTreeMap<Address, LocatedPrunableTree<MerkleHashOrchard>>,
+    /// Checkpoints for rewinding (height -> checkpoint data).
     checkpoints: BTreeMap<u32, Checkpoint>,
-}
-
-/// A checkpoint in the tree for efficient rewinding.
-#[derive(Clone, Debug)]
-pub struct Checkpoint {
-    /// Tree size at this checkpoint.
-    pub tree_size: u64,
-    /// Anchor at this checkpoint.
-    pub anchor: [u8; 32],
-    /// Marked positions (notes we need witnesses for).
-    pub marked_positions: Vec<u64>,
+    /// Tree cap (top of tree state).
+    cap: PrunableTree<MerkleHashOrchard>,
 }
 
 impl Default for MemoryStore {
@@ -64,6 +71,7 @@ impl MemoryStore {
         Self {
             shards: BTreeMap::new(),
             checkpoints: BTreeMap::new(),
+            cap: PrunableTree::empty(),
         }
     }
 }
@@ -72,8 +80,9 @@ impl OrchardTree {
     /// Create a new empty tree.
     pub fn new() -> Self {
         Self {
-            tree: ShardTree::new(MemoryStore::new(), 100),
+            tree: ShardTree::new(MemoryStore::new(), MAX_CHECKPOINTS),
             size: 0,
+            marked_positions: BTreeSet::new(),
         }
     }
 
@@ -104,6 +113,10 @@ impl OrchardTree {
         let pos = self.size;
         self.size += 1;
 
+        if mark {
+            self.marked_positions.insert(pos);
+        }
+
         debug!("Appended commitment at position {}, marked={}", pos, mark);
         Ok(pos)
     }
@@ -124,7 +137,11 @@ impl OrchardTree {
         let items: Vec<_> = commitments
             .into_iter()
             .map(|(cmx, mark)| {
+                let pos = self.size;
                 self.size += 1;
+                if mark {
+                    self.marked_positions.insert(pos);
+                }
                 (
                     cmx,
                     if mark {
@@ -141,7 +158,7 @@ impl OrchardTree {
             .batch_insert(start_position, items.into_iter())
             .map_err(|e| WalletError::Backend(format!("batch insert failed: {e:?}")))?;
 
-        debug!("Appended {} commitments starting at position {}", count, start_position.into(): u64);
+        debug!("Appended {} commitments starting at position {}", count, u64::from(start_position));
         Ok(u64::from(start_position))
     }
 
@@ -160,10 +177,12 @@ impl OrchardTree {
 
     /// Compute the Merkle root (anchor) at the current state.
     pub fn root(&self) -> Result<[u8; 32], WalletError> {
+        // Get root at the most recent checkpoint
         let root = self
             .tree
-            .root_at_checkpoint_id(&())
-            .map_err(|e| WalletError::Backend(format!("root computation failed: {e:?}")))?;
+            .root_at_checkpoint_depth(Some(0))
+            .map_err(|e| WalletError::Backend(format!("root computation failed: {e:?}")))?
+            .ok_or_else(|| WalletError::Backend("tree is empty, no root available".into()))?;
 
         Ok(root.to_bytes())
     }
@@ -179,18 +198,19 @@ impl OrchardTree {
     pub fn witness(
         &self,
         position: u64,
-        checkpoint_height: u32,
+        _checkpoint_height: u32,
     ) -> Result<[[u8; 32]; 32], WalletError> {
         let pos = Position::from(position);
 
+        // Get witness at the most recent checkpoint
         let path = self
             .tree
-            .witness_at_checkpoint_id(pos, &checkpoint_height)
+            .witness_at_checkpoint_depth(pos, 0)
             .map_err(|e| WalletError::Backend(format!("witness computation failed: {e:?}")))?
             .ok_or_else(|| {
                 WalletError::Backend(format!(
-                    "no witness available for position {} at checkpoint {}",
-                    position, checkpoint_height
+                    "no witness available for position {} - ensure the position is marked",
+                    position
                 ))
             })?;
 
@@ -216,21 +236,13 @@ impl OrchardTree {
         Ok(result)
     }
 
-    /// Rewind the tree to a checkpoint.
-    pub fn rewind_to_checkpoint(&mut self, height: u32) -> Result<(), WalletError> {
-        // Count how many checkpoints to remove
-        let checkpoints_to_remove = self
-            .tree
-            .checkpoint_count()
-            .saturating_sub(1); // Keep at least one
+    /// Truncate the tree to a specific checkpoint, removing all data after it.
+    pub fn truncate_to_checkpoint(&mut self, height: u32) -> Result<(), WalletError> {
+        self.tree
+            .truncate_to_checkpoint(&height)
+            .map_err(|e| WalletError::Backend(format!("truncate failed: {e:?}")))?;
 
-        for _ in 0..checkpoints_to_remove {
-            if let Err(_) = self.tree.remove_checkpoint(&height) {
-                break;
-            }
-        }
-
-        debug!("Rewound tree to checkpoint {}", height);
+        debug!("Truncated tree to checkpoint {}", height);
         Ok(())
     }
 
@@ -241,21 +253,12 @@ impl OrchardTree {
 
     /// Check if a position is marked for witness generation.
     pub fn is_marked(&self, position: u64) -> bool {
-        let pos = Position::from(position);
-        self.tree
-            .get_marked_leaf(pos)
-            .is_ok()
+        self.marked_positions.contains(&position)
     }
 
-    /// Mark a position for future witness generation.
-    pub fn mark_position(&mut self, position: u64) -> Result<(), WalletError> {
-        let pos = Position::from(position);
-        self.tree
-            .mark(pos, Marking::Reference)
-            .map_err(|e| WalletError::Backend(format!("mark position failed: {e:?}")))?;
-
-        debug!("Marked position {}", position);
-        Ok(())
+    /// Get all marked positions.
+    pub fn marked_positions(&self) -> &BTreeSet<u64> {
+        &self.marked_positions
     }
 }
 
@@ -265,24 +268,36 @@ impl Default for OrchardTree {
     }
 }
 
+// MemoryStore error type
+#[derive(Debug)]
+pub struct MemoryStoreError(String);
+
+impl std::fmt::Display for MemoryStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for MemoryStoreError {}
+
 // Implement the store trait for our MemoryStore
-impl shardtree::store::ShardStore for MemoryStore {
+impl ShardStore for MemoryStore {
     type H = MerkleHashOrchard;
     type CheckpointId = u32;
-    type Error = ShardTreeError<std::convert::Infallible>;
+    type Error = MemoryStoreError;
 
     fn get_shard(
         &self,
         shard_root: Address,
-    ) -> Result<Option<LocatedTree<Self::H, 32, 16>>, Self::Error> {
+    ) -> Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
         Ok(self.shards.get(&shard_root).cloned())
     }
 
-    fn last_shard(&self) -> Result<Option<LocatedTree<Self::H, 32, 16>>, Self::Error> {
+    fn last_shard(&self) -> Result<Option<LocatedPrunableTree<Self::H>>, Self::Error> {
         Ok(self.shards.values().last().cloned())
     }
 
-    fn put_shard(&mut self, subtree: LocatedTree<Self::H, 32, 16>) -> Result<(), Self::Error> {
+    fn put_shard(&mut self, subtree: LocatedPrunableTree<Self::H>) -> Result<(), Self::Error> {
         self.shards.insert(subtree.root_addr(), subtree);
         Ok(())
     }
@@ -291,17 +306,19 @@ impl shardtree::store::ShardStore for MemoryStore {
         Ok(self.shards.keys().cloned().collect())
     }
 
-    fn truncate(&mut self, from: Address) -> Result<(), Self::Error> {
-        self.shards.retain(|addr, _| *addr < from);
+    fn truncate_shards(&mut self, shard_index: u64) -> Result<(), Self::Error> {
+        // Remove all shards with index >= shard_index
+        let addr = Address::from_parts(Level::from(SHARD_HEIGHT), shard_index);
+        self.shards.retain(|a, _| *a < addr);
         Ok(())
     }
 
-    fn get_cap(&self) -> Result<shardtree::store::caching::CachingTree<Self::H>, Self::Error> {
-        // Return empty cap for now
-        Ok(shardtree::store::caching::CachingTree::empty())
+    fn get_cap(&self) -> Result<PrunableTree<Self::H>, Self::Error> {
+        Ok(self.cap.clone())
     }
 
-    fn put_cap(&mut self, _cap: shardtree::store::caching::CachingTree<Self::H>) -> Result<(), Self::Error> {
+    fn put_cap(&mut self, cap: PrunableTree<Self::H>) -> Result<(), Self::Error> {
+        self.cap = cap;
         Ok(())
     }
 
@@ -313,12 +330,12 @@ impl shardtree::store::ShardStore for MemoryStore {
         Ok(self.checkpoints.keys().last().cloned())
     }
 
-    fn add_checkpoint(&mut self, checkpoint_id: Self::CheckpointId, checkpoint: shardtree::store::Checkpoint) -> Result<(), Self::Error> {
-        self.checkpoints.insert(checkpoint_id, Checkpoint {
-            tree_size: checkpoint.position().map(|p| u64::from(p)).unwrap_or(0),
-            anchor: [0u8; 32], // Would compute actual anchor
-            marked_positions: checkpoint.marked_positions().map(|p| u64::from(p)).collect(),
-        });
+    fn add_checkpoint(
+        &mut self, 
+        checkpoint_id: Self::CheckpointId, 
+        checkpoint: Checkpoint
+    ) -> Result<(), Self::Error> {
+        self.checkpoints.insert(checkpoint_id, checkpoint);
         Ok(())
     }
 
@@ -326,31 +343,57 @@ impl shardtree::store::ShardStore for MemoryStore {
         Ok(self.checkpoints.len())
     }
 
-    fn get_checkpoint_at_depth(&self, depth: usize) -> Result<Option<(Self::CheckpointId, shardtree::store::Checkpoint)>, Self::Error> {
+    fn get_checkpoint_at_depth(
+        &self, 
+        depth: usize
+    ) -> Result<Option<(Self::CheckpointId, Checkpoint)>, Self::Error> {
         let height = self.checkpoints.keys().rev().nth(depth).cloned();
-        Ok(height.map(|h| (h, shardtree::store::Checkpoint::empty(None))))
+        Ok(height.and_then(|h| {
+            self.checkpoints.get(&h).map(|cp| (h, cp.clone()))
+        }))
     }
 
-    fn get_checkpoint(&self, checkpoint_id: &Self::CheckpointId) -> Result<Option<shardtree::store::Checkpoint>, Self::Error> {
-        Ok(self.checkpoints.get(checkpoint_id).map(|_| shardtree::store::Checkpoint::empty(None)))
+    fn get_checkpoint(
+        &self, 
+        checkpoint_id: &Self::CheckpointId
+    ) -> Result<Option<Checkpoint>, Self::Error> {
+        Ok(self.checkpoints.get(checkpoint_id).cloned())
     }
 
-    fn with_checkpoints<F>(&mut self, _limit: usize, _callback: F) -> Result<(), Self::Error>
+    fn with_checkpoints<F>(&mut self, limit: usize, mut callback: F) -> Result<(), Self::Error>
     where
-        F: FnMut(&Self::CheckpointId, &shardtree::store::Checkpoint) -> Result<(), Self::Error>,
+        F: FnMut(&Self::CheckpointId, &Checkpoint) -> Result<(), Self::Error>,
     {
+        for (id, cp) in self.checkpoints.iter().take(limit) {
+            callback(id, cp)?;
+        }
+        Ok(())
+    }
+
+    fn for_each_checkpoint<F>(&self, limit: usize, mut callback: F) -> Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &Checkpoint) -> Result<(), Self::Error>,
+    {
+        for (id, cp) in self.checkpoints.iter().rev().take(limit) {
+            callback(id, cp)?;
+        }
         Ok(())
     }
 
     fn update_checkpoint_with<F>(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
-        _update: F,
+        update: F,
     ) -> Result<bool, Self::Error>
     where
-        F: Fn(&mut shardtree::store::Checkpoint) -> Result<(), Self::Error>,
+        F: Fn(&mut Checkpoint) -> Result<(), Self::Error>,
     {
-        Ok(self.checkpoints.contains_key(checkpoint_id))
+        if let Some(cp) = self.checkpoints.get_mut(checkpoint_id) {
+            update(cp)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn remove_checkpoint(&mut self, checkpoint_id: &Self::CheckpointId) -> Result<(), Self::Error> {
@@ -358,7 +401,7 @@ impl shardtree::store::ShardStore for MemoryStore {
         Ok(())
     }
 
-    fn truncate_checkpoints(&mut self, checkpoint_id: &Self::CheckpointId) -> Result<(), Self::Error> {
+    fn truncate_checkpoints_retaining(&mut self, checkpoint_id: &Self::CheckpointId) -> Result<(), Self::Error> {
         self.checkpoints.retain(|id, _| id <= checkpoint_id);
         Ok(())
     }
@@ -380,5 +423,12 @@ mod tests {
         assert!(store.shards.is_empty());
         assert!(store.checkpoints.is_empty());
     }
-}
 
+    #[test]
+    fn test_marked_positions_tracking() {
+        let mut tree = OrchardTree::new();
+        tree.marked_positions.insert(42);
+        assert!(tree.is_marked(42));
+        assert!(!tree.is_marked(43));
+    }
+}

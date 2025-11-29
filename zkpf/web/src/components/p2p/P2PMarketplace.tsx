@@ -68,7 +68,9 @@ function OfferCard({
             </span>
           </div>
         </div>
-        <span className={`badge badge-${badge.color}`}>{badge.label}</span>
+        {badge.label !== 'New' && (
+          <span className={`badge badge-${badge.color}`}>{badge.label}</span>
+        )}
       </div>
       
       <div className="offer-card-main">

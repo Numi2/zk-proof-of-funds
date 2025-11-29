@@ -14,6 +14,7 @@ import { sha512 } from '@noble/hashes/sha2.js';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { useWebzjsActions } from '../../hooks/useWebzjsActions';
 import { TachyonStatePanel } from '../TachyonStatePanel';
+import { PersonhoodSettings } from './PersonhoodSettings';
 import type { PolicyDefinition } from '../../types/zkpf';
 import { detectBrowser, type BrowserInfo } from '../../utils/browserCompat';
 
@@ -775,6 +776,9 @@ export function WalletDashboard() {
       <div className="card wallet-tachyon-card">
         <TachyonStatePanel />
       </div>
+
+      {/* Personhood Verification */}
+      <PersonhoodSettings />
 
       {/* UFVK */}
       <div className="card wallet-ufvk-card">

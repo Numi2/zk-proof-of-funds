@@ -18,6 +18,7 @@ use once_cell::sync::Lazy;
 
 #[cfg(feature = "mina-rail")]
 mod mina_rail;
+pub mod personhood;
 use serde_json::Value as JsonValue;
 use sled::Db;
 use tokio::{fs::File, net::TcpListener};
@@ -492,6 +493,14 @@ pub fn app_router(state: AppState) -> Router {
     };
 
     let router = router.with_state(state);
+
+    // Merge Personhood routes (has its own state)
+    let router = {
+        eprintln!("zkpf-backend: Personhood routes enabled at /api/personhood/*");
+        Router::new()
+            .merge(router)
+            .merge(personhood::personhood_router_with_state())
+    };
 
     // Merge Mina Rail routes if enabled (after adding state since it has its own state)
     #[cfg(feature = "mina-rail")]

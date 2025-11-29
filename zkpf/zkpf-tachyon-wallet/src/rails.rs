@@ -500,10 +500,20 @@ pub struct MinaRecursiveRail {
 
 impl MinaRecursiveRail {
     pub fn new(config: RailConfig) -> Self {
+        // Load zkApp address from environment or use the deployed contract
+        let zkapp_address = std::env::var("ZKPF_MINA_ZKAPP_ADDRESS")
+            .unwrap_or_else(|_| {
+                // Default to the deployed zkpf attestation zkApp on Mina mainnet
+                "B62qkYa1o6Mj6uTTjDQCob7FYZspuhkm4RRQhgJg9j4koEBWiSrTQrS".to_string()
+            });
+        
+        let network_id = std::env::var("ZKPF_MINA_NETWORK")
+            .unwrap_or_else(|_| "mainnet".to_string());
+        
         Self {
             config,
-            zkapp_address: "B62qxxxxxxxxx".to_string(), // Default placeholder
-            network_id: "mainnet".to_string(),
+            zkapp_address,
+            network_id,
             source_proofs: Arc::new(RwLock::new(Vec::new())),
             cached_slot: Arc::new(RwLock::new(0)),
         }

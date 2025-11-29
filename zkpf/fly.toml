@@ -10,6 +10,8 @@ primary_region = 'arn'
 
 [env]
   ZKPF_ENABLE_PROVER = "0"
+  # Personhood database (uses same volume as nullifiers)
+  ZKPF_PERSONHOOD_DB = "/app/data/personhood.db"
   # Mina Rail configuration
   MINA_RAIL_ENABLED = "1"
   MINA_RAIL_NUM_SHARDS = "16"

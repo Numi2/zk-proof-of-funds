@@ -10,6 +10,24 @@ A system for generating and verifying zero-knowledge proofs of funds. This allow
 
 ## 🆕 Recent Work
 
+### Bug Fixes & Cryptographic Security Improvements
+
+We identified and fixed critical bugs in the proof-of-funds system, and implemented proper cryptographic trial decryption using official Zcash libraries.
+
+**Bug Fixes:**
+- **Mina Proof Prefix Check** — Fixed overly broad condition `bundle.proof.starts_with(b"MINA")` that incorrectly treated legitimate proofs starting with "MINA" as placeholder proofs. Now only matches the specific 19-byte `MINA_POS_WRAPPER_V1` format.
+- **Zcash Orchard Sync Counter** — Fixed `notes_found` counter that was initialized but never incremented during blockchain synchronization, preventing accurate progress reporting.
+
+**Proper Trial Decryption Implementation:**
+- Replaced simplified key derivation with official Zcash cryptographic APIs
+- Integrated `zcash_note_encryption::try_compact_note_decryption()` for cryptographically correct Orchard note detection
+- Used `orchard::note_encryption::OrchardDomain` and `CompactAction` for proper domain construction
+- Implemented UFVK parsing using `zcash_keys` to extract Orchard Full Viewing Keys
+- Added proper nullifier derivation from decrypted notes using the Full Viewing Key
+- Eliminated "simplified key derivation bullshit" in favor of actual Zcash protocol compliance
+
+The implementation now uses the official Zcash cryptographic primitives as specified in the protocol, ensuring full compatibility and security with the Zcash network.
+
 ### Tachyon Wallet: Unified Multi-Chain Proof Orchestration
 
 We built **Tachyon Wallet**—a unified wallet coordinator that orchestrates zero-knowledge proofs across five chains, using each only for its comparative advantage. The core principle: **never bridge assets, only proofs and attestations**.
@@ -296,12 +314,12 @@ The core proof system is implemented in Rust, built on [Axiom's Halo2 fork](http
 | `zkpf-backend` | Axum HTTP server. Loads proving/verification keys at startup, serves the API endpoints. |
 | `zkpf-test-fixtures` | Deterministic test data. Generates reproducible proofs using seeded RNG for CI and integration tests. |
 
-**Zcash Orchard crates (WIP):**
+**Zcash Orchard crates:**
 
 | Crate | Purpose |
 |-------|---------|
 | `zkpf-zcash-orchard-circuit` | Orchard-specific circuit extensions. Verifies note commitments, Merkle paths, nullifier derivation inside Halo2. |
-| `zkpf-zcash-orchard-wallet` | Wallet integration for Orchard notes. Extracts witness data needed for proof generation. |
+| `zkpf-zcash-orchard-wallet` | Wallet integration for Orchard notes. Implements proper trial decryption using `zcash_note_encryption` and `zcash_client_backend` for cryptographically correct note detection during blockchain synchronization. Extracts witness data needed for proof generation. |
 | `zkpf-orchard-inner` | Inner proof types and serialization for Orchard rail. |
 
 **Multi-chain rail crates:**
@@ -391,7 +409,7 @@ The system supports multiple "rails" for different use cases:
 
 1. **Custodial Attestation** (`CUSTODIAL_ATTESTATION`) — Traditional custodian-signed balance attestations using secp256k1 ECDSA. Fully implemented and production-ready.
 
-2. **Zcash Orchard** (`ZCASH_ORCHARD`) — Non-custodial proofs from Zcash shielded pools using Orchard note commitments and Merkle paths. Architecture in place, circuit implementation in progress.
+2. **Zcash Orchard** (`ZCASH_ORCHARD`) — Non-custodial proofs from Zcash shielded pools using Orchard note commitments and Merkle paths. Features proper trial decryption using official Zcash cryptographic APIs for secure note detection during synchronization. Architecture complete, circuit implementation in progress.
 
 3. **Provider Balance** (`PROVIDER_BALANCE_V2`) — Generic provider-attested proofs. Wallet-agnostic balance attestations reusing the custodial circuit with provider keys.
 

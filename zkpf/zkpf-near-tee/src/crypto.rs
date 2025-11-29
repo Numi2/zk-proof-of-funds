@@ -86,6 +86,8 @@ impl TeeKeyManager {
             .get(key_id)
             .ok_or_else(|| NearTeeError::InvalidKeyMaterial(format!("key not found: {}", key_id)))?;
 
+        tracing::debug!(key_id, derivation_path = %key.derivation_path, "TEE signing request");
+
         match key.key_type {
             KeyType::Ed25519 => self.sign_ed25519(data_hash, &key.private_key),
             KeyType::Secp256k1 => self.sign_secp256k1(data_hash, &key.private_key),
@@ -149,7 +151,12 @@ impl TeeKeyManager {
 
     fn derive_key_material(&self, path: &str) -> Result<[u8; 32], NearTeeError> {
         let mut hasher = blake3::Hasher::new();
-        hasher.update(b"tee_key_derivation_v1");
+        // Domain-separate by provider so different TEEs cannot accidentally share keys.
+        let domain = match self.provider {
+            TeeProvider::Mock => b"tee_key_derivation_v1_mock".as_slice(),
+            _ => b"tee_key_derivation_v1_hardware".as_slice(),
+        };
+        hasher.update(domain);
         hasher.update(&self.master_key);
         hasher.update(path.as_bytes());
         Ok(*hasher.finalize().as_bytes())

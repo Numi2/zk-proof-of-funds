@@ -9,10 +9,7 @@ import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
 import { ZkpfClient } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
-import { WalletConnector } from './WalletConnector';
-import { BtcWalletConnector } from './BtcWalletConnector';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
-import { ZashiSessionConnector } from './ZashiSessionConnector';
 import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
@@ -74,7 +71,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [wasmStatus, setWasmStatus] = useState<WasmStatus>('idle');
   const [wasmError, setWasmError] = useState<string | null>(null);
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
-  const [walletMode, setWalletMode] = useState<'evm' | 'btc' | 'zcash' | 'zashi'>('zcash');
+  // Data source is always the zkpf web wallet (Zcash)
+  const walletMode = 'zcash' as const;
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
   const [isBuildingAttestation, setIsBuildingAttestation] = useState(false);
   const [showCancelPending, setShowCancelPending] = useState(false);
@@ -159,38 +157,6 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     ? policies.find((policy) => policy.policy_id === selectedPolicyId) ?? null
     : null;
 
-  const zashiPolicies = useMemo(
-    () =>
-      policies.filter(
-        (policy) => policy.category?.toUpperCase() === 'ZASHI',
-      ),
-    [policies],
-  );
-
-  const activeZashiPolicy = useMemo(() => {
-    if (walletMode !== 'zashi') {
-      return null;
-    }
-    if (selectedPolicy && zashiPolicies.some((policy) => policy.policy_id === selectedPolicy.policy_id)) {
-      return selectedPolicy;
-    }
-    return null;
-  }, [selectedPolicy, walletMode, zashiPolicies]);
-
-  useEffect(() => {
-    if (walletMode !== 'zashi') {
-      return;
-    }
-    if (!zashiPolicies.length) {
-      if (selectedPolicyId !== null) {
-        setSelectedPolicyId(null);
-      }
-      return;
-    }
-    if (!selectedPolicyId || !zashiPolicies.some((policy) => policy.policy_id === selectedPolicyId)) {
-      setSelectedPolicyId(zashiPolicies[0].policy_id);
-    }
-  }, [walletMode, selectedPolicyId, zashiPolicies]);
 
   const manifestMeta = useMemo(() => {
     if (!paramsQuery.data) {
@@ -554,19 +520,6 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     }
   }, [bundle]);
 
-  const handleZashiBundleReady = useCallback(
-    (remoteBundle: ProofBundle) => {
-      setBundle(remoteBundle);
-      setRawInput('');
-      setError(null);
-      setWasmError(null);
-      if (onBundleReady) {
-        onBundleReady(remoteBundle, customPolicy);
-      }
-    },
-    [onBundleReady, customPolicy],
-  );
-
   const handleCancelGeneration = useCallback(() => {
     cancelRequestedRef.current = true;
     setShowCancelPending(true);
@@ -855,90 +808,18 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           <header className="data-source-header">
             <div className="policy-step-badge">Step 2</div>
             <div>
-              <h3>Connect your data source</h3>
+              <h3>Connect your wallet</h3>
               <p className="muted small">
-                Choose how to provide your balance data. Connect a wallet for automatic attestation, or paste JSON from your custody system.
+                Enter your Zcash wallet seed phrase or UFVK to generate an attestation for your balance.
               </p>
             </div>
           </header>
 
-          <div className="wallet-mode-toggle">
-            <p className="muted small">
-              <strong>Select data source type</strong>
-            </p>
-            <div className="wallet-mode-options">
-              <label>
-                <input
-                  type="radio"
-                  name="wallet-mode"
-                  value="zcash"
-                  checked={walletMode === 'zcash'}
-                  onChange={() => setWalletMode('zcash')}
-                />
-                <span>Zcash wallet (UFVK + EVM signer)</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="wallet-mode"
-                  value="zashi"
-                  checked={walletMode === 'zashi'}
-                  onChange={() => setWalletMode('zashi')}
-                />
-                <span>Zashi provider session (custodial)</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="wallet-mode"
-                  value="evm"
-                  checked={walletMode === 'evm'}
-                  onChange={() => setWalletMode('evm')}
-                />
-                <span>Ethereum / EVM wallet</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="wallet-mode"
-                  value="btc"
-                  checked={walletMode === 'btc'}
-                  onChange={() => setWalletMode('btc')}
-                />
-                <span>Bitcoin wallet (manual)</span>
-              </label>
-            </div>
-          </div>
-
-          {walletMode === 'evm' && (
-            <WalletConnector
-              onAttestationReady={handleWalletAttestationReady}
-              onShowToast={showToast}
-              policy={selectedPolicy ?? undefined}
-            />
-          )}
-          {walletMode === 'zashi' && (
-            <ZashiSessionConnector
-              client={client}
-              policy={activeZashiPolicy}
-              onBundleReady={handleZashiBundleReady}
-              onShowToast={showToast}
-            />
-          )}
-          {walletMode === 'btc' && (
-            <BtcWalletConnector
-              onAttestationReady={handleWalletAttestationReady}
-              onShowToast={showToast}
-              policy={selectedPolicy ?? undefined}
-            />
-          )}
-          {walletMode === 'zcash' && (
-            <ZcashWalletConnector
-              onAttestationReady={handleWalletAttestationReady}
-              onShowToast={showToast}
-              policy={selectedPolicy ?? undefined}
-            />
-          )}
+          <ZcashWalletConnector
+            onAttestationReady={handleWalletAttestationReady}
+            onShowToast={showToast}
+            policy={selectedPolicy ?? undefined}
+          />
         </div>
       )}
 

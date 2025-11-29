@@ -239,7 +239,7 @@ export function ZKPFApp() {
 
   return (
     <div className="app-shell">
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && (
         <div className="top-bar">
           <Link to="/wallet" className="top-nav-link">Wallet</Link>
           <Link to="/p2p" className="top-nav-link">P2P</Link>

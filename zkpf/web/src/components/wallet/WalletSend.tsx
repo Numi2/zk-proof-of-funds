@@ -177,8 +177,10 @@ export function WalletSend() {
 
       // Submit tachystamp to Mina Rail for aggregation (non-blocking)
       if (pcdState.isInitialized && pcdState.pcdState) {
-        // Create a mock nullifier for this transaction
-        // In production, this would come from the actual transaction
+        // Derive nullifier from transaction.
+        // NOTE: This uses the txid as a stand-in. Real nullifiers come from
+        // the Orchard circuit's nullifier derivation in zkpf-zcash-orchard-wallet.
+        // The Mina Rail will detect and flag transactions using txid-derived nullifiers.
         const nullifier = {
           nullifier: '0x' + txidHex,
           note_commitment: pcdState.pcdState.s_current,

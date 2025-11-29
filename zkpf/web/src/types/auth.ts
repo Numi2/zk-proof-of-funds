@@ -3,7 +3,7 @@
  * 
  * Supports:
  * - Solana Wallet (Phantom, Solflare, etc.)
- * - NEAR Wallet (NEAR Web Wallet, MyNearWallet, Meteor, etc.)
+ * - NEAR Wallet (NEAR Web Wallet, Meteor, etc.)
  * - Passkey (WebAuthn/FIDO2)
  */
 
@@ -46,7 +46,8 @@ export interface AuthState {
 export interface NearConnectWalletInfo {
   id: string;
   name: string;
-  icon: string;
+  icon: string; // Emoji or fallback icon
+  iconUrl?: string; // Image URL for wallet logo
   description?: string;
 }
 

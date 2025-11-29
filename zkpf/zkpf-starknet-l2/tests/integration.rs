@@ -333,61 +333,54 @@ fn test_proof_format() {
     )
     .expect("should generate proof");
 
-    // Proof should start with magic bytes (placeholder proof)
-    // or be a real Halo2 proof (if artifacts are loaded)
-    let is_placeholder = bundle.proof.starts_with(b"STARKNET_POF_V1");
-    let is_real_proof = bundle.proof.len() > 1000; // Real proofs are much larger
-
+    // Proof should be a real Halo2 proof (placeholder proofs are no longer generated)
+    // Real proofs are much larger than any placeholder would be
     assert!(
-        is_placeholder || is_real_proof,
-        "Proof should be either placeholder or real Halo2 proof"
+        bundle.proof.len() > 1000,
+        "Proof should be a real Halo2 proof, got {} bytes",
+        bundle.proof.len()
     );
 
-    if is_placeholder {
-        // Placeholder proof should include hash of public inputs (32 bytes after magic)
-        assert!(
-            bundle.proof.len() >= 15 + 32,
-            "Placeholder proof should be at least {} bytes, got {}",
-            15 + 32,
-            bundle.proof.len()
-        );
-    }
+    // Ensure no placeholder magic bytes
+    assert!(
+        !bundle.proof.starts_with(b"STARKNET_POF_V1"),
+        "Placeholder proofs should never be generated"
+    );
 }
 
 #[test]
-fn test_proof_verification_placeholder() {
+fn test_proof_verification_rejects_placeholder() {
     use zkpf_starknet_l2::verify_starknet_proof_with_loaded_artifacts;
 
-    // Generate a proof
-    let snapshot = create_test_snapshot(5_000_000_000_000_000_000);
-    let holder_id = "verify-test".to_string();
-    let threshold = 1_000_000_000_000_000_000u64;
-    let (starknet_meta, public_meta) = create_test_meta(200001);
+    // Create a fake placeholder proof to ensure it's rejected
+    let fake_placeholder_proof = b"STARKNET_POF_V1_fake_placeholder_data";
 
-    let bundle = prove_starknet_pof(
-        &snapshot,
-        &holder_id,
-        threshold,
-        None,
-        &starknet_meta,
-        &public_meta,
-    )
-    .expect("should generate proof");
+    let public_inputs = zkpf_common::VerifierPublicInputs {
+        threshold_raw: 1_000_000_000_000_000_000u64,
+        nullifier: [0u8; 32],
+        holder_binding: Some([0u8; 32]),
+        custodian_hash: None,
+        circuit_version: 3,
+        policy_hash: None,
+        expiry_timestamp: None,
+        starknet_block: None,
+        snapshot_anchor_orchard: None,
+    };
 
-    // Verify the proof
+    // Verify the fake placeholder proof - should be rejected
     let result = verify_starknet_proof_with_loaded_artifacts(
-        &bundle.proof,
-        &bundle.public_inputs,
+        fake_placeholder_proof,
+        &public_inputs,
     );
 
-    // Placeholder proofs should always verify (in development mode)
-    // Real proofs require artifacts to be loaded
-    assert!(result.is_ok(), "Verification should succeed or provide clear error");
-    
-    if bundle.proof.starts_with(b"STARKNET_POF_V1") {
-        // Placeholder proof - should return true in dev mode
-        assert!(result.unwrap(), "Placeholder proofs should verify in dev mode");
-    }
+    // Placeholder proofs should always be rejected for security
+    assert!(result.is_err(), "Placeholder proofs must be rejected");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Placeholder proofs") || err.contains("not accepted"),
+        "Error should indicate placeholder rejection, got: {}",
+        err
+    );
 }
 
 #[test]

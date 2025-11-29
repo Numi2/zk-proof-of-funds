@@ -26,7 +26,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::pcd_keeper::{PcdKeeperError, Tachystamp, TachystampProof};
+use crate::pcd_keeper::{PcdKeeperError, Tachystamp};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERRORS
@@ -424,9 +424,11 @@ impl MinaRailClient {
                         
                         // Try to parse error from response
                         if let Ok(err_response) = serde_json::from_str::<ErrorResponse>(&body) {
-                            return Err(MinaRailError::SubmissionFailed(
-                                err_response.error.unwrap_or_else(|| format!("HTTP {}", status)),
-                            ));
+                            let message = err_response
+                                .error
+                                .or(err_response.message)
+                                .unwrap_or_else(|| format!("HTTP {}", status));
+                            return Err(MinaRailError::SubmissionFailed(message));
                         }
                         
                         return Err(MinaRailError::ServerError(format!(

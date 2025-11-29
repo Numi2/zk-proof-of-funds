@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Core zkpf crates
 zkpf-common = { path = "../zkpf-common" }
+zkpf-wallet-state = { path = "../zkpf-wallet-state" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -48,6 +49,10 @@ base64 = "0.21"
 
 # Hex encoding
 hex = "0.4"
+
+# Halo2 proving stack (Axiom fork, used via zkpf-wallet-state)
+halo2_proofs_axiom = { package = "halo2-axiom", path = "../vendor/halo2-axiom", default-features = false, features = ["batch", "circuit-params", "multicore"] }
+halo2curves_axiom = { package = "halo2curves-axiom", version = "0.7", default-features = false, features = ["bits", "bn256-table", "derive_serde"] }
 
 # NEAR SDK (optional, for contract integration)
 near-sdk = { version = "5.0", optional = true }

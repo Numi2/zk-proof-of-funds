@@ -19,7 +19,9 @@ use std::{
 use anyhow::{ensure, Context as AnyhowContext, Result};
 use halo2_base::{
     gates::{
-        circuit::{builder::BaseCircuitBuilder, BaseCircuitParams, BaseConfig, CircuitBuilderStage},
+        circuit::{
+            builder::BaseCircuitBuilder, BaseCircuitParams, BaseConfig, CircuitBuilderStage,
+        },
         range::RangeChip,
         GateInstructions, RangeInstructions,
     },
@@ -179,7 +181,7 @@ impl Circuit<Fr> for MinaPofCircuit {
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<Fr>) -> Result<(), Error> {
         // Use the pre-configured stage:
         // - Keygen: Key generation phase, uses sample input
-        // - Mock: MockProver testing, stores constraints for verification  
+        // - Mock: MockProver testing, stores constraints for verification
         // - Prover: Production proving, `witness_gen_only(true)` for performance
         let input = self.input.as_ref().unwrap_or(&SAMPLE_INPUT);
 
@@ -541,18 +543,17 @@ pub fn create_mina_proof(input: &MinaPofCircuitInput) -> Result<Vec<u8>, MinaRai
         )));
     }
 
-    // Try to load artifacts
-    let artifacts = match MINA_PROVER_ARTIFACTS.as_ref() {
-        Ok(artifacts) => artifacts.clone(),
-        Err(e) => {
-            // Fall back to placeholder proof if artifacts not available
-            eprintln!(
-                "Warning: Mina artifacts not loaded ({}), using placeholder proof",
+    // Load artifacts - fail if not available
+    let artifacts = MINA_PROVER_ARTIFACTS
+        .as_ref()
+        .map_err(|e| {
+            MinaRailError::Proof(format!(
+                "Mina prover artifacts not loaded: {}. \
+                 Set ZKPF_MINA_MANIFEST_PATH to the path of manifest.json.",
                 e
-            );
-            return create_mina_placeholder_proof(input);
-        }
-    };
+            ))
+        })?
+        .clone();
 
     // Generate real proof
     create_mina_proof_with_artifacts(&artifacts, input)
@@ -596,23 +597,75 @@ pub fn create_mina_proof_with_artifacts(
     Ok(transcript.finalize())
 }
 
-/// Create a placeholder proof (for development/testing when artifacts are not available).
-fn create_mina_placeholder_proof(input: &MinaPofCircuitInput) -> Result<Vec<u8>, MinaRailError> {
-    let mut proof = vec![];
+// REMOVED: create_mina_placeholder_proof function
+// Placeholder proofs are a security vulnerability and have been removed.
+// All proofs must be generated using real cryptographic circuits.
 
-    // Magic bytes to identify Mina rail proofs
-    proof.extend_from_slice(b"MINA_RECURSIVE_V1");
-
-    // Hash of public inputs (for development/testing)
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&input.public_inputs.threshold_raw.to_le_bytes());
-    hasher.update(&input.public_inputs.nullifier);
-    for commitment in &input.source_proof_commitments {
-        hasher.update(commitment);
+/// Verify a Mina proof.
+///
+/// # Security
+/// - Placeholder proofs are always rejected
+/// - Real proofs require artifacts to be loaded from ZKPF_MINA_MANIFEST_PATH
+pub fn verify_mina_circuit_proof(
+    proof_bytes: &[u8],
+    public_inputs: &zkpf_common::VerifierPublicInputs,
+) -> Result<bool, MinaRailError> {
+    // SECURITY: Always reject placeholder proofs - they bypass cryptographic verification
+    if proof_bytes.starts_with(b"MINA_RECURSIVE_V1") {
+        return Err(MinaRailError::Proof(
+            "Placeholder proofs (MINA_RECURSIVE_V1) are not accepted. \
+             Generate real proofs using the circuit."
+                .into(),
+        ));
     }
-    proof.extend_from_slice(hasher.finalize().as_bytes());
 
-    Ok(proof)
+    // Load artifacts
+    let artifacts = match MINA_PROVER_ARTIFACTS.as_ref() {
+        Ok(a) => a.clone(),
+        Err(e) => {
+            return Err(MinaRailError::Proof(format!(
+                "Failed to load Mina verification artifacts: {}. \
+                 Set ZKPF_MINA_MANIFEST_PATH to the path of manifest.json.",
+                e
+            )));
+        }
+    };
+
+    // Convert public inputs to instances
+    let instances = mina_public_inputs_to_instances(public_inputs)?;
+    let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
+
+    // Verify using Halo2
+    use halo2_proofs_axiom::poly::kzg::strategy::AccumulatorStrategy;
+    use halo2_proofs_axiom::transcript::{Blake2bRead, Challenge255, TranscriptReadBuffer};
+
+    let mut transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(proof_bytes);
+    let strategy = AccumulatorStrategy::new(&artifacts.params);
+
+    let result = halo2_proofs_axiom::plonk::verify_proof::<
+        halo2_proofs_axiom::poly::kzg::commitment::KZGCommitmentScheme<Bn256>,
+        halo2_proofs_axiom::poly::kzg::multiopen::VerifierGWC<'_, Bn256>,
+        _,
+        _,
+        _,
+    >(
+        &artifacts.params,
+        &artifacts.vk,
+        strategy,
+        &[instance_refs.as_slice()],
+        &mut transcript,
+    );
+
+    match result {
+        Ok(_) => {
+            tracing::info!("Mina circuit proof verified successfully");
+            Ok(true)
+        }
+        Err(e) => {
+            tracing::warn!("Mina circuit proof verification failed: {:?}", e);
+            Ok(false)
+        }
+    }
 }
 
 // === Tests =====================================================================================
@@ -630,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_mina_proof() {
+    fn test_create_mina_proof_requires_artifacts() {
         let input = MinaPofCircuitInput {
             public_inputs: VerifierPublicInputs {
                 threshold_raw: 1_000_000,
@@ -648,9 +701,17 @@ mod tests {
             source_proof_commitments: vec![[3u8; 32], [4u8; 32]],
         };
 
-        let proof = create_mina_proof(&input).expect("should succeed");
-        // With no artifacts, we get a placeholder proof
-        assert!(proof.starts_with(b"MINA_RECURSIVE_V1"));
+        // Without artifacts loaded, proof creation should fail (no placeholder fallback)
+        let result = create_mina_proof(&input);
+        // Either succeeds with real artifacts, or fails with clear error about missing artifacts
+        if result.is_err() {
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("artifacts") || err.contains("ZKPF_MINA_MANIFEST_PATH"),
+                "Error should indicate missing artifacts, got: {}",
+                err
+            );
+        }
     }
 
     #[test]
@@ -684,4 +745,3 @@ mod tests {
         }
     }
 }
-

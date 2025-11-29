@@ -66,6 +66,7 @@ default = [
     "multicore",
     "circuit-params",
 ]
+thread-safe-region = []
 dev-graph = [
     "plotters",
     "tabbycat",

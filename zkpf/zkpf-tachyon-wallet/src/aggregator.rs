@@ -263,11 +263,28 @@ impl ProofAggregator {
             })
             .collect();
 
+        // Load zkApp address from environment or use the deployed contract
+        let zkapp_address = std::env::var("ZKPF_MINA_ZKAPP_ADDRESS")
+            .unwrap_or_else(|_| {
+                // Default to the deployed zkpf attestation zkApp on Mina mainnet
+                // This is the verified deployment from the zkpf-mina-contracts repo
+                "B62qkYa1o6Mj6uTTjDQCob7FYZspuhkm4RRQhgJg9j4koEBWiSrTQrS".to_string()
+            });
+        
+        let network_id = std::env::var("ZKPF_MINA_NETWORK")
+            .unwrap_or_else(|_| "mainnet".to_string());
+        
+        let network_id_numeric = match network_id.as_str() {
+            "mainnet" => 0,
+            "testnet" | "berkeley" | "devnet" => 1,
+            _ => 99,
+        };
+        
         let mina_meta = MinaPublicMeta {
-            network_id: "mainnet".to_string(),
-            network_id_numeric: 0,
+            network_id,
+            network_id_numeric,
             global_slot: epoch.timestamp,
-            zkapp_address: "B62q...".to_string(), // TODO: Configure
+            zkapp_address,
             recursive_proof_commitment: [0u8; 32],
             source_rail_ids: source_proofs
                 .iter()

@@ -15,19 +15,43 @@ tokio = { version = "1.35", features = ["rt-multi-thread", "sync", "macros"], op
 tonic = { version = "0.11", optional = true }
 prost = { version = "0.12", optional = true }
 rusqlite = { version = "0.31", features = ["bundled"], optional = true }
-incrementalmerkletree = { version = "0.7", optional = true }
-shardtree = { version = "0.5", optional = true }
+# Must match the version used by orchard crate
+incrementalmerkletree = { version = "0.8", optional = true }
+shardtree = { version = "0.6", optional = true }
 hex = "0.4"
 tracing = "0.1"
+
+# Zcash libraries for proper trial decryption (using ChainSafe fork for compatibility)
+zcash_note_encryption = { version = "0.4", optional = true }
+zcash_keys = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", features = ["orchard"], optional = true }
+zcash_protocol = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", default-features = false, optional = true }
+
+# Curve operations for domain construction
+pasta_curves = { version = "0.5", optional = true }
+subtle = { version = "2.5", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 orchard = { version = "0.11", default-features = false, features = ["circuit", "multicore", "std"] }
 
 [features]
 default = []
-lightwalletd = ["tokio", "tonic", "prost", "rusqlite", "incrementalmerkletree", "shardtree"]
+# Full lightwalletd sync with proto generation and proper trial decryption
+lightwalletd = [
+    "lightwalletd-proto",
+    "tokio",
+    "tonic",
+    "prost",
+    "rusqlite",
+    "incrementalmerkletree",
+    "shardtree",
+    "zcash_note_encryption",
+    "zcash_keys",
+    "zcash_protocol",
+    "pasta_curves",
+    "subtle",
+]
+# Proto generation feature - requires tonic-build and proto files
+lightwalletd-proto = ["dep:tonic-build"]
 
 [build-dependencies]
 tonic-build = { version = "0.11", optional = true }
-
-

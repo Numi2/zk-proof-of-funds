@@ -4,4 +4,5 @@ export { WalletReceive } from './WalletReceive';
 export { WalletSend } from './WalletSend';
 export { WalletBuy } from './WalletBuy';
 export { TransparentToShielded } from './TransparentToShielded';
+export { PersonhoodSettings } from './PersonhoodSettings';
 

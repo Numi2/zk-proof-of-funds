@@ -3,7 +3,7 @@
  * 
  * Unified authentication layer supporting:
  * - Solana Wallet (Phantom, Solflare, Backpack, etc.)
- * - NEAR Wallet via near-connect (HOT, Meteor, MyNearWallet, Nightly, etc.)
+ * - NEAR Wallet via near-connect (HOT, Meteor, Nightly, etc.)
  * - Passkey (WebAuthn/FIDO2)
  */
 
@@ -35,7 +35,8 @@ import {
 export interface NearConnectWallet {
   id: string;
   name: string;
-  icon: string;
+  icon: string; // Emoji or fallback icon
+  iconUrl?: string; // Image URL for wallet logo
   description?: string;
 }
 
@@ -44,7 +45,6 @@ const NEAR_WALLET_DISPLAY: Record<string, { icon: string; color: string }> = {
   'hot-wallet': { icon: '🔥', color: '#FF6B35' },
   'meteor-wallet': { icon: '☄️', color: '#7C3AED' },
   'intear-wallet': { icon: '🎯', color: '#10B981' },
-  'my-near-wallet': { icon: '🌐', color: '#00C08B' },
   'nightly-wallet': { icon: '🌙', color: '#6366F1' },
   'near-mobile-wallet': { icon: '📱', color: '#3B82F6' },
   'okx-wallet': { icon: '🅾️', color: '#000000' },
@@ -121,7 +121,6 @@ interface NearWalletInterface {
 
 interface WindowWithNear extends Window {
   meteorWallet?: NearWalletInterface;
-  myNearWallet?: NearWalletInterface;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -275,30 +274,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await connector.whenManifestLoaded;
           const availableWallets = connector.availableWallets || [];
-          const walletList: NearConnectWallet[] = availableWallets.map((w) => ({
-            id: w.manifest.id,
-            name: w.manifest.name,
-            icon: w.manifest.icon || NEAR_WALLET_DISPLAY[w.manifest.id]?.icon || '💼',
-            description: w.manifest.description || 'NEAR wallet',
-          }));
+          // Custom icon URL mappings for known wallets
+          const WALLET_ICON_URLS: Record<string, string> = {
+            'hot-wallet': 'https://app.hot-labs.org/images/hot/hot-icon.png',
+            'meteor-wallet': 'https://meteorwallet.app/static/media/meteor-logo.8fd7e6c4.png',
+            'nightly-wallet': 'https://www.nightly.app/img/nightly-logo.svg',
+          };
+
+          const walletList: NearConnectWallet[] = availableWallets
+            .filter((w) => w.manifest.name !== 'MyNearWallet') // Remove MyNearWallet
+            .map((w) => ({
+              id: w.manifest.id,
+              name: w.manifest.name,
+              icon: NEAR_WALLET_DISPLAY[w.manifest.id]?.icon || '💼',
+              iconUrl: w.manifest.icon || WALLET_ICON_URLS[w.manifest.id],
+              description: w.manifest.description || 'NEAR wallet',
+            }));
 
           if (walletList.length > 0) {
             setNearWallets(walletList);
           } else {
             // Fallback wallets
             setNearWallets([
-              { id: 'hot-wallet', name: 'HOT Wallet', icon: '🔥', description: 'Multichain wallet with $HOT mining' },
-              { id: 'meteor-wallet', name: 'Meteor', icon: '☄️', description: 'NEAR native wallet' },
-              { id: 'my-near-wallet', name: 'MyNearWallet', icon: '🌐', description: 'NEAR web wallet' },
-              { id: 'nightly-wallet', name: 'Nightly', icon: '🌙', description: 'Multichain wallet' },
+              { id: 'hot-wallet', name: 'HOT Wallet', icon: '🔥', iconUrl: 'https://app.hot-labs.org/images/hot/hot-icon.png', description: 'Multichain wallet with $HOT mining' },
+              { id: 'meteor-wallet', name: 'Meteor', icon: '☄️', iconUrl: 'https://meteorwallet.app/static/media/meteor-logo.8fd7e6c4.png', description: 'NEAR native wallet' },
+              { id: 'nightly-wallet', name: 'Nightly', icon: '🌙', iconUrl: 'https://www.nightly.app/img/nightly-logo.svg', description: 'Multichain wallet' },
             ]);
           }
         } catch {
           // Fallback wallets if manifest fails to load
           setNearWallets([
-            { id: 'hot-wallet', name: 'HOT Wallet', icon: '🔥', description: 'Multichain wallet' },
-            { id: 'meteor-wallet', name: 'Meteor', icon: '☄️', description: 'NEAR wallet' },
-            { id: 'my-near-wallet', name: 'MyNearWallet', icon: '🌐', description: 'Web wallet' },
+            { id: 'hot-wallet', name: 'HOT Wallet', icon: '🔥', iconUrl: 'https://app.hot-labs.org/images/hot/hot-icon.png', description: 'Multichain wallet' },
+            { id: 'meteor-wallet', name: 'Meteor', icon: '☄️', iconUrl: 'https://meteorwallet.app/static/media/meteor-logo.8fd7e6c4.png', description: 'NEAR wallet' },
           ]);
         }
 
@@ -307,7 +314,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('[AuthContext] Failed to initialize near-connect:', err);
         // Still provide fallback wallets
         setNearWallets([
-          { id: 'my-near-wallet', name: 'MyNearWallet', icon: '🌐', description: 'Web wallet' },
+          { id: 'hot-wallet', name: 'HOT Wallet', icon: '🔥', iconUrl: 'https://app.hot-labs.org/images/hot/hot-icon.png', description: 'Multichain wallet' },
+          { id: 'meteor-wallet', name: 'Meteor', icon: '☄️', iconUrl: 'https://meteorwallet.app/static/media/meteor-logo.8fd7e6c4.png', description: 'NEAR wallet' },
         ]);
         setNearConnectReady(true);
       }
@@ -877,7 +885,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else if (state.account.type === 'near') {
         const win = window as WindowWithNear;
-        if (win.meteorWallet?.isSignedIn() || win.myNearWallet?.isSignedIn()) {
+        if (win.meteorWallet?.isSignedIn()) {
           setState(prev => ({ ...prev, status: 'connected' }));
         }
       } else if (state.account.type === 'passkey') {

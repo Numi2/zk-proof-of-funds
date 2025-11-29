@@ -9,7 +9,7 @@ use rusqlite::{Connection, params, Result as SqliteResult};
 use std::path::Path;
 use tracing::{debug, info};
 
-use crate::{NetworkKind, OrchardNoteWitness, WalletError};
+use crate::{NetworkKind, WalletError};
 
 /// SQLite database wrapper for Orchard wallet.
 pub struct WalletDb {
@@ -147,11 +147,27 @@ impl WalletDb {
         Ok(height)
     }
 
-    /// Update the synced height.
-    pub fn set_synced_height(&self, height: u32, tree_size: u64) -> Result<(), WalletError> {
+    /// Alias for synced_height (for API consistency).
+    pub fn get_synced_height(&self) -> Result<u32, WalletError> {
+        self.synced_height()
+    }
+
+    /// Update the synced height with tree size.
+    pub fn set_synced_height_with_tree_size(&self, height: u32, tree_size: u64) -> Result<(), WalletError> {
         self.conn.execute(
             "UPDATE sync_state SET synced_height = ?, tree_size = ?, updated_at = strftime('%s', 'now') WHERE id = 1",
             params![height, tree_size as i64],
+        ).map_err(|e| WalletError::Backend(format!("update synced_height failed: {e}")))?;
+        
+        debug!("Updated synced height to {}", height);
+        Ok(())
+    }
+
+    /// Update the synced height only.
+    pub fn set_synced_height(&self, height: u32) -> Result<(), WalletError> {
+        self.conn.execute(
+            "UPDATE sync_state SET synced_height = ?, updated_at = strftime('%s', 'now') WHERE id = 1",
+            params![height],
         ).map_err(|e| WalletError::Backend(format!("update synced_height failed: {e}")))?;
         
         debug!("Updated synced height to {}", height);
@@ -236,6 +252,58 @@ impl WalletDb {
         notes
             .collect::<SqliteResult<Vec<_>>>()
             .map_err(|e| WalletError::Backend(format!("collect notes failed: {e}")))
+    }
+
+    /// Get all notes at a specific height (for snapshot building).
+    ///
+    /// Returns both spent and unspent notes at the given height,
+    /// as snapshot needs all notes that existed at that point in time.
+    pub fn get_notes_at_height(&self, height: u32) -> Result<Vec<StoredNote>, WalletError> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, height, value_zats, commitment, position, is_spent, spent_height
+            FROM orchard_notes
+            WHERE height <= ? AND (is_spent = 0 OR spent_height > ?)
+            ORDER BY position ASC
+            "#,
+        ).map_err(|e| WalletError::Backend(format!("prepare query failed: {e}")))?;
+
+        let notes = stmt.query_map(params![height, height], |row| {
+            let commitment_blob: Vec<u8> = row.get(3)?;
+            let mut commitment = [0u8; 32];
+            commitment.copy_from_slice(&commitment_blob);
+
+            Ok(StoredNote {
+                id: row.get(0)?,
+                height: row.get(1)?,
+                value_zats: row.get::<_, i64>(2)? as u64,
+                commitment,
+                position: row.get::<_, i64>(4)? as u64,
+                is_spent: row.get::<_, i64>(5)? != 0,
+                spent_height: row.get(6)?,
+            })
+        }).map_err(|e| WalletError::Backend(format!("query notes at height failed: {e}")))?;
+
+        notes
+            .collect::<SqliteResult<Vec<_>>>()
+            .map_err(|e| WalletError::Backend(format!("collect notes failed: {e}")))
+    }
+
+    /// Get the position of a note by its commitment.
+    ///
+    /// This is used when computing witnesses for a specific note.
+    pub fn get_note_position(&self, commitment: &[u8; 32]) -> Result<Option<u64>, WalletError> {
+        let result = self.conn.query_row(
+            "SELECT position FROM orchard_notes WHERE commitment = ?",
+            params![commitment.as_slice()],
+            |row| row.get::<_, i64>(0),
+        );
+
+        match result {
+            Ok(position) => Ok(Some(position as u64)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WalletError::Backend(format!("query note position failed: {e}"))),
+        }
     }
 
     /// Get total balance of unspent notes at a height.
@@ -397,7 +465,7 @@ mod tests {
         
         db.store_note(100, 0, 0, 10000, &[1u8; 32], 0, None).unwrap();
         db.store_note(200, 0, 0, 20000, &[2u8; 32], 1, None).unwrap();
-        db.set_synced_height(200, 2).unwrap();
+        db.set_synced_height(200).unwrap();
 
         db.rewind_to(150).unwrap();
 

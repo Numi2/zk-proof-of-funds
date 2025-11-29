@@ -52,7 +52,8 @@ impl AiInference {
 
         Ok(InferenceResult {
             text: response,
-            tokens_used: 100, // Mock value
+            // Scale mock token usage slightly with temperature to keep it "used".
+            tokens_used: (100.0 * self.temperature.max(0.1).min(2.0)) as usize,
             finish_reason: FinishReason::Stop,
         })
     }
@@ -254,6 +255,12 @@ fn default_sensitive_patterns() -> Vec<SensitivePattern> {
             pattern_type: PatternType::Prefix("0x".to_string()),
             action: FilterAction::Warn, // Just warn, as 0x is common
             description: "Potential Ethereum address".to_string(),
+        },
+        // Large numeric sequences that may represent exact balances.
+        SensitivePattern {
+            pattern_type: PatternType::Numeric { min_digits: 10 },
+            action: FilterAction::Redact,
+            description: "Large numeric value (possible balance or account number)".to_string(),
         },
         // Private keys (common prefixes)
         SensitivePattern {

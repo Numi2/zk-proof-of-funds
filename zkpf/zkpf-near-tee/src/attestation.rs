@@ -123,43 +123,20 @@ impl TeeAttestation {
     // Provider-specific generation
 
     async fn generate_sgx() -> Result<Self, NearTeeError> {
-        // Check if we're running in SGX enclave
-        #[cfg(target_feature = "sgx")]
-        {
-            // In a real SGX enclave, we would:
-            // 1. Get MRENCLAVE and MRSIGNER from the enclave report
-            // 2. Generate a quote via DCAP or EPID
-            // 3. Return the signed attestation
-            
-            // For now, we check for SGX device availability
-            let sgx_available = std::path::Path::new("/dev/sgx_enclave").exists()
-                || std::path::Path::new("/dev/isgx").exists();
-                
-            if !sgx_available {
-                return Err(NearTeeError::TeeNotAvailable(
-                    "SGX device not available".into(),
-                ));
-            }
-            
-            // Would call sgx_create_report / sgx_get_quote here
-            Err(NearTeeError::TeeNotAvailable(
-                "SGX DCAP quote generation requires enclave setup".into(),
-            ))
+        // Check if SGX device exists (simulation possible)
+        if !is_sgx_available() {
+            return Err(NearTeeError::TeeNotAvailable(
+                "Intel SGX not available on this platform".into(),
+            ));
         }
-        
-        #[cfg(not(target_feature = "sgx"))]
-        {
-            // Check if SGX device exists (simulation possible)
-            if !is_sgx_available() {
-                return Err(NearTeeError::TeeNotAvailable(
-                    "Intel SGX not available on this platform".into(),
-                ));
-            }
-            
-            Err(NearTeeError::TeeNotAvailable(
-                "SGX attestation requires running inside an SGX enclave".into(),
-            ))
-        }
+
+        // In production, this would:
+        // 1. Get MRENCLAVE and MRSIGNER from the enclave report
+        // 2. Generate a quote via DCAP or EPID
+        // 3. Return the signed attestation
+        Err(NearTeeError::TeeNotAvailable(
+            "SGX attestation requires running inside an SGX enclave".into(),
+        ))
     }
 
     async fn generate_tdx() -> Result<Self, NearTeeError> {
@@ -226,10 +203,6 @@ impl TeeAttestation {
     /// Generate a mock attestation with specific user data.
     /// Useful for testing with deterministic values.
     pub async fn generate_mock_with_user_data(user_data: [u8; 64]) -> Result<Self, NearTeeError> {
-        use rand::Rng;
-
-        let mut rng = rand::thread_rng();
-        
         // Generate deterministic measurement from user_data
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"mock_enclave_measurement");
