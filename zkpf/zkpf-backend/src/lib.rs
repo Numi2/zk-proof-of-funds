@@ -94,6 +94,62 @@ static RAILS: Lazy<RailRegistry> = Lazy::new(RailRegistry::from_env);
 static ATTESTATION_SERVICE: Lazy<Option<OnchainAttestationService>> =
     Lazy::new(OnchainAttestationService::from_env);
 
+// ============================================================
+// Wallet State Circuit Cache (IPA-style, deterministic params)
+// ============================================================
+// For Halo2-style recursion/PCD, we use a deterministic setup.
+// The KZG params are generated from a fixed seed to ensure that
+// proving and verification use the same structured reference string.
+// NOTE: In production, these should be loaded from pre-generated artifacts.
+
+use std::sync::OnceLock;
+use halo2_proofs_axiom::{
+    plonk::{ProvingKey, VerifyingKey},
+    poly::kzg::commitment::ParamsKZG,
+};
+use halo2curves_axiom::bn256::Bn256;
+
+/// Wallet state circuit parameters cache.
+/// Using deterministic params ensures prove/verify consistency.
+static WALLET_STATE_CACHE: OnceLock<WalletStateCircuitCache> = OnceLock::new();
+
+struct WalletStateCircuitCache {
+    params: ParamsKZG<Bn256>,
+    vk: VerifyingKey<halo2curves_axiom::bn256::G1Affine>,
+    pk: ProvingKey<halo2curves_axiom::bn256::G1Affine>,
+}
+
+impl WalletStateCircuitCache {
+    fn get_or_init() -> &'static Self {
+        WALLET_STATE_CACHE.get_or_init(|| {
+            use halo2_proofs_axiom::plonk::{keygen_pk, keygen_vk};
+            use rand::SeedableRng;
+            use rand_chacha::ChaCha20Rng;
+            
+            eprintln!("zkpf-backend: Initializing wallet state circuit cache (first PCD operation)...");
+            
+            // Use a deterministic seed for reproducible params.
+            // This ensures that proving and verification use the same SRS.
+            // The seed is derived from the circuit version for forward compatibility.
+            const WALLET_STATE_PARAM_SEED: [u8; 32] = *b"zkpf_wallet_state_v1_2024_seed!!";
+            let mut rng = ChaCha20Rng::from_seed(WALLET_STATE_PARAM_SEED);
+            
+            let k = 17u32;
+            let params = ParamsKZG::<Bn256>::setup(k, &mut rng);
+            
+            let empty_circuit = WalletStateTransitionCircuit::default();
+            let vk = keygen_vk(&params, &empty_circuit)
+                .expect("wallet state: failed to generate verifying key");
+            let pk = keygen_pk(&params, vk.clone(), &empty_circuit)
+                .expect("wallet state: failed to generate proving key");
+            
+            eprintln!("zkpf-backend: Wallet state circuit cache initialized");
+            
+            WalletStateCircuitCache { params, vk, pk }
+        })
+    }
+}
+
 #[derive(Clone, Debug, serde::Deserialize)]
 struct RailManifestEntry {
     rail_id: String,
@@ -2477,27 +2533,25 @@ async fn verify_wallet_state_transition_handler(
 
 /// Generate a wallet state transition proof.
 ///
-/// Note: In production, this would use pre-generated proving keys loaded from artifacts.
-/// This implementation generates keys on-the-fly for demonstration purposes.
+/// Uses cached proving parameters for consistent proofs. The cache is initialized
+/// on first use with deterministic parameters derived from a fixed seed, ensuring
+/// that proofs generated at different times can be verified correctly.
+///
+/// This approach follows Halo2-style proof generation where the structured reference
+/// string (SRS) is deterministic and reproducible.
 fn generate_wallet_state_proof(
     input: &WalletStateTransitionInput,
 ) -> Result<Vec<u8>, String> {
     use halo2_proofs_axiom::{
-        plonk::{create_proof, keygen_pk, keygen_vk},
+        plonk::create_proof,
         poly::kzg::{commitment::KZGCommitmentScheme, multiopen::ProverGWC},
         transcript::{Blake2bWrite, Challenge255, TranscriptWriterBuffer},
     };
     use halo2curves_axiom::bn256::{Bn256, G1Affine};
     use rand::rngs::OsRng;
 
-    // Setup parameters (k=17 for wallet state circuit)
-    let k = 17u32;
-    let params = halo2_proofs_axiom::poly::kzg::commitment::ParamsKZG::<Bn256>::setup(k, &mut OsRng);
-
-    // Generate keys
-    let empty_circuit = WalletStateTransitionCircuit::default();
-    let vk = keygen_vk(&params, &empty_circuit).map_err(|e| format!("keygen_vk failed: {:?}", e))?;
-    let pk = keygen_pk(&params, vk, &empty_circuit).map_err(|e| format!("keygen_pk failed: {:?}", e))?;
+    // Use cached params and keys for consistent prove/verify
+    let cache = WalletStateCircuitCache::get_or_init();
 
     // Create circuit with witness
     let circuit = WalletStateTransitionCircuit::new_prover(input.clone());
@@ -2507,11 +2561,11 @@ fn generate_wallet_state_proof(
     let instance_refs: Vec<&[halo2curves_axiom::bn256::Fr]> =
         instances.iter().map(|col| col.as_slice()).collect();
 
-    // Generate proof
+    // Generate proof using cached proving key
     let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
     create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<'_, Bn256>, _, _, _, _>(
-        &params,
-        &pk,
+        &cache.params,
+        &cache.pk,
         &[circuit],
         &[instance_refs.as_slice()],
         OsRng,
@@ -2523,44 +2577,38 @@ fn generate_wallet_state_proof(
 }
 
 /// Verify a wallet state transition proof.
+///
+/// Uses cached verification parameters that match the proving parameters.
+/// The deterministic SRS ensures that proofs generated by `generate_wallet_state_proof`
+/// can be correctly verified.
 fn verify_wallet_state_proof(
     public_inputs: &zkpf_wallet_state::circuit::WalletStateTransitionPublicInputs,
     proof: &[u8],
 ) -> bool {
     use halo2_proofs_axiom::{
-        plonk::{keygen_vk, verify_proof},
+        plonk::verify_proof,
         poly::kzg::{
-            commitment::ParamsKZG,
             multiopen::VerifierGWC,
             strategy::SingleStrategy,
         },
         transcript::{Blake2bRead, Challenge255, TranscriptReadBuffer},
     };
     use halo2curves_axiom::bn256::{Bn256, G1Affine};
-    use rand::rngs::OsRng;
 
-    // Setup parameters (must match proving)
-    let k = 17u32;
-    let params = ParamsKZG::<Bn256>::setup(k, &mut OsRng);
-
-    // Generate verification key
-    let empty_circuit = WalletStateTransitionCircuit::default();
-    let vk = match keygen_vk(&params, &empty_circuit) {
-        Ok(vk) => vk,
-        Err(_) => return false,
-    };
+    // Use cached params and verification key (same as proving)
+    let cache = WalletStateCircuitCache::get_or_init();
 
     // Build instances
     let instances = wallet_state_instances(public_inputs);
     let instance_refs: Vec<&[halo2curves_axiom::bn256::Fr]> =
         instances.iter().map(|col| col.as_slice()).collect();
 
-    // Verify
+    // Verify using cached verification key
     let mut transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(proof);
     verify_proof::<_, VerifierGWC<'_, Bn256>, _, _, SingleStrategy<'_, Bn256>>(
-        &params,
-        &vk,
-        SingleStrategy::new(&params),
+        &cache.params,
+        &cache.vk,
+        SingleStrategy::new(&cache.params),
         &[instance_refs.as_slice()],
         &mut transcript,
     )

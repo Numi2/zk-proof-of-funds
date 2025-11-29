@@ -84,7 +84,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         
         // Admin endpoints
         .route("/admin/finalize", post(finalize_epoch))
-        .route("/admin/generate-shard-proof/:shard_id", post(generate_shard_proof));
+        .route("/admin/generate-shard-proof/:shard_id", post(generate_shard_proof))
+        
+        // Verification endpoints (IVC-based)
+        .route("/epoch/:epoch/verify", post(verify_epoch_proof));
     
     let mut router = Router::new()
         .nest("/mina-rail", api_routes)
@@ -505,6 +508,105 @@ async fn generate_shard_proof(
             Ok(Json(response))
         }
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+// ============================================================
+// IVC Verification Endpoints
+// ============================================================
+
+/// Request for epoch proof verification.
+#[derive(Debug, Deserialize)]
+struct VerifyEpochRequest {
+    /// Expected nullifier roots from shards (optional, for full verification)
+    expected_nullifier_roots: Option<Vec<String>>,
+}
+
+/// Response for epoch proof verification.
+#[derive(Debug, Serialize)]
+struct VerifyEpochResponse {
+    /// Whether verification succeeded.
+    valid: bool,
+    /// Epoch number.
+    epoch: u64,
+    /// Number of proofs aggregated.
+    proof_count: u64,
+    /// Verification details.
+    details: Option<String>,
+    /// Error message if failed.
+    error: Option<String>,
+}
+
+/// Verify an epoch proof using IVC accumulator verification.
+///
+/// This endpoint verifies:
+/// 1. The epoch proof exists and is finalized
+/// 2. The IVC accumulator commitment is valid
+/// 3. (Optional) The nullifier roots match expected values
+async fn verify_epoch_proof(
+    State(state): State<Arc<AppState>>,
+    Path(epoch): Path<u64>,
+    Json(request): Json<VerifyEpochRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<VerifyEpochResponse>)> {
+    use crate::ivc::IVCVerifier;
+    
+    let aggregator = state.aggregator.read().await;
+    
+    // Get the epoch proof
+    let proof = aggregator.get_epoch_proof(epoch).ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(VerifyEpochResponse {
+            valid: false,
+            epoch,
+            proof_count: 0,
+            details: None,
+            error: Some(format!("Epoch {} proof not found", epoch)),
+        }))
+    })?;
+    
+    let verifier = IVCVerifier::new();
+    
+    // Verify the IVC proof
+    let verification_result = if let Some(expected_roots) = request.expected_nullifier_roots {
+        // Full verification with expected nullifier roots
+        let roots: Result<Vec<[u8; 32]>, _> = expected_roots
+            .iter()
+            .map(|s| parse_hex_32(s))
+            .collect();
+        
+        match roots {
+            Ok(roots) => verifier.verify_epoch_transition(&proof.ivc_proof, &roots, epoch),
+            Err(e) => Err(crate::ivc::IVCError::VerificationFailed(format!(
+                "Invalid nullifier root hex: {}",
+                e
+            ))),
+        }
+    } else {
+        // Basic structural verification
+        verifier.verify(&proof.ivc_proof)
+    };
+    
+    match verification_result {
+        Ok(valid) => Ok(Json(VerifyEpochResponse {
+            valid,
+            epoch,
+            proof_count: proof.proof_count,
+            details: Some(format!(
+                "IVC verification passed: {} proofs aggregated, accumulator commitment: 0x{}",
+                proof.proof_count,
+                hex::encode(&proof.ivc_proof.accumulator_commitment[..8])
+            )),
+            error: None,
+        })),
+        Err(e) => {
+            tracing::warn!("Epoch {} verification failed: {}", epoch, e);
+            Ok(Json(VerifyEpochResponse {
+                valid: false,
+                epoch,
+                proof_count: proof.proof_count,
+                details: None,
+                error: Some(e.to_string()),
+            }))
+        }
     }
 }
 

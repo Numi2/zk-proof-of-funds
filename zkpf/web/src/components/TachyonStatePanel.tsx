@@ -271,7 +271,7 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
               <label style={styles.stateLabel}>State Commitment (S)</label>
               <code style={styles.stateValue}>{state.pcdState?.s_current ?? 'N/A'}</code>
             </div>
-            <div style={styles.stateItem}>
+            <div style={styles.stateItem} className="hide-on-mobile">
               <label style={styles.stateLabel}>Last PCD Height</label>
               <span style={styles.stateValueLarge}>{state.pcdState?.wallet_state.height ?? 0}</span>
             </div>
@@ -279,11 +279,11 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
               <label style={styles.stateLabel}>Chain Length</label>
               <span style={styles.stateValueLarge}>{state.pcdState?.chain_length ?? 0}</span>
             </div>
-            <div style={styles.stateItem}>
+            <div style={styles.stateItem} className="hide-on-mobile">
               <label style={styles.stateLabel}>Circuit Version</label>
               <span style={styles.stateValue}>v{state.pcdState?.circuit_version ?? 0}</span>
             </div>
-            <div style={styles.stateItem}>
+            <div style={styles.stateItem} className="hide-on-mobile">
               <label style={styles.stateLabel}>Notes in Wallet</label>
               <span style={styles.stateValueLarge}>{state.notes.length}</span>
             </div>
