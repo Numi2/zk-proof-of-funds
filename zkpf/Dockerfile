@@ -19,6 +19,12 @@ RUN npm run build
 
 FROM debian:bookworm-slim
 
+# Install runtime dependencies needed by the Rust binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy the compiled backend binary.

@@ -187,6 +187,378 @@
   color: #cbd5f5;
 }
 
+/* =====================================================
+   PRODUCT SUITE SECTION
+   ===================================================== */
+
+.product-suite {
+  margin-top: 1rem;
+}
+
+.product-suite-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.product-suite-header h2 {
+  margin: 0.5rem 0;
+  font-size: clamp(1.75rem, 2.5vw, 2.25rem);
+  background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.product-suite-header .muted {
+  max-width: 600px;
+  margin: 0 auto;
+  font-size: 1.05rem;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.product-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.product-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--card-gradient);
+  opacity: 0.8;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(148, 163, 184, 0.4);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+}
+
+.product-card-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+.product-card-content {
+  flex: 1;
+}
+
+.product-card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.product-card-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.product-card-description {
+  margin: 0.85rem 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #94a3b8;
+}
+
+.product-card-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-card-features li {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+
+.product-card-arrow {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  font-size: 1.25rem;
+  color: #475569;
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.product-card:hover .product-card-arrow {
+  transform: translateX(4px);
+  color: #94a3b8;
+}
+
+/* =====================================================
+   ARCHITECTURE OVERVIEW SECTION
+   ===================================================== */
+
+.architecture-overview {
+  padding: 2rem;
+}
+
+.architecture-overview header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.architecture-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.arch-layer {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  text-align: center;
+}
+
+.arch-layer-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 0.75rem;
+  opacity: 0.7;
+}
+
+.arch-layer-user {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.arch-layer-user .arch-layer-label {
+  color: #22c55e;
+}
+
+.arch-layer-proof {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.08));
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.arch-layer-proof .arch-layer-label {
+  color: #a78bfa;
+}
+
+.arch-layer-chain {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.arch-layer-chain .arch-layer-label {
+  color: #60a5fa;
+}
+
+.arch-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.arch-node {
+  padding: 0.6rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.arch-node-zcash {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.arch-node-mina {
+  border-color: rgba(236, 72, 153, 0.4);
+  color: #f472b6;
+}
+
+.arch-node-starknet {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+}
+
+.arch-node-near {
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #22d3ee;
+}
+
+.arch-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.arch-connector-line {
+  width: 2px;
+  height: 20px;
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.2));
+}
+
+.arch-connector-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.25rem;
+}
+
+/* =====================================================
+   PRIVACY GUARANTEES SECTION
+   ===================================================== */
+
+.privacy-guarantees {
+  margin-top: 1rem;
+}
+
+.privacy-guarantees-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.privacy-guarantees-header h2 {
+  margin: 0.5rem 0;
+  font-size: clamp(1.5rem, 2vw, 1.75rem);
+}
+
+.privacy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.privacy-item {
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.privacy-item-never {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(15, 23, 42, 0.6));
+}
+
+.privacy-item-only {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(15, 23, 42, 0.6));
+}
+
+.privacy-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.privacy-item-never .privacy-icon {
+  filter: grayscale(0);
+}
+
+.privacy-item h4 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.privacy-item-never h4 {
+  color: #f87171;
+}
+
+.privacy-item-only h4 {
+  color: #4ade80;
+}
+
+.privacy-item ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.privacy-item li {
+  position: relative;
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.privacy-item li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.privacy-item-never li::before {
+  background: #ef4444;
+}
+
+.privacy-item-only li::before {
+  background: #22c55e;
+}
+
+/* Responsive adjustments for product grid */
+@media (max-width: 720px) {
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .product-card {
+    padding: 1.25rem;
+  }
+  
+  .arch-nodes {
+    flex-direction: column;
+  }
+  
+  .arch-node {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.35em;
@@ -3232,6 +3604,63 @@
 .warning strong {
   color: #fbbf24;
   font-weight: 600;
+}
+
+/* =====================================================
+   QUICK STATS SECTION
+   ===================================================== */
+
+.quick-stats {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+  padding: 2rem;
+  margin-top: 1rem;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.4));
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+@media (max-width: 600px) {
+  .quick-stats {
+    gap: 1.5rem;
+    padding: 1.5rem 1rem;
+  }
+  
+  .stat-item {
+    min-width: 100px;
+  }
+  
+  .stat-value {
+    font-size: 2rem;
+  }
 }
 
 footer {

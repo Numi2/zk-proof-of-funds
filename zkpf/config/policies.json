@@ -357,25 +357,25 @@
 
   {
     "policy_id": 410,
-    "threshold_raw": 100000000000000000000,
+    "threshold_raw": 10000000000000000000,
     "required_currency_code": 22691,
     "verifier_scope_id": 410,
     "rail_id": "STARKNET_L2",
-    "label": "Starknet: STRK holder (100+ STRK)",
+    "label": "Starknet: STRK holder (10+ STRK)",
     "category": "STARKNET",
-    "description": "Prove you hold at least 100 STRK tokens.",
+    "description": "Prove you hold at least 10 STRK tokens.",
     "purpose": "STRK token holder verification",
     "useCases": ["Governance eligibility", "Staking participation"]
   },
   {
     "policy_id": 411,
-    "threshold_raw": 1000000000000000000000,
+    "threshold_raw": 18000000000000000000,
     "required_currency_code": 22691,
     "verifier_scope_id": 411,
     "rail_id": "STARKNET_L2",
-    "label": "Starknet: Major STRK (1,000+ STRK)",
+    "label": "Starknet: Major STRK (18+ STRK)",
     "category": "STARKNET",
-    "description": "Prove you hold at least 1,000 STRK tokens.",
+    "description": "Prove you hold at least 18 STRK tokens.",
     "purpose": "Major STRK holder verification",
     "useCases": ["Protocol governance", "Advanced staking"]
   },

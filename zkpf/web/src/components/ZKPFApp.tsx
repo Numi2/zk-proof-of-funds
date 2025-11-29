@@ -85,6 +85,69 @@ const HERO_HIGHLIGHTS = [
   },
 ];
 
+const PRODUCT_SUITE = [
+  {
+    id: 'wallet',
+    icon: '🔐',
+    title: 'Privacy-First Web Wallet',
+    subtitle: 'Zcash Orchard • Shielded by default',
+    description: 'Full-featured Zcash wallet with shielded transactions, transparent-to-shielded conversion, and native ZKPassport integration. Your keys, your coins, your privacy.',
+    features: ['Orchard shielded pool', 'Unified addresses', 'In-browser key derivation'],
+    gradient: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)',
+    link: '/wallet',
+  },
+  {
+    id: 'zkpassport',
+    icon: '🛂',
+    title: 'ZKPassport Integration',
+    subtitle: 'Prove identity • Preserve privacy',
+    description: 'Verify you\'re a unique real person using your passport, without revealing any personal data. ZKPassport uses zero-knowledge proofs to create a privacy-preserving identity layer.',
+    features: ['No PII stored', 'One-time passport scan', 'Sybil-resistant'],
+    gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+    link: '/zkpassport',
+  },
+  {
+    id: 'personhood',
+    icon: '🔗',
+    title: 'Personhood-Wallet Binding',
+    subtitle: 'Bond funds to verified identity',
+    description: 'Cryptographically bind your wallet to your verified personhood. Prove you control funds as a verified individual without revealing wallet addresses or balances.',
+    features: ['Ed25519 signatures', 'Challenge-response auth', 'Multi-wallet support'],
+    gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+    link: '/bound-identity',
+  },
+  {
+    id: 'tachyon',
+    icon: '⚡',
+    title: 'Tachyon Multi-Chain',
+    subtitle: 'Zcash • Mina • Starknet • NEAR',
+    description: 'Unified proof aggregation across five chains. Each chain serves its comparative advantage—never bridge assets, only proofs and attestations.',
+    features: ['Recursive SNARKs via Mina', 'STARK proofs on Starknet', 'TEE agents on NEAR'],
+    gradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
+    link: '/build',
+  },
+  {
+    id: 'p2p',
+    icon: '🤝',
+    title: 'P2P Marketplace',
+    subtitle: 'Trade with verified counterparties',
+    description: 'Peer-to-peer trading with proof-of-funds escrow. Both parties can verify each other\'s balances before committing, without revealing exact amounts.',
+    features: ['ZK-verified escrow', 'Reputation system', 'Multi-asset support'],
+    gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+    link: '/p2p',
+  },
+  {
+    id: 'pcd',
+    icon: '🔄',
+    title: 'PCD State Machine',
+    subtitle: 'Proof-Carrying Data • Recursive chains',
+    description: 'Maintain a cryptographic chain of wallet states. Each proof commits to previous state, enabling auditable history without revealing balances.',
+    features: ['Genesis anchoring', 'Incremental updates', 'Tachyon metadata'],
+    gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+    link: '/build',
+  },
+];
+
 export function ZKPFApp() {
   const client = useMemo(() => new ZkpfClient(DEFAULT_BASE), []);
   const [prefillBundle, setPrefillBundle] = useState<string | null>(null);
@@ -318,6 +381,114 @@ export function ZKPFApp() {
           path="/"
           element={(
             <>
+              {/* Product Suite Section */}
+              <section className="product-suite">
+                <header className="product-suite-header">
+                  <p className="eyebrow">Product Suite</p>
+                  <h2>Privacy infrastructure for the next era of finance</h2>
+                  <p className="muted">
+                    A complete toolkit for proving ownership, identity, and creditworthiness—without sacrificing privacy.
+                  </p>
+                </header>
+                <div className="product-grid">
+                  {PRODUCT_SUITE.map((product) => (
+                    <Link 
+                      key={product.id} 
+                      to={product.link} 
+                      className="product-card"
+                      style={{ '--card-gradient': product.gradient } as React.CSSProperties}
+                    >
+                      <div className="product-card-icon">{product.icon}</div>
+                      <div className="product-card-content">
+                        <h3 className="product-card-title">{product.title}</h3>
+                        <p className="product-card-subtitle">{product.subtitle}</p>
+                        <p className="product-card-description">{product.description}</p>
+                        <ul className="product-card-features">
+                          {product.features.map((feature, idx) => (
+                            <li key={idx}>{feature}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="product-card-arrow">→</div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+
+              {/* Architecture Overview */}
+              <section className="architecture-overview card">
+                <header>
+                  <p className="eyebrow">Architecture</p>
+                  <h2>How it all connects</h2>
+                </header>
+                <div className="architecture-diagram">
+                  <div className="arch-layer arch-layer-user">
+                    <span className="arch-layer-label">User Layer</span>
+                    <div className="arch-nodes">
+                      <div className="arch-node">🔐 Web Wallet</div>
+                      <div className="arch-node">🛂 ZKPassport</div>
+                      <div className="arch-node">🤝 P2P</div>
+                    </div>
+                  </div>
+                  <div className="arch-connector">
+                    <div className="arch-connector-line"></div>
+                    <span className="arch-connector-label">Zero-Knowledge Proofs</span>
+                  </div>
+                  <div className="arch-layer arch-layer-proof">
+                    <span className="arch-layer-label">Proof Layer</span>
+                    <div className="arch-nodes">
+                      <div className="arch-node">⚡ Tachyon Coordinator</div>
+                      <div className="arch-node">🔄 PCD State Machine</div>
+                    </div>
+                  </div>
+                  <div className="arch-connector">
+                    <div className="arch-connector-line"></div>
+                    <span className="arch-connector-label">Cross-Chain Attestations</span>
+                  </div>
+                  <div className="arch-layer arch-layer-chain">
+                    <span className="arch-layer-label">Chain Layer</span>
+                    <div className="arch-nodes">
+                      <div className="arch-node arch-node-zcash">Zcash</div>
+                      <div className="arch-node arch-node-mina">Mina</div>
+                      <div className="arch-node arch-node-starknet">Starknet</div>
+                      <div className="arch-node arch-node-near">NEAR</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Privacy Guarantees */}
+              <section className="privacy-guarantees">
+                <header className="privacy-guarantees-header">
+                  <p className="eyebrow">Privacy Guarantees</p>
+                  <h2>What we never see, store, or transmit</h2>
+                </header>
+                <div className="privacy-grid">
+                  <div className="privacy-item privacy-item-never">
+                    <div className="privacy-icon">🚫</div>
+                    <h4>Never Stored</h4>
+                    <ul>
+                      <li>Passport names or numbers</li>
+                      <li>Wallet addresses or keys</li>
+                      <li>Exact balances or positions</li>
+                      <li>Transaction history</li>
+                      <li>Biometric data</li>
+                    </ul>
+                  </div>
+                  <div className="privacy-item privacy-item-only">
+                    <div className="privacy-icon">✓</div>
+                    <h4>Only Stored</h4>
+                    <ul>
+                      <li>Opaque personhood identifiers</li>
+                      <li>Hashed wallet binding IDs</li>
+                      <li>Proof validity timestamps</li>
+                      <li>Policy compliance flags</li>
+                      <li>Anonymous nullifiers</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
               <section className="card concepts">
                 <header>
                   <p className="eyebrow">Core concepts</p>
@@ -542,6 +713,28 @@ export function ZKPFApp() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Quick Stats Section - only on main pages */}
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+        <section className="quick-stats">
+          <div className="stat-item">
+            <span className="stat-value">5</span>
+            <span className="stat-label">Chains Supported</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-value">0</span>
+            <span className="stat-label">PII Stored</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-value">∞</span>
+            <span className="stat-label">Privacy Preserved</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-value">1</span>
+            <span className="stat-label">Click to Prove</span>
+          </div>
+        </section>
       )}
 
       <footer>

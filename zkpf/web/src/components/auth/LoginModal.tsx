@@ -383,14 +383,6 @@ export function LoginModal() {
                     </svg>
                     <span>Secure connection</span>
                   </div>
-                  <a 
-                    href="https://github.com/azbang/near-connect" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="near-connect-attribution"
-                  >
-                    Powered by near-connect
-                  </a>
                 </div>
               </div>
             </>
