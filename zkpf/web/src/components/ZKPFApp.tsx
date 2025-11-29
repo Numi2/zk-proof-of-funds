@@ -1,6 +1,6 @@
-import { lazy, Suspense, useMemo, useState, useMemo as useReactMemo } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Link, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import { ZkpfClient, detectDefaultBase } from '../api/zkpf';
 import { VerifierEndpointCard } from './StatusCards';
@@ -61,6 +61,14 @@ const P2POfferDetail = lazy(() =>
   import('./p2p/P2POfferDetail').then((module) => ({ default: module.P2POfferDetail })),
 );
 
+const SwapPage = lazy(() =>
+  import('./swap/SwapPage').then((module) => ({ default: module.SwapPage })),
+);
+
+const TransparentToShielded = lazy(() =>
+  import('./wallet/TransparentToShielded').then((module) => ({ default: module.TransparentToShielded })),
+);
+
 const DEFAULT_BASE = detectDefaultBase();
 const HERO_HIGHLIGHTS = [
   {
@@ -118,7 +126,7 @@ export function ZKPFApp() {
     navigate('/workbench');
   };
 
-  const checklistSteps: ChecklistStep[] = useReactMemo(() => {
+  const checklistSteps: ChecklistStep[] = useMemo(() => {
     const path = location.pathname;
 
     const syncStatus: ChecklistStatus =
@@ -220,21 +228,13 @@ export function ZKPFApp() {
 
   return (
     <div className="app-shell">
-      <div className="wallet-entry">
-        <NavLink to="/wallet" className="wallet-button">
-          <span>Wallet</span>
-        </NavLink>
-      </div>
-      <div className="zkpassport-entry">
-        <NavLink to="/zkpassport" className="zkpassport-button">
-          <span>ZKPassport</span>
-        </NavLink>
-      </div>
-      <div className="p2p-entry">
-        <NavLink to="/p2p" className="p2p-button">
-          <span>P2P Trade</span>
-        </NavLink>
-      </div>
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+        <div className="top-bar">
+          <Link to="/wallet" className="top-nav-link">Wallet</Link>
+          <Link to="/p2p" className="top-nav-link">P2P</Link>
+          <Link to="/zkpassport" className="top-nav-link">ZKPassport</Link>
+        </div>
+      )}
       
       {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <header className="hero">
@@ -457,9 +457,11 @@ export function ZKPFApp() {
           )}
         >
           <Route index element={<WalletDashboard />} />
+          <Route path="swap" element={<SwapPage />} />
           <Route path="buy" element={<WalletBuy />} />
           <Route path="receive" element={<WalletReceive />} />
           <Route path="send" element={<WalletSend />} />
+          <Route path="send-to-shielded" element={<TransparentToShielded />} />
           <Route path="uri-payment" element={<URIPaymentPage />} />
           <Route path="*" element={<Navigate to="/wallet" replace />} />
         </Route>

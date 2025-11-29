@@ -26,7 +26,7 @@ const p2pNavItems: NavItem[] = [
   { path: '/p2p', label: 'Browse', icon: '🔍', exact: true },
   { path: '/p2p/create', label: 'Create', icon: '➕' },
   { path: '/wallet', label: 'Wallet', icon: '💰', exact: true },
-  { path: '/wallet/uri-payment', label: 'Links', icon: '🔗' },
+  { path: '/', label: 'Links', icon: '🔗' },
 ];
 
 const zkpassportNavItems: NavItem[] = [

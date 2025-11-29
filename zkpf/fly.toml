@@ -10,6 +10,12 @@ primary_region = 'arn'
 
 [env]
   ZKPF_ENABLE_PROVER = "0"
+  # Mina Rail configuration
+  MINA_RAIL_ENABLED = "1"
+  MINA_RAIL_NUM_SHARDS = "16"
+  MINA_RAIL_MAX_TACHYSTAMPS = "10000"
+  MINA_RAIL_EPOCH_SLOTS = "7200"
+  MINA_RAIL_IVC_DEPTH = "14"
 
 [http_service]
   internal_port = 3000

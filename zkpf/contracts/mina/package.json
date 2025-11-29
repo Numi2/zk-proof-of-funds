@@ -8,7 +8,14 @@
   "scripts": {
     "build": "tsc",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "deploy": "ts-node src/deploy.ts",
+    "setup": "node --loader ts-node/esm src/setup.ts keys",
+    "setup:local": "node --loader ts-node/esm src/setup.ts local",
+    "setup:testnet": "node --loader ts-node/esm src/setup.ts testnet",
+    "setup:compile": "node --loader ts-node/esm src/setup.ts compile",
+    "deploy": "node --loader ts-node/esm src/deploy.ts",
+    "deploy:devnet": "MINA_NETWORK=devnet node --loader ts-node/esm src/deploy.ts",
+    "test:local": "node --loader ts-node/esm src/test-local.ts",
+    "test:add": "node --loader ts-node/esm src/Add.test.ts",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
@@ -23,6 +30,7 @@
     "jest": "^29.7.0",
     "ts-jest": "^29.1.0",
     "ts-node": "^10.9.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.3.0"
   },
   "keywords": [
@@ -33,4 +41,3 @@
     "zero-knowledge"
   ]
 }
-

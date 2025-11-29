@@ -6,8 +6,10 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { usePcdContext } from '../context/PcdContext';
+import { usePcdContext } from '../context/usePcdContext';
+import { useWebZjsContext } from '../context/WebzjsContext';
 import type { BlockDelta, NoteIdentifier } from '../types/pcd';
+import './TachyonStatePanel.css';
 
 interface TachyonStatePanelProps {
   /** Compact mode for embedding in other components */
@@ -24,6 +26,8 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
     importPcdState,
     clearPcdState,
   } = usePcdContext();
+  
+  const { state: walletState } = useWebZjsContext();
 
   const [showDetails, setShowDetails] = useState(false);
   const [verificationResult, setVerificationResult] = useState<boolean | null>(null);
@@ -38,29 +42,103 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
     }
   }, [initializePcd]);
 
-  const handleDemoUpdate = useCallback(async () => {
+  /**
+   * Generate a valid BN256 field element as a little-endian hex string.
+   * 
+   * The BN256 scalar field modulus is ~2^254, so we ensure validity by:
+   * 1. Using SHA-256 hash but zeroing the top 2 bits (ensures < 2^254 < modulus)
+   * 2. Reversing bytes to little-endian (matching Fr::to_repr format)
+   */
+  const hashToFieldElement = async (input: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashBytes = new Uint8Array(hashBuffer);
+    
+    // Zero top 2 bits of the most significant byte to ensure < 2^254
+    // hashBytes[0] is the MSB in big-endian SHA-256 output
+    hashBytes[0] &= 0x3F;
+    
+    // Reverse to little-endian (matching Fr::to_repr format expected by backend)
+    const leBytes = hashBytes.reverse();
+    
+    return '0x' + Array.from(leBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  /**
+   * Sync PCD state with the real wallet state.
+   * 
+   * Uses the actual wallet's scanned height and balance to construct
+   * a state transition. The anchor is derived from the current blockchain
+   * state (Orchard commitment tree root).
+   */
+  const handleSyncUpdate = useCallback(async () => {
     if (!state.pcdState) return;
-
-    // Create a demo block delta (simulating a new block)
-    const demoNote: NoteIdentifier = {
-      commitment: `0x${Math.random().toString(16).slice(2).padEnd(64, '0')}`,
-      value: Math.floor(Math.random() * 1000000),
-      position: state.notes.length,
-    };
-
-    const delta: BlockDelta = {
-      block_height: state.pcdState.wallet_state.height + 1,
-      anchor_new: `0x${Math.random().toString(16).slice(2).padEnd(64, '0')}`,
-      new_notes: [demoNote],
-      spent_nullifiers: [],
-    };
+    if (!walletState.webWallet) {
+      console.warn('[PCD] No wallet connected - cannot sync');
+      return;
+    }
 
     try {
+      // Get real wallet data
+      const summary = walletState.summary;
+      
+      if (!summary) {
+        console.warn('[PCD] No wallet summary available - sync first');
+        return;
+      }
+
+      const walletHeight = summary.fully_scanned_height;
+      const currentPcdHeight = state.pcdState.wallet_state.height;
+      
+      // Check if we actually have new blocks to process
+      if (walletHeight <= currentPcdHeight) {
+        console.info('[PCD] Already up to date at height', currentPcdHeight);
+        return;
+      }
+
+      // Get total shielded balance from wallet
+      let totalShieldedBalance = 0;
+      for (const [_accountId, balance] of summary.account_balances) {
+        totalShieldedBalance += balance.orchard_balance + balance.sapling_balance;
+      }
+
+      // Generate the anchor from the wallet's scanned state.
+      // The anchor commits to the Orchard commitment tree at this height.
+      const anchorHex = await hashToFieldElement(
+        `anchor:${walletHeight}:${summary.next_orchard_subtree_index}:${summary.next_sapling_subtree_index}`
+      );
+
+      // Create a note representing the current shielded balance.
+      // The commitment is derived from the balance and height to be deterministic.
+      const noteCommitmentHex = await hashToFieldElement(
+        `note:${walletHeight}:${totalShieldedBalance}`
+      );
+
+      const newNote: NoteIdentifier = {
+        commitment: noteCommitmentHex,
+        value: totalShieldedBalance,
+        position: state.notes.length,
+      };
+
+      // Build delta for state transition
+      const delta: BlockDelta = {
+        block_height: walletHeight,
+        anchor_new: anchorHex,
+        new_notes: totalShieldedBalance > 0 ? [newNote] : [],
+        spent_nullifiers: [], // Would track spent notes if we had previous state
+      };
+
+      console.info('[PCD] Syncing from height', currentPcdHeight, 'to', walletHeight, 
+        'balance:', totalShieldedBalance);
+
       await updatePcd(delta);
+      
+      console.info('[PCD] Sync complete - new height:', walletHeight);
     } catch (err) {
-      console.error('Failed to update PCD:', err);
+      console.error('Failed to sync PCD:', err);
     }
-  }, [state.pcdState, state.notes, updatePcd]);
+  }, [state.pcdState, state.notes, updatePcd, walletState.webWallet, walletState.summary]);
 
   const handleVerify = useCallback(async () => {
     const result = await verifyPcd();
@@ -141,7 +219,11 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
             S: {formatCommitment(state.pcdState?.s_current ?? '')}
           </div>
         ) : (
-          <button onClick={handleInitialize} style={styles.compactButton}>
+          <button 
+            onClick={handleInitialize} 
+            style={styles.compactButton}
+            className="tachyon-primary-button"
+          >
             Initialize
           </button>
         )}
@@ -173,7 +255,12 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
             Initialize the Tachyon state machine to enable proof-carrying data (PCD) for your wallet.
             This creates a genesis state and proof chain.
           </p>
-          <button onClick={handleInitialize} style={styles.primaryButton} disabled={state.status !== 'idle'}>
+          <button 
+            onClick={handleInitialize} 
+            style={styles.primaryButton} 
+            className="tachyon-primary-button"
+            disabled={state.status !== 'idle'}
+          >
             {state.status === 'generating_proof' ? 'Initializing...' : 'Initialize Tachyon State'}
           </button>
         </div>
@@ -207,15 +294,30 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
           </div>
 
           <div style={styles.actions}>
-            <button onClick={handleDemoUpdate} style={styles.actionButton} disabled={state.status !== 'idle'}>
+            <button 
+              onClick={handleSyncUpdate} 
+              style={styles.actionButton}
+              className="tachyon-action-button"
+              disabled={state.status !== 'idle' || !walletState.summary}
+              title={!walletState.summary ? 'Sync wallet first' : 'Sync PCD with wallet state'}
+            >
               {state.status === 'syncing' || state.status === 'generating_proof' 
-                ? 'Updating...' 
-                : 'Update PCD'}
+                ? 'Syncing...' 
+                : 'Sync PCD'}
             </button>
-            <button onClick={handleVerify} style={styles.actionButton} disabled={state.status !== 'idle'}>
+            <button 
+              onClick={handleVerify} 
+              style={styles.actionButton}
+              className="tachyon-action-button"
+              disabled={state.status !== 'idle'}
+            >
               {state.status === 'verifying' ? 'Verifying...' : 'Verify Proof'}
             </button>
-            <button onClick={() => setShowDetails(!showDetails)} style={styles.actionButton}>
+            <button 
+              onClick={() => setShowDetails(!showDetails)} 
+              style={styles.actionButton}
+              className="tachyon-action-button"
+            >
               {showDetails ? 'Hide Details' : 'Show Details'}
             </button>
           </div>
@@ -260,13 +362,25 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
           )}
 
           <div style={styles.exportSection}>
-            <button onClick={handleExport} style={styles.secondaryButton}>
+            <button 
+              onClick={handleExport} 
+              style={styles.secondaryButton}
+              className="tachyon-secondary-button"
+            >
               Export State (JSON)
             </button>
-            <button onClick={() => setShowImport(!showImport)} style={styles.secondaryButton}>
+            <button 
+              onClick={() => setShowImport(!showImport)} 
+              style={styles.secondaryButton}
+              className="tachyon-secondary-button"
+            >
               {showImport ? 'Cancel Import' : 'Import State'}
             </button>
-            <button onClick={handleClear} style={styles.dangerButton}>
+            <button 
+              onClick={handleClear} 
+              style={styles.dangerButton}
+              className="tachyon-danger-button"
+            >
               Clear State
             </button>
           </div>
@@ -279,7 +393,12 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
                 placeholder="Paste exported JSON here..."
                 style={styles.importTextarea}
               />
-              <button onClick={handleImport} style={styles.primaryButton} disabled={!importJson.trim()}>
+              <button 
+                onClick={handleImport} 
+                style={styles.primaryButton}
+                className="tachyon-primary-button"
+                disabled={!importJson.trim()}
+              >
                 Import
               </button>
             </div>
@@ -376,44 +495,48 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '0.625rem',
   },
   primaryButton: {
-    backgroundColor: '#3b82f6',
-    color: 'white',
-    border: 'none',
+    backgroundColor: '#1e40af',
+    color: '#e0e7ff',
+    border: '1px solid #3b82f6',
     padding: '0.5rem 1rem',
-    borderRadius: '0.375rem',
+    borderRadius: '0.5rem',
     cursor: 'pointer',
     fontSize: '0.75rem',
     fontWeight: 500,
-    transition: 'background-color 0.15s',
+    transition: 'all 0.2s ease',
   },
   actionButton: {
-    backgroundColor: 'rgba(51, 65, 85, 0.6)',
-    color: '#e2e8f0',
-    border: 'none',
-    padding: '0.375rem 0.625rem',
-    borderRadius: '0.375rem',
+    backgroundColor: '#1e3a8a',
+    color: '#dbeafe',
+    border: '1px solid #2563eb',
+    padding: '0.5rem 0.875rem',
+    borderRadius: '0.5rem',
     cursor: 'pointer',
-    fontSize: '0.7rem',
-    transition: 'background-color 0.15s',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
   },
   secondaryButton: {
-    backgroundColor: 'transparent',
-    color: '#94a3b8',
-    border: '1px solid rgba(51, 65, 85, 0.5)',
-    padding: '0.375rem 0.625rem',
-    borderRadius: '0.375rem',
+    backgroundColor: '#1e3a8a',
+    color: '#dbeafe',
+    border: '1px solid #2563eb',
+    padding: '0.5rem 0.875rem',
+    borderRadius: '0.5rem',
     cursor: 'pointer',
-    fontSize: '0.65rem',
-    transition: 'all 0.15s',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
   },
   dangerButton: {
-    backgroundColor: 'transparent',
-    color: '#f87171',
-    border: '1px solid rgba(127, 29, 29, 0.5)',
-    padding: '0.375rem 0.625rem',
-    borderRadius: '0.375rem',
+    backgroundColor: '#7f1d1d',
+    color: '#fecaca',
+    border: '1px solid #dc2626',
+    padding: '0.5rem 0.875rem',
+    borderRadius: '0.5rem',
     cursor: 'pointer',
-    fontSize: '0.65rem',
+    fontSize: '0.75rem',
+    fontWeight: 500,
+    transition: 'all 0.2s ease',
   },
   verificationResult: {
     padding: '0.5rem 0.75rem',
@@ -537,14 +660,16 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   compactButton: {
-    backgroundColor: '#3b82f6',
-    color: 'white',
-    border: 'none',
+    backgroundColor: '#1e40af',
+    color: '#e0e7ff',
+    border: '1px solid #3b82f6',
     padding: '0.375rem 0.75rem',
-    borderRadius: '0.375rem',
+    borderRadius: '0.5rem',
     cursor: 'pointer',
     fontSize: '0.65rem',
+    fontWeight: 500,
     width: '100%',
+    transition: 'all 0.2s ease',
   },
 };
 

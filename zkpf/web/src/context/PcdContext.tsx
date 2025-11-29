@@ -6,12 +6,9 @@
  * after processing each batch of blocks.
  */
 
-/* eslint-disable react-refresh/only-export-components */
-
 import React, {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useReducer,
@@ -29,21 +26,40 @@ import type {
   TachyonMetadata,
   WalletState,
 } from '../types/pcd';
+import type { SubmitTachystampResponse } from '../types/mina-rail';
+import { getMinaRailClient } from '../services/mina-rail/client';
+import { createTachystampFromPcd, validateTachystamp } from '../services/mina-rail/utils';
 
 // ============================================================
 // Client-side PCD Mock (used when backend is unavailable)
 // ============================================================
 
 /**
+ * Convert a SHA-256 hash to a valid BN256 field element in little-endian hex format.
+ * 
+ * The BN256 scalar field modulus is ~2^254, so we:
+ * 1. Zero the top 2 bits to ensure the value is < 2^254 < modulus
+ * 2. Reverse to little-endian format (matching Fr::to_repr)
+ */
+function hashBytesToFieldElement(hashBytes: Uint8Array): string {
+  // Clone to avoid mutating original
+  const bytes = new Uint8Array(hashBytes);
+  // Zero top 2 bits of MSB (index 0 in big-endian) to ensure < 2^254
+  bytes[0] &= 0x3F;
+  // Reverse to little-endian (Fr::to_repr format)
+  bytes.reverse();
+  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Generate a deterministic hash for state commitment (client-side mock).
- * Uses Web Crypto API for SHA-256.
+ * Uses Web Crypto API for SHA-256 and converts to a valid field element.
  */
 async function computeStateCommitment(state: WalletState): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(JSON.stringify(state));
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashBytesToFieldElement(new Uint8Array(hashBuffer));
 }
 
 /**
@@ -58,16 +74,23 @@ function generateMockProof(): string {
 
 /**
  * Generate a deterministic commitment for a set of notes.
+ * Returns a valid BN256 field element in little-endian hex format.
  */
 async function computeNotesRoot(notes: NoteIdentifier[]): Promise<string> {
   if (notes.length === 0) {
-    return '0x' + '0'.repeat(64); // Empty tree
+    return '0x' + '0'.repeat(64); // Zero element
   }
   const encoder = new TextEncoder();
   const data = encoder.encode(notes.map(n => n.commitment).sort().join(''));
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashBytesToFieldElement(new Uint8Array(hashBuffer));
+}
+
+/**
+ * Generate a zero field element in little-endian hex format.
+ */
+function zeroFieldElement(): string {
+  return '0x' + '0'.repeat(64);
 }
 
 /**
@@ -78,9 +101,9 @@ async function createMockGenesisPcd(initialNotes: NoteIdentifier[] = []): Promis
   
   const genesisState: WalletState = {
     height: 0,
-    anchor: '0x' + '0'.repeat(64), // Empty anchor
+    anchor: zeroFieldElement(), // Empty anchor
     notes_root: notesRoot,
-    nullifiers_root: '0x' + '0'.repeat(64), // No nullifiers
+    nullifiers_root: zeroFieldElement(), // No nullifiers
     version: 1,
   };
   
@@ -164,7 +187,7 @@ function pcdReducer(state: PcdContextState, action: PcdAction): PcdContextState 
   }
 }
 
-interface PcdContextValue {
+export interface PcdContextValue {
   state: PcdContextState;
   /** Initialize a new PCD chain from genesis */
   initializePcd: (initialNotes?: NoteIdentifier[]) => Promise<void>;
@@ -184,17 +207,17 @@ interface PcdContextValue {
   addNote: (note: NoteIdentifier) => void;
   /** Mark a note as spent */
   spendNote: (noteCommitment: string, nullifier: string) => void;
+  /** Submit tachystamp to Mina Rail for aggregation */
+  submitToMinaRail: (
+    nullifier: NullifierIdentifier,
+    policyId: number,
+    threshold: number,
+    l1BlockNumber: number,
+    l1TxHash: string
+  ) => Promise<SubmitTachystampResponse>;
 }
 
-const PcdContext = createContext<PcdContextValue | null>(null);
-
-export function usePcdContext(): PcdContextValue {
-  const context = useContext(PcdContext);
-  if (!context) {
-    throw new Error('usePcdContext must be used within PcdProvider');
-  }
-  return context;
-}
+export const PcdContext = createContext<PcdContextValue | null>(null);
 
 interface PcdProviderProps {
   children: React.ReactNode;
@@ -215,6 +238,26 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
       try {
         const persisted = await get<PersistedPcdState>(PCD_STORAGE_KEY);
         if (persisted?.pcd_state) {
+          // Validate that field elements are in correct format (64 hex chars, little-endian)
+          const ws = persisted.pcd_state.wallet_state;
+          const isValidFieldElement = (hex: string): boolean => {
+            if (!hex || typeof hex !== 'string') return false;
+            const cleaned = hex.startsWith('0x') ? hex.slice(2) : hex;
+            if (cleaned.length !== 64) return false;
+            // Check it's valid hex
+            if (!/^[0-9a-fA-F]+$/.test(cleaned)) return false;
+            return true;
+          };
+          
+          // Check wallet state field elements
+          if (!isValidFieldElement(ws.anchor) || 
+              !isValidFieldElement(ws.notes_root) || 
+              !isValidFieldElement(ws.nullifiers_root)) {
+            console.warn('[PCD] Stored state has invalid field elements (old format), clearing...');
+            await del(PCD_STORAGE_KEY);
+            return;
+          }
+          
           dispatch({ type: 'set-pcd-state', payload: persisted.pcd_state });
           dispatch({ type: 'set-notes', payload: persisted.notes || [] });
           dispatch({ type: 'set-nullifiers', payload: persisted.nullifiers || [] });
@@ -290,10 +333,33 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
     [client]
   );
 
+  /**
+   * Validate that a field element hex string is properly formatted.
+   * Must be 64 hex chars (32 bytes) after 0x prefix.
+   */
+  const isValidFieldElement = useCallback((hex: string): boolean => {
+    if (!hex || typeof hex !== 'string') return false;
+    const cleaned = hex.startsWith('0x') ? hex.slice(2) : hex;
+    if (cleaned.length !== 64) return false;
+    if (!/^[0-9a-fA-F]+$/.test(cleaned)) return false;
+    return true;
+  }, []);
+
   const updatePcd = useCallback(
     async (delta: BlockDelta) => {
       if (!state.pcdState) {
         throw new Error('PCD not initialized');
+      }
+
+      // Validate current state has valid field elements
+      const ws = state.pcdState.wallet_state;
+      if (!isValidFieldElement(ws.anchor) || 
+          !isValidFieldElement(ws.notes_root) || 
+          !isValidFieldElement(ws.nullifiers_root)) {
+        console.error('[PCD] Current state has invalid field elements, clearing and reinitializing...');
+        await del(PCD_STORAGE_KEY);
+        dispatch({ type: 'reset' });
+        throw new Error('PCD state was corrupted (invalid field elements). Please reinitialize.');
       }
 
       dispatch({ type: 'set-status', payload: 'syncing' });
@@ -399,7 +465,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
         throw err;
       }
     },
-    [client, state.pcdState, state.notes, state.nullifiers]
+    [client, state.pcdState, state.notes, state.nullifiers, isValidFieldElement]
   );
 
   const verifyPcd = useCallback(async (): Promise<boolean> => {
@@ -521,6 +587,69 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
     [state.notes, state.nullifiers]
   );
 
+  const submitToMinaRail = useCallback(
+    async (
+      nullifier: NullifierIdentifier,
+      policyId: number,
+      threshold: number,
+      l1BlockNumber: number,
+      l1TxHash: string
+    ): Promise<SubmitTachystampResponse> => {
+      if (!state.pcdState) {
+        throw new Error('PCD not initialized');
+      }
+
+      console.info('[PCD] Submitting tachystamp to Mina Rail...');
+      
+      try {
+        // Create tachystamp from current PCD state
+        const tachystamp = createTachystampFromPcd(
+          state.pcdState,
+          nullifier,
+          policyId,
+          threshold,
+          l1BlockNumber,
+          l1TxHash
+        );
+
+        // Validate tachystamp
+        const validation = validateTachystamp(tachystamp);
+        if (!validation.valid) {
+          throw new Error(validation.error ?? 'Invalid tachystamp');
+        }
+
+        // Submit to Mina Rail
+        const minaRailClient = getMinaRailClient();
+        const response = await minaRailClient.submitTachystamp({ tachystamp });
+
+        if (response.success) {
+          console.info('[PCD] Tachystamp submitted to Mina Rail:', {
+            id: response.tachystampId,
+            shard: response.shardId,
+            epoch: response.epoch,
+            position: response.queuePosition,
+          });
+        } else {
+          console.warn('[PCD] Tachystamp submission failed:', response.error);
+        }
+
+        return response;
+      } catch (err) {
+        console.error('[PCD] Failed to submit to Mina Rail:', err);
+        // Return a failed response instead of throwing
+        return {
+          success: false,
+          tachystampId: '',
+          shardId: -1,
+          epoch: 0,
+          queuePosition: -1,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        };
+      }
+    },
+    [state.pcdState]
+  );
+
   const contextValue: PcdContextValue = useMemo(
     () => ({
       state,
@@ -533,6 +662,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
       clearPcdState,
       addNote,
       spendNote,
+      submitToMinaRail,
     }),
     [
       state,
@@ -545,6 +675,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
       clearPcdState,
       addNote,
       spendNote,
+      submitToMinaRail,
     ]
   );
 

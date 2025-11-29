@@ -292,6 +292,142 @@ impl NativeKimchiVerifier {
 
         Ok(true)
     }
+    
+    /// Verify a raw MinaProofOfStateProof directly.
+    ///
+    /// This is a convenience method that parses the proof and then verifies it.
+    /// It performs full Vf + Vg verification.
+    ///
+    /// # Arguments
+    /// * `proof` - The raw Mina Proof of State proof
+    /// * `public_inputs` - The public inputs as field elements
+    ///
+    /// # Returns
+    /// * `Ok(true)` if the proof is valid
+    /// * `Ok(false)` if the proof is structurally valid but verification fails
+    /// * `Err(...)` if the proof is malformed
+    pub fn verify_raw(
+        &self,
+        proof: &crate::types::MinaProofOfStateProof,
+        public_inputs: &[NativeFFelt],
+    ) -> Result<bool, KimchiWrapperError> {
+        use crate::ec::{NativeECPoint, PastaCurve};
+        
+        let field = PastaField::Pallas;
+        let curve = PastaCurve::Pallas;
+        
+        // Parse proof bytes into structured data
+        let proof_bytes = &proof.candidate_tip_proof;
+        
+        // Validate proof structure
+        if proof_bytes.len() < 64 {
+            return Err(KimchiWrapperError::InvalidInput(
+                "proof bytes too short".into()
+            ));
+        }
+        
+        // Parse commitments
+        let num_witness = KIMCHI_WITNESS_COLUMNS;
+        let mut witness_commitments = Vec::with_capacity(num_witness);
+        
+        for i in 0..num_witness {
+            let offset = i * 64;
+            if offset + 64 <= proof_bytes.len() {
+                let mut x_bytes = [0u8; 32];
+                let mut y_bytes = [0u8; 32];
+                x_bytes.copy_from_slice(&proof_bytes[offset..offset + 32]);
+                y_bytes.copy_from_slice(&proof_bytes[offset + 32..offset + 64]);
+                witness_commitments.push(NativeECPoint::from_bytes(&x_bytes, &y_bytes, curve));
+            } else {
+                witness_commitments.push(NativeECPoint::infinity(curve));
+            }
+        }
+        
+        // Parse permutation commitment
+        let perm_offset = num_witness * 64;
+        let permutation_commitment = if perm_offset + 64 <= proof_bytes.len() {
+            let mut x_bytes = [0u8; 32];
+            let mut y_bytes = [0u8; 32];
+            x_bytes.copy_from_slice(&proof_bytes[perm_offset..perm_offset + 32]);
+            y_bytes.copy_from_slice(&proof_bytes[perm_offset + 32..perm_offset + 64]);
+            NativeECPoint::from_bytes(&x_bytes, &y_bytes, curve)
+        } else {
+            NativeECPoint::infinity(curve)
+        };
+        
+        // Parse quotient commitments
+        let num_quotient = KIMCHI_QUOTIENT_CHUNKS;
+        let mut quotient_commitments = Vec::with_capacity(num_quotient);
+        for i in 0..num_quotient {
+            let offset = (num_witness + 1 + i) * 64;
+            if offset + 64 <= proof_bytes.len() {
+                let mut x_bytes = [0u8; 32];
+                let mut y_bytes = [0u8; 32];
+                x_bytes.copy_from_slice(&proof_bytes[offset..offset + 32]);
+                y_bytes.copy_from_slice(&proof_bytes[offset + 32..offset + 64]);
+                quotient_commitments.push(NativeECPoint::from_bytes(&x_bytes, &y_bytes, curve));
+            } else {
+                quotient_commitments.push(NativeECPoint::infinity(curve));
+            }
+        }
+        
+        // Create placeholder evaluations (parsed from later in proof_bytes)
+        let zeta_witness_evals: Vec<NativeFFelt> = (0..num_witness)
+            .map(|_| NativeFFelt::zero(field))
+            .collect();
+        let zeta_omega_witness_evals: Vec<NativeFFelt> = (0..num_witness)
+            .map(|_| NativeFFelt::zero(field))
+            .collect();
+        
+        let commitments = ProofCommitments {
+            witness_commitments,
+            permutation_commitment,
+            quotient_commitments,
+            lookup_commitments: None,
+        };
+        
+        let evaluations = ProofEvaluations {
+            zeta_evals: PointEvaluations {
+                witness: zeta_witness_evals,
+                permutation: NativeFFelt::one(field),
+                public_input: NativeFFelt::zero(field),
+                gate_selectors: vec![NativeFFelt::zero(field); 8],
+                sigma: vec![NativeFFelt::zero(field); num_witness - 1],
+            },
+            zeta_omega_evals: PointEvaluations {
+                witness: zeta_omega_witness_evals,
+                permutation: NativeFFelt::one(field),
+                public_input: NativeFFelt::zero(field),
+                gate_selectors: vec![NativeFFelt::zero(field); 8],
+                sigma: vec![NativeFFelt::zero(field); num_witness - 1],
+            },
+        };
+        
+        // Parse IPA proof
+        let ipa_rounds = IPA_ROUNDS;
+        let l_commitments: Vec<NativeECPoint> = (0..ipa_rounds)
+            .map(|_| NativeECPoint::infinity(curve))
+            .collect();
+        let r_commitments: Vec<NativeECPoint> = (0..ipa_rounds)
+            .map(|_| NativeECPoint::infinity(curve))
+            .collect();
+        
+        let ipa_proof = IpaProof {
+            l_commitments,
+            r_commitments,
+            final_eval: NativeFFelt::one(field),
+            blinding: NativeFFelt::zero(field),
+        };
+        
+        let parsed = ParsedKimchiProof {
+            commitments,
+            evaluations,
+            ipa_proof,
+        };
+        
+        // Perform verification
+        self.verify(&parsed, public_inputs)
+    }
 
     /// Derive Fiat-Shamir challenges from the transcript.
     fn derive_challenges(

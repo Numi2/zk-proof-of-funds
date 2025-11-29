@@ -1,0 +1,53 @@
+[package]
+name = "zkpf-mina-rail"
+version = "0.1.0"
+edition = "2021"
+description = "Mina Recursive Rail for tachystamp aggregation and global PCD"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "mina-rail-server"
+path = "src/main.rs"
+
+[features]
+default = ["std", "server"]
+std = []
+mock = []
+ivc = ["dep:ff", "dep:group"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:anyhow", "dep:tracing", "dep:tracing-subscriber"]
+
+[dependencies]
+# Ragu circuit framework (optional, used for IVC circuits)
+# ragu = { path = "../ragu", optional = true }
+
+# Field/curve abstractions (optional)
+ff = { version = "0.13", default-features = false, optional = true }
+group = { version = "0.13", default-features = false, optional = true }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Cryptographic primitives
+blake3 = "1"
+rand = "0.8"
+hex = "0.4"
+base64 = "0.22"
+
+# Error handling
+thiserror = "1"
+
+# Logging
+log = "0.4"
+
+# HTTP server (optional)
+axum = { version = "0.7", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+tower-http = { version = "0.5", features = ["cors"], optional = true }
+anyhow = { version = "1", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
+
+[dev-dependencies]
+rand = "0.8"
+tokio = { version = "1", features = ["full", "test-util"] }

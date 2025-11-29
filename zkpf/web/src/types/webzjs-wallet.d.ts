@@ -30,6 +30,36 @@ declare module '@chainsafe/webzjs-wallet' {
     get_current_address_transparent(account_id: number): Promise<string>;
 
     sync(): Promise<void>;
+
+    /**
+     * Create a transaction proposal to send funds.
+     * Does NOT sign, prove, or broadcast - just creates the proposal.
+     */
+    propose_transfer(
+      account_id: number,
+      to_address: string,
+      value: number,
+    ): Promise<Proposal>;
+
+    /**
+     * Sign and prove a transaction proposal.
+     * Returns flattened txid bytes (each txid is 32 bytes).
+     */
+    create_proposed_transactions(
+      proposal: Proposal,
+      seed_phrase: string,
+      account_hd_index: number,
+    ): Promise<Uint8Array>;
+
+    /**
+     * Broadcast signed transactions to the network.
+     * Takes flattened txid bytes from create_proposed_transactions.
+     */
+    send_authorized_transactions(txids: Uint8Array): Promise<void>;
+  }
+
+  export interface Proposal {
+    // Opaque proposal object returned by propose_transfer
   }
 
   export interface WalletSummary {
@@ -88,6 +118,36 @@ declare module '@chainsafe/webzjs-wallet-single' {
     get_current_address_transparent(account_id: number): Promise<string>;
 
     sync(): Promise<void>;
+
+    /**
+     * Create a transaction proposal to send funds.
+     * Does NOT sign, prove, or broadcast - just creates the proposal.
+     */
+    propose_transfer(
+      account_id: number,
+      to_address: string,
+      value: number,
+    ): Promise<Proposal>;
+
+    /**
+     * Sign and prove a transaction proposal.
+     * Returns flattened txid bytes (each txid is 32 bytes).
+     */
+    create_proposed_transactions(
+      proposal: Proposal,
+      seed_phrase: string,
+      account_hd_index: number,
+    ): Promise<Uint8Array>;
+
+    /**
+     * Broadcast signed transactions to the network.
+     * Takes flattened txid bytes from create_proposed_transactions.
+     */
+    send_authorized_transactions(txids: Uint8Array): Promise<void>;
+  }
+
+  export interface Proposal {
+    // Opaque proposal object returned by propose_transfer
   }
 
   export interface WalletSummary {

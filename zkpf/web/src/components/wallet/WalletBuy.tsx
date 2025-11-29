@@ -35,20 +35,12 @@ const PROVIDER_BRANDING: Record<string, { icon: string; color: string }> = {
   transak: { icon: '◈', color: '#5F6CF7' },
 };
 
-// Supported networks - Starknet and NEAR Intent only
-const NETWORKS = [
-  { id: 'starknet', name: 'Starknet', icon: '⬡' },
-  { id: 'near-intent', name: 'NEAR Intent', icon: '◎' },
-] as const;
-
-type NetworkId = typeof NETWORKS[number]['id'];
 
 export function WalletBuy() {
   const [amount, setAmount] = useState('100');
   const [evmAddress, setEvmAddress] = useState('');
   const [evmError, setEvmError] = useState<string | null>(null);
   const [country] = useState('US'); // basic default for provider selection
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkId>('starknet');
 
   const provider = useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -151,6 +143,9 @@ export function WalletBuy() {
     [isProviderAvailable],
   );
 
+  // Check if we're in demo mode (no providers available)
+  const isDemoMode = availableProviders.length === 0;
+
   // Shortened address display
   const shortAddress = evmAddress
     ? `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`
@@ -243,51 +238,54 @@ export function WalletBuy() {
           </div>
         </div>
 
-        {/* Provider Selection */}
-        <div className="ramp-section">
-          <label className="ramp-label">
-            <span className="label-icon">🏦</span>
-            Provider
-          </label>
-          <div className="provider-grid">
-            {availableProviders.map((p) => {
-              const branding = PROVIDER_BRANDING[p] || { icon: '●', color: '#38bdf8' };
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  className={`provider-card ${currentProvider === p ? 'active' : ''}`}
-                  onClick={() => setProvider(p)}
-                  style={{ '--provider-color': branding.color } as React.CSSProperties}
-                >
-                  <span className="provider-icon">{branding.icon}</span>
-                  <span className="provider-name">{PROVIDER_CAPABILITIES[p].displayName}</span>
-                </button>
-              );
-            })}
+        {/* Demo Mode Notice */}
+        {isDemoMode && (
+          <div className="ramp-section demo-mode-notice">
+            <div className="demo-banner">
+              <span className="demo-icon">🔧</span>
+              <div className="demo-content">
+                <strong>Demo Mode</strong>
+                <p>
+                  On-ramp providers require API keys to work. For production, set the following environment variables:
+                </p>
+                <ul className="demo-env-list">
+                  <li><code>VITE_COINBASE_ONRAMP_APP_ID</code> - Coinbase CDP App ID (zero-fee USDC!)</li>
+                  <li><code>VITE_TRANSAK_API_KEY</code> - Transak API key</li>
+                </ul>
+                <p className="demo-hint">
+                  Get a free Coinbase CDP API key at <a href="https://www.coinbase.com/developer-platform" target="_blank" rel="noopener noreferrer">coinbase.com/developer-platform</a>
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Network Selection */}
-        <div className="ramp-section">
-          <label className="ramp-label">
-            <span className="label-icon">⛓️</span>
-            Network
-          </label>
-          <div className="network-grid">
-            {NETWORKS.map((net) => (
-              <button
-                key={net.id}
-                type="button"
-                className={`network-card ${selectedNetwork === net.id ? 'active' : ''}`}
-                onClick={() => setSelectedNetwork(net.id)}
-              >
-                <span className="network-icon">{net.icon}</span>
-                <span className="network-name">{net.name}</span>
-              </button>
-            ))}
+        {/* Provider Selection */}
+        {!isDemoMode && (
+          <div className="ramp-section">
+            <label className="ramp-label">
+              <span className="label-icon">🏦</span>
+              Provider
+            </label>
+            <div className="provider-grid">
+              {availableProviders.map((p) => {
+                const branding = PROVIDER_BRANDING[p] || { icon: '●', color: '#38bdf8' };
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`provider-card ${currentProvider === p ? 'active' : ''}`}
+                    onClick={() => setProvider(p)}
+                    style={{ '--provider-color': branding.color } as React.CSSProperties}
+                  >
+                    <span className="provider-icon">{branding.icon}</span>
+                    <span className="provider-name">{PROVIDER_CAPABILITIES[p].displayName}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Quote Loading State */}
         {loading && (
@@ -388,9 +386,14 @@ export function WalletBuy() {
           type="button"
           className={`ramp-buy-button ${loading ? 'processing' : ''} ${evmAddress && quote ? 'ready' : ''}`}
           onClick={handleBuy}
-          disabled={!evmAddress || fiatAmount < DEFAULT_ONRAMP_CONFIG.minAmountUsd || loading}
+          disabled={isDemoMode || !evmAddress || fiatAmount < DEFAULT_ONRAMP_CONFIG.minAmountUsd || loading}
         >
-          {loading ? (
+          {isDemoMode ? (
+            <>
+              <span className="button-icon">🔧</span>
+              Configure API Keys to Enable
+            </>
+          ) : loading ? (
             <>
               <span className="button-spinner" />
               Getting Quote…

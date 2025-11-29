@@ -47,6 +47,9 @@ pub enum Error {
 
     /// The circuit configuration is invalid.
     InvalidConfiguration(&'static str),
+
+    /// A constraint was violated during verification.
+    ConstraintViolation,
 }
 
 impl fmt::Display for Error {
@@ -67,6 +70,9 @@ impl fmt::Display for Error {
             Error::VerificationFailed => write!(f, "verification failed"),
             Error::InvalidConfiguration(msg) => {
                 write!(f, "invalid configuration: {}", msg)
+            }
+            Error::ConstraintViolation => {
+                write!(f, "constraint violation")
             }
         }
     }

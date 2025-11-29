@@ -1,51 +1,32 @@
 /**
- * ZkBridge zkApp
- *
- * This zkApp generates bridge messages for cross-chain attestation
- * propagation. It allows other chains (EVM, Starknet, etc.) to verify
- * zkpf attestations without directly interacting with the full proof.
- *
- * The bridge emits compact messages containing:
- * - Attestation validity bit
- * - Policy parameters
- * - Merkle proof of inclusion
- * - State root commitment
+ * ZkBridge zkApp - Bidirectional Tachyon ↔ Mina Bridge
  */
 
 import {
   SmartContract,
   state,
   State,
-  method,
   Field,
   Poseidon,
   PublicKey,
   UInt64,
   Bool,
   Struct,
-  MerkleWitness,
   Provable,
+  declareMethods,
 } from 'o1js';
 
 import { AttestationLeaf, Attestation, AttestationWitness } from './AttestationRegistry.js';
 
-/**
- * Target chain identifiers.
- */
+// Target chain identifiers
 export const TargetChains = {
   ETHEREUM: Field(1),
   STARKNET: Field(2),
   POLYGON: Field(3),
   ARBITRUM: Field(4),
-  OPTIMISM: Field(5),
-  BASE: Field(6),
-  ZKSYNC: Field(7),
-  SCROLL: Field(8),
 };
 
-/**
- * Bridge message type.
- */
+// Message types
 export const MessageTypes = {
   ATTESTATION_RESULT: Field(1),
   BATCH_ATTESTATION: Field(2),
@@ -53,9 +34,49 @@ export const MessageTypes = {
   REVOCATION: Field(4),
 };
 
-/**
- * Bridge message structure.
- */
+// Tachyon epoch commitment from L1
+export class TachyonEpochCommitment extends Struct({
+  epoch: UInt64,
+  nullifierRoot: Field,
+  stateHash: Field,
+  proofCount: UInt64,
+  zcashBlockHeight: UInt64,
+  epochProofHash: Field,
+}) {
+  hash(): Field {
+    return Poseidon.hash([
+      this.epoch.value,
+      this.nullifierRoot,
+      this.stateHash,
+      this.proofCount.value,
+      this.zcashBlockHeight.value,
+      this.epochProofHash,
+    ]);
+  }
+}
+
+// Tachyon account proof
+export class TachyonAccountProof extends Struct({
+  holderBinding: Field,
+  policyId: UInt64,
+  epoch: UInt64,
+  thresholdMet: Bool,
+  nullifierProofHash: Field,
+  balanceCommitment: Field,
+}) {
+  hash(): Field {
+    return Poseidon.hash([
+      this.holderBinding,
+      this.policyId.value,
+      this.epoch.value,
+      Provable.if(this.thresholdMet, Field(1), Field(0)),
+      this.nullifierProofHash,
+      this.balanceCommitment,
+    ]);
+  }
+}
+
+// Bridge message structure
 export class BridgeMessage extends Struct({
   messageType: Field,
   targetChain: Field,
@@ -68,9 +89,6 @@ export class BridgeMessage extends Struct({
   merkleProofHash: Field,
   nonce: UInt64,
 }) {
-  /**
-   * Compute the message hash for signing/verification.
-   */
   hash(): Field {
     return Poseidon.hash([
       this.messageType,
@@ -85,31 +103,9 @@ export class BridgeMessage extends Struct({
       this.nonce.value,
     ]);
   }
-
-  /**
-   * Encode for target chain consumption.
-   * Returns a compact representation suitable for EVM calldata.
-   */
-  encode(): Field[] {
-    return [
-      this.messageType,
-      this.targetChain,
-      this.holderBinding,
-      this.policyId.value,
-      this.epoch.value,
-      Provable.if(this.hasValidAttestation, Field(1), Field(0)),
-      this.minaSlot.value,
-      this.stateRoot,
-      this.merkleProofHash,
-      this.nonce.value,
-      this.hash(),
-    ];
-  }
 }
 
-/**
- * Event emitted when a bridge message is sent.
- */
+// Events
 export class BridgeMessageSentEvent extends Struct({
   messageHash: Field,
   targetChain: Field,
@@ -119,60 +115,58 @@ export class BridgeMessageSentEvent extends Struct({
   nonce: UInt64,
 }) {}
 
+export class TachyonEpochRegisteredEvent extends Struct({
+  epoch: UInt64,
+  nullifierRoot: Field,
+  stateHash: Field,
+  proofCount: UInt64,
+  registeredAtSlot: UInt64,
+}) {}
+
+export class TachyonAccountVerifiedEvent extends Struct({
+  holderBinding: Field,
+  policyId: UInt64,
+  epoch: UInt64,
+  thresholdMet: Bool,
+  verifiedAtSlot: UInt64,
+}) {}
+
 /**
  * ZkBridge zkApp contract.
  */
 export class ZkBridge extends SmartContract {
-  // State field 0: Registry address hash
   @state(Field) registryAddressHash = State<Field>();
-
-  // State field 1: Message nonce
   @state(UInt64) messageNonce = State<UInt64>();
-
-  // State field 2: Total messages sent
   @state(UInt64) totalMessages = State<UInt64>();
-
-  // State field 3: Admin public key hash
   @state(Field) adminPubkeyHash = State<Field>();
-
-  // State field 4: Supported target chains (bit flags)
   @state(Field) supportedChains = State<Field>();
-
-  // State fields 5-7: Reserved
-  @state(Field) reserved1 = State<Field>();
-  @state(Field) reserved2 = State<Field>();
-  @state(Field) reserved3 = State<Field>();
+  @state(UInt64) latestTachyonEpoch = State<UInt64>();
+  @state(Field) tachyonStateRoot = State<Field>();
+  @state(UInt64) tachyonVerificationCount = State<UInt64>();
 
   events = {
     bridgeMessageSent: BridgeMessageSentEvent,
+    tachyonEpochRegistered: TachyonEpochRegisteredEvent,
+    tachyonAccountVerified: TachyonAccountVerifiedEvent,
   };
 
-  /**
-   * Initialize the bridge.
-   */
-  @method async init() {
+  init() {
     super.init();
 
     this.registryAddressHash.set(Field(0));
     this.messageNonce.set(UInt64.zero);
     this.totalMessages.set(UInt64.zero);
 
-    // Admin is the deployer
     const sender = this.sender.getAndRequireSignature();
     this.adminPubkeyHash.set(Poseidon.hash(sender.toFields()));
 
-    // Support all chains by default
     this.supportedChains.set(Field(0xffffffff));
-
-    this.reserved1.set(Field(0));
-    this.reserved2.set(Field(0));
-    this.reserved3.set(Field(0));
+    this.latestTachyonEpoch.set(UInt64.zero);
+    this.tachyonStateRoot.set(Field(0));
+    this.tachyonVerificationCount.set(UInt64.zero);
   }
 
-  /**
-   * Set the attestation registry address (admin only).
-   */
-  @method async setRegistry(registryAddress: PublicKey) {
+  async setRegistry(registryAddress: PublicKey) {
     const adminHash = this.adminPubkeyHash.getAndRequireEquals();
     const sender = this.sender.getAndRequireSignature();
     const senderHash = Poseidon.hash(sender.toFields());
@@ -181,45 +175,103 @@ export class ZkBridge extends SmartContract {
     this.registryAddressHash.set(Poseidon.hash(registryAddress.toFields()));
   }
 
-  /**
-   * Create and emit a bridge message for an attestation.
-   *
-   * This method verifies the attestation exists and is valid,
-   * then emits a bridge message that can be relayed to other chains.
-   */
-  @method async createBridgeMessage(
+  async registerTachyonEpoch(
+    commitment: TachyonEpochCommitment,
+    epochProof: Field
+  ) {
+    const latestEpoch = this.latestTachyonEpoch.getAndRequireEquals();
+    const currentSlot = this.network.globalSlotSinceGenesis.getAndRequireEquals();
+
+    commitment.epoch.assertGreaterThan(latestEpoch, 'Epoch must be newer than latest');
+
+    const expectedProofHash = Poseidon.hash([
+      commitment.nullifierRoot,
+      commitment.stateHash,
+      commitment.epoch.value,
+    ]);
+    epochProof.assertEquals(expectedProofHash, 'Invalid epoch proof');
+
+    commitment.proofCount.assertLessThanOrEqual(
+      UInt64.from(1000000),
+      'Proof count exceeds maximum'
+    );
+
+    this.latestTachyonEpoch.set(commitment.epoch);
+    this.tachyonStateRoot.set(commitment.stateHash);
+
+    this.emitEvent(
+      'tachyonEpochRegistered',
+      new TachyonEpochRegisteredEvent({
+        epoch: commitment.epoch,
+        nullifierRoot: commitment.nullifierRoot,
+        stateHash: commitment.stateHash,
+        proofCount: commitment.proofCount,
+        registeredAtSlot: currentSlot,
+      })
+    );
+  }
+
+  async verifyTachyonAccount(
+    accountProof: TachyonAccountProof,
+    epochCommitment: TachyonEpochCommitment
+  ) {
+    const latestEpoch = this.latestTachyonEpoch.getAndRequireEquals();
+    const tachyonRoot = this.tachyonStateRoot.getAndRequireEquals();
+    const verificationCount = this.tachyonVerificationCount.getAndRequireEquals();
+    const currentSlot = this.network.globalSlotSinceGenesis.getAndRequireEquals();
+
+    accountProof.epoch.assertEquals(epochCommitment.epoch, 'Epoch mismatch');
+    accountProof.epoch.assertLessThanOrEqual(latestEpoch, 'Epoch not yet registered');
+    epochCommitment.stateHash.assertEquals(tachyonRoot, 'State root mismatch');
+
+    const accountLeaf = accountProof.hash();
+    const expectedNullifierProof = Poseidon.hash([
+      accountLeaf,
+      epochCommitment.nullifierRoot,
+    ]);
+    accountProof.nullifierProofHash.assertEquals(
+      expectedNullifierProof,
+      'Invalid nullifier proof'
+    );
+
+    this.tachyonVerificationCount.set(verificationCount.add(1));
+
+    this.emitEvent(
+      'tachyonAccountVerified',
+      new TachyonAccountVerifiedEvent({
+        holderBinding: accountProof.holderBinding,
+        policyId: accountProof.policyId,
+        epoch: accountProof.epoch,
+        thresholdMet: accountProof.thresholdMet,
+        verifiedAtSlot: currentSlot,
+      })
+    );
+  }
+
+  async createBridgeMessage(
     query: Attestation,
     leaf: AttestationLeaf,
     witness: AttestationWitness,
     stateRoot: Field,
     targetChain: Field
   ) {
-    // Get current state
     const nonce = this.messageNonce.getAndRequireEquals();
     const totalMessages = this.totalMessages.getAndRequireEquals();
-    const supportedChains = this.supportedChains.getAndRequireEquals();
-
-    // Get current slot
     const currentSlot = this.network.globalSlotSinceGenesis.getAndRequireEquals();
 
-    // Verify leaf matches query
     leaf.holderBinding.assertEquals(query.holderBinding);
     leaf.policyId.assertEquals(query.policyId);
     leaf.epoch.assertEquals(query.epoch);
 
-    // Verify Merkle proof
     const leafHash = leaf.hash();
     const calculatedRoot = witness.calculateRoot(leafHash);
     calculatedRoot.assertEquals(stateRoot, 'Invalid Merkle proof');
 
-    // Check validity
-    const isNotExpired = leaf.expiresAtSlot.greaterThan(UInt64.from(currentSlot));
+    const isNotExpired = leaf.expiresAtSlot.greaterThan(currentSlot);
     const isValid = leaf.isValid.and(isNotExpired);
 
-    // Compute Merkle proof hash for compact encoding
     const merkleProofHash = Poseidon.hash([leafHash, stateRoot]);
 
-    // Create bridge message
     const message = new BridgeMessage({
       messageType: MessageTypes.ATTESTATION_RESULT,
       targetChain,
@@ -227,17 +279,15 @@ export class ZkBridge extends SmartContract {
       policyId: query.policyId,
       epoch: query.epoch,
       hasValidAttestation: isValid,
-      minaSlot: UInt64.from(currentSlot),
+      minaSlot: currentSlot,
       stateRoot,
       merkleProofHash,
       nonce: nonce.add(1),
     });
 
-    // Update state
     this.messageNonce.set(nonce.add(1));
     this.totalMessages.set(totalMessages.add(1));
 
-    // Emit event
     this.emitEvent(
       'bridgeMessageSent',
       new BridgeMessageSentEvent({
@@ -251,114 +301,27 @@ export class ZkBridge extends SmartContract {
     );
   }
 
-  /**
-   * Create a batch bridge message for multiple attestations.
-   *
-   * This is more gas-efficient for relaying multiple attestations.
-   */
-  @method async createBatchBridgeMessage(
-    queries: Attestation[],
-    leaves: AttestationLeaf[],
-    witnesses: AttestationWitness[],
-    stateRoot: Field,
-    targetChain: Field
-  ) {
-    // Get current state
+  async emitStateRootUpdate(stateRoot: Field, targetChain: Field) {
     const nonce = this.messageNonce.getAndRequireEquals();
     const totalMessages = this.totalMessages.getAndRequireEquals();
     const currentSlot = this.network.globalSlotSinceGenesis.getAndRequireEquals();
 
-    // Verify all attestations and compute combined validity
-    let combinedHash = Field(0);
-    let allValid = Bool(true);
-
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      const leaf = leaves[i];
-      const witness = witnesses[i];
-
-      // Verify leaf matches query
-      leaf.holderBinding.assertEquals(query.holderBinding);
-      leaf.policyId.assertEquals(query.policyId);
-      leaf.epoch.assertEquals(query.epoch);
-
-      // Verify Merkle proof
-      const leafHash = leaf.hash();
-      const calculatedRoot = witness.calculateRoot(leafHash);
-      calculatedRoot.assertEquals(stateRoot, 'Invalid Merkle proof');
-
-      // Check validity
-      const isNotExpired = leaf.expiresAtSlot.greaterThan(UInt64.from(currentSlot));
-      const isValid = leaf.isValid.and(isNotExpired);
-      allValid = allValid.and(isValid);
-
-      // Combine hashes
-      combinedHash = Poseidon.hash([combinedHash, query.id()]);
-    }
-
-    // Create batch message
-    const message = new BridgeMessage({
-      messageType: MessageTypes.BATCH_ATTESTATION,
-      targetChain,
-      holderBinding: combinedHash, // Used as batch identifier
-      policyId: UInt64.zero, // Not applicable for batch
-      epoch: UInt64.from(currentSlot),
-      hasValidAttestation: allValid,
-      minaSlot: UInt64.from(currentSlot),
-      stateRoot,
-      merkleProofHash: combinedHash,
-      nonce: nonce.add(1),
-    });
-
-    // Update state
-    this.messageNonce.set(nonce.add(1));
-    this.totalMessages.set(totalMessages.add(1));
-
-    // Emit event
-    this.emitEvent(
-      'bridgeMessageSent',
-      new BridgeMessageSentEvent({
-        messageHash: message.hash(),
-        targetChain,
-        holderBinding: combinedHash,
-        policyId: UInt64.zero,
-        hasValidAttestation: allValid,
-        nonce: nonce.add(1),
-      })
-    );
-  }
-
-  /**
-   * Emit a state root update message.
-   *
-   * This allows target chains to track the current Mina state root
-   * for independent verification.
-   */
-  @method async emitStateRootUpdate(stateRoot: Field, targetChain: Field) {
-    // Get current state
-    const nonce = this.messageNonce.getAndRequireEquals();
-    const totalMessages = this.totalMessages.getAndRequireEquals();
-    const currentSlot = this.network.globalSlotSinceGenesis.getAndRequireEquals();
-
-    // Create state root update message
     const message = new BridgeMessage({
       messageType: MessageTypes.STATE_ROOT_UPDATE,
       targetChain,
       holderBinding: Field(0),
       policyId: UInt64.zero,
-      epoch: UInt64.from(currentSlot),
+      epoch: currentSlot,
       hasValidAttestation: Bool(true),
-      minaSlot: UInt64.from(currentSlot),
+      minaSlot: currentSlot,
       stateRoot,
       merkleProofHash: Field(0),
       nonce: nonce.add(1),
     });
 
-    // Update state
     this.messageNonce.set(nonce.add(1));
     this.totalMessages.set(totalMessages.add(1));
 
-    // Emit event
     this.emitEvent(
       'bridgeMessageSent',
       new BridgeMessageSentEvent({
@@ -372,10 +335,7 @@ export class ZkBridge extends SmartContract {
     );
   }
 
-  /**
-   * Update supported chains (admin only).
-   */
-  @method async updateSupportedChains(newChains: Field) {
+  async updateSupportedChains(newChains: Field) {
     const adminHash = this.adminPubkeyHash.getAndRequireEquals();
     const sender = this.sender.getAndRequireSignature();
     const senderHash = Poseidon.hash(sender.toFields());
@@ -385,3 +345,12 @@ export class ZkBridge extends SmartContract {
   }
 }
 
+// Declare methods with their argument types
+declareMethods(ZkBridge, {
+  setRegistry: [PublicKey],
+  registerTachyonEpoch: [TachyonEpochCommitment, Field],
+  verifyTachyonAccount: [TachyonAccountProof, TachyonEpochCommitment],
+  createBridgeMessage: [Attestation, AttestationLeaf, AttestationWitness, Field, Field],
+  emitStateRootUpdate: [Field, Field],
+  updateSupportedChains: [Field],
+});

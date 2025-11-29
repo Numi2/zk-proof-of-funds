@@ -507,24 +507,143 @@ pub fn create_wrapper_proof(
 }
 
 /// Create a placeholder proof for development/testing.
+/// 
+/// The proof format matches what the Solidity MinaKimchiVerifier expects:
+/// [0:4]     - Magic bytes "MINA"
+/// [4:8]     - Version (uint32, big-endian)
+/// [8:72]    - proof.A (G1 point: x || y, 64 bytes)
+/// [72:200]  - proof.B (G2 point: x0 || x1 || y0 || y1, 128 bytes)
+/// [200:264] - proof.C (G1 point: x || y, 64 bytes)
+/// [264:296] - mina_digest public input (32 bytes)
 fn create_wrapper_placeholder_proof(
     input: &MinaProofOfStateWrapperInput,
 ) -> Result<Vec<u8>, KimchiWrapperError> {
-    let mut proof = Vec::new();
+    let mut proof = Vec::with_capacity(296);
 
-    // Magic bytes
-    proof.extend_from_slice(b"MINA_POS_WRAPPER_V1");
+    // Magic bytes (4 bytes): "MINA"
+    proof.extend_from_slice(b"MINA");
 
-    // Include the computed digest
+    // Version (4 bytes, big-endian): 1
+    proof.extend_from_slice(&1u32.to_be_bytes());
+
+    // Placeholder proof.A (G1 point, 64 bytes)
+    // In production, this would be the actual Groth16 proof A point
+    // For now, use deterministic values based on input hash for testing
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"proof_a");
+    hasher.update(&input.public_inputs.to_bytes());
+    let a_seed = hasher.finalize();
+    proof.extend_from_slice(a_seed.as_bytes()); // x (32 bytes)
+    
+    hasher = blake3::Hasher::new();
+    hasher.update(b"proof_a_y");
+    hasher.update(&input.public_inputs.to_bytes());
+    let a_y_seed = hasher.finalize();
+    proof.extend_from_slice(a_y_seed.as_bytes()); // y (32 bytes)
+
+    // Placeholder proof.B (G2 point, 128 bytes)
+    for suffix in [b"proof_b_x0", b"proof_b_x1", b"proof_b_y0", b"proof_b_y1"] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(suffix);
+        hasher.update(&input.public_inputs.to_bytes());
+        proof.extend_from_slice(hasher.finalize().as_bytes());
+    }
+
+    // Placeholder proof.C (G1 point, 64 bytes)
+    for suffix in [b"proof_c_x", b"proof_c_y"] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(suffix);
+        hasher.update(&input.public_inputs.to_bytes());
+        proof.extend_from_slice(hasher.finalize().as_bytes());
+    }
+
+    // mina_digest public input (32 bytes)
     let digest = input.expected_digest();
     proof.extend_from_slice(&digest);
 
-    // Hash of public inputs for verification
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(&input.public_inputs.to_bytes());
-    proof.extend_from_slice(hasher.finalize().as_bytes());
+    assert_eq!(proof.len(), 296, "Proof must be exactly 296 bytes");
 
     Ok(proof)
+}
+
+/// Proof data structure for the wrapper circuit.
+/// This matches the format expected by the Solidity verifier.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MinaWrapperProof {
+    /// Magic bytes identifying this as a Mina wrapper proof
+    pub magic: [u8; 4],
+    /// Proof format version
+    pub version: u32,
+    /// Groth16 proof point A (G1)
+    pub proof_a: ([u8; 32], [u8; 32]),
+    /// Groth16 proof point B (G2)
+    pub proof_b: ([u8; 32], [u8; 32], [u8; 32], [u8; 32]),
+    /// Groth16 proof point C (G1)
+    pub proof_c: ([u8; 32], [u8; 32]),
+    /// Public input: mina_digest
+    pub mina_digest: [u8; 32],
+}
+
+impl MinaWrapperProof {
+    /// Serialize to bytes in the format expected by Solidity
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(296);
+        bytes.extend_from_slice(&self.magic);
+        bytes.extend_from_slice(&self.version.to_be_bytes());
+        bytes.extend_from_slice(&self.proof_a.0);
+        bytes.extend_from_slice(&self.proof_a.1);
+        bytes.extend_from_slice(&self.proof_b.0);
+        bytes.extend_from_slice(&self.proof_b.1);
+        bytes.extend_from_slice(&self.proof_b.2);
+        bytes.extend_from_slice(&self.proof_b.3);
+        bytes.extend_from_slice(&self.proof_c.0);
+        bytes.extend_from_slice(&self.proof_c.1);
+        bytes.extend_from_slice(&self.mina_digest);
+        bytes
+    }
+
+    /// Parse from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, KimchiWrapperError> {
+        if bytes.len() < 296 {
+            return Err(KimchiWrapperError::InvalidInput(
+                format!("Proof too short: {} bytes, expected 296", bytes.len())
+            ));
+        }
+
+        let magic: [u8; 4] = bytes[0..4].try_into().unwrap();
+        if &magic != b"MINA" {
+            return Err(KimchiWrapperError::InvalidInput(
+                "Invalid proof magic bytes".into()
+            ));
+        }
+
+        let version = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
+        if version != 1 {
+            return Err(KimchiWrapperError::InvalidInput(
+                format!("Unsupported proof version: {}", version)
+            ));
+        }
+
+        Ok(Self {
+            magic,
+            version,
+            proof_a: (
+                bytes[8..40].try_into().unwrap(),
+                bytes[40..72].try_into().unwrap(),
+            ),
+            proof_b: (
+                bytes[72..104].try_into().unwrap(),
+                bytes[104..136].try_into().unwrap(),
+                bytes[136..168].try_into().unwrap(),
+                bytes[168..200].try_into().unwrap(),
+            ),
+            proof_c: (
+                bytes[200..232].try_into().unwrap(),
+                bytes[232..264].try_into().unwrap(),
+            ),
+            mina_digest: bytes[264..296].try_into().unwrap(),
+        })
+    }
 }
 
 /// Convert public inputs to instance columns.
@@ -571,10 +690,33 @@ mod tests {
     #[test]
     fn test_wrapper_placeholder_proof() {
         let public_inputs = sample_inputs();
+        let input = MinaProofOfStateWrapperInput::mock(public_inputs.clone());
+
+        let proof_bytes = create_wrapper_proof(&input).unwrap();
+        
+        // Check magic bytes
+        assert!(proof_bytes.starts_with(b"MINA"));
+        
+        // Check length
+        assert_eq!(proof_bytes.len(), 296);
+        
+        // Parse proof
+        let proof = MinaWrapperProof::from_bytes(&proof_bytes).unwrap();
+        assert_eq!(proof.version, 1);
+        assert_eq!(proof.mina_digest, public_inputs.compute_digest());
+    }
+
+    #[test]
+    fn test_wrapper_proof_format() {
+        let public_inputs = sample_inputs();
         let input = MinaProofOfStateWrapperInput::mock(public_inputs);
 
-        let proof = create_wrapper_proof(&input).unwrap();
-        assert!(proof.starts_with(b"MINA_POS_WRAPPER_V1"));
+        let proof_bytes = create_wrapper_proof(&input).unwrap();
+        let proof = MinaWrapperProof::from_bytes(&proof_bytes).unwrap();
+        
+        // Verify round-trip
+        let serialized = proof.to_bytes();
+        assert_eq!(serialized, proof_bytes);
     }
 
     #[test]

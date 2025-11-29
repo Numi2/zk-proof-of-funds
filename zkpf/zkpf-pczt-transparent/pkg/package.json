@@ -1,0 +1,53 @@
+{
+  "name": "@zkpf/pczt-transparent",
+  "version": "0.1.0",
+  "description": "PCZT library for transparent-only wallets sending to shielded (Orchard) recipients - ZIP 374 compliant",
+  "main": "zkpf_pczt_transparent.js",
+  "types": "zkpf_pczt_transparent.d.ts",
+  "module": "zkpf_pczt_transparent.js",
+  "sideEffects": false,
+  "files": [
+    "zkpf_pczt_transparent.js",
+    "zkpf_pczt_transparent.d.ts",
+    "zkpf_pczt_transparent_bg.wasm",
+    "zkpf_pczt_transparent_bg.wasm.d.ts",
+    "snippets/**/*"
+  ],
+  "keywords": [
+    "zcash",
+    "pczt",
+    "privacy",
+    "orchard",
+    "shielded",
+    "transparent",
+    "zip-374",
+    "zip-321",
+    "hardware-wallet",
+    "ledger",
+    "wasm",
+    "webassembly"
+  ],
+  "author": "ZKPF Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tachyon-zcash/zk-proof-of-funds"
+  },
+  "homepage": "https://github.com/tachyon-zcash/zk-proof-of-funds/tree/main/zkpf/zkpf-pczt-transparent",
+  "bugs": {
+    "url": "https://github.com/tachyon-zcash/zk-proof-of-funds/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "peerDependencies": {},
+  "devDependencies": {},
+  "exports": {
+    ".": {
+      "types": "./zkpf_pczt_transparent.d.ts",
+      "import": "./zkpf_pczt_transparent.js",
+      "require": "./zkpf_pczt_transparent.js"
+    }
+  }
+}
+

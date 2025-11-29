@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {IZkpfMinaBridge} from "./IZkpfMinaBridge.sol";
+import {MinaKimchiVerifier} from "./MinaKimchiVerifier.sol";
+import {BN254Pairing} from "./BN254Pairing.sol";
 
 /**
  * @title ZkpfMinaBridge
@@ -59,6 +61,9 @@ contract ZkpfMinaBridge is IZkpfMinaBridge {
     /// @notice Whether trustless mode is enabled (requires Kimchi verification)
     bool public trustlessMode;
 
+    /// @notice Kimchi proof verifier contract
+    MinaKimchiVerifier public kimchiVerifier;
+
     // ============================================================
     // MODIFIERS
     // ============================================================
@@ -79,9 +84,12 @@ contract ZkpfMinaBridge is IZkpfMinaBridge {
     // CONSTRUCTOR
     // ============================================================
 
-    constructor(address _admin) {
+    constructor(address _admin, address _kimchiVerifier) {
         admin = _admin;
         authorizedRelayers[_admin] = true;
+        if (_kimchiVerifier != address(0)) {
+            kimchiVerifier = MinaKimchiVerifier(_kimchiVerifier);
+        }
     }
 
     // ============================================================
@@ -114,6 +122,15 @@ contract ZkpfMinaBridge is IZkpfMinaBridge {
      */
     function setTrustlessMode(bool enabled) external onlyAdmin {
         trustlessMode = enabled;
+    }
+
+    /**
+     * @notice Set the Kimchi proof verifier contract
+     * @param _verifier Address of the MinaKimchiVerifier contract
+     */
+    function setKimchiVerifier(address _verifier) external onlyAdmin {
+        require(_verifier != address(0), "Invalid verifier address");
+        kimchiVerifier = MinaKimchiVerifier(_verifier);
     }
 
     /**
@@ -345,21 +362,53 @@ contract ZkpfMinaBridge is IZkpfMinaBridge {
     }
 
     /**
-     * @notice Verify Kimchi proof (placeholder for trustless verification)
-     * @dev This is where Kimchi/Pickles proof verification would go.
-     *      Options:
-     *      1. Implement Pasta curve operations in Solidity (expensive)
-     *      2. Use a recursive wrapper that converts to BN254
-     *      3. Use zkVM like SP1 to verify off-chain and post commitment
+     * @notice Verify Kimchi proof using the BN254 wrapper verifier
+     * @dev Mina uses Kimchi proofs over Pasta curves, which are not directly
+     *      verifiable on EVM. The solution is a BN254 wrapper circuit that:
+     *      1. Takes the Kimchi proof as witness
+     *      2. Verifies it using foreign-field Pasta arithmetic
+     *      3. Produces a Groth16 proof over BN254 (EVM-compatible)
+     *
+     *      The wrapped proof has a single public input: mina_digest
+     *      where mina_digest = H(bridge_tip || state_hashes || ledger_hashes)
+     *
+     * @param stateRoot The Mina state root being verified
+     * @param proof The BN254-wrapped Groth16 proof bytes
+     * @return True if the proof is valid
      */
     function _verifyKimchiProof(
-        bytes32 /* stateRoot */,
-        bytes calldata /* proof */
-    ) internal pure returns (bool) {
-        // TODO: Implement Kimchi proof verification
-        // For now, this is a placeholder that always returns true
-        // Production deployment should implement actual verification
-        return true;
+        bytes32 stateRoot,
+        bytes calldata proof
+    ) internal view returns (bool) {
+        // If no verifier is configured, reject the proof
+        // This is a security measure to prevent unverified state updates
+        if (address(kimchiVerifier) == address(0)) {
+            revert InvalidStateProof();
+        }
+
+        // Verify the verifier contract has an initialized verification key
+        if (!kimchiVerifier.isVerificationKeyInitialized()) {
+            revert InvalidStateProof();
+        }
+
+        // Delegate to the Kimchi verifier contract
+        // The verifier will:
+        // 1. Parse the proof bytes into Groth16 components (A, B, C, mina_digest)
+        // 2. Compute the expected mina_digest from the state root
+        // 3. Verify the Groth16 proof using BN254 pairing checks
+        try kimchiVerifier.verifyMinaProof(stateRoot, proof) returns (bool valid) {
+            return valid;
+        } catch {
+            // Proof verification failed (malformed proof, invalid points, etc.)
+            return false;
+        }
+    }
+
+    /**
+     * @notice Get the address of the Kimchi verifier contract
+     */
+    function getKimchiVerifier() external view returns (address) {
+        return address(kimchiVerifier);
     }
 }
 

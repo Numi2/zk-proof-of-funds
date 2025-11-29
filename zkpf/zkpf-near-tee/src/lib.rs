@@ -49,17 +49,41 @@
 
 pub mod agent;
 pub mod attestation;
+pub mod chain_abstraction;
 pub mod crypto;
 pub mod error;
 pub mod inference;
+pub mod pcd_keeper;
 pub mod rpc;
+pub mod shade_agent;
 pub mod types;
 
 pub use agent::{NearAgent, AgentConfig, AgentCapability};
 pub use attestation::{TeeAttestation, TeeProvider, verify_attestation};
+pub use chain_abstraction::{
+    ChainAbstractionService, ChainAbstractionConfig, ChainAbstractionError,
+    UnifiedAccount, ChainAddress,
+    CrossChainIntent, IntentResolution, ResolvedTransaction,
+    GasToken, GasAbstractionConfig, GasPaymentRequest, GasPaymentResult,
+    MultichainSignatureRequest, MultichainSignatureResult, SignatureScheme,
+};
 pub use crypto::{TeeKeyManager, EncryptedPayload, SignedMessage};
 pub use error::NearTeeError;
 pub use inference::{AiInference, InferenceRequest, InferenceResult, PrivacyFilter};
+pub use shade_agent::{
+    ShadeAgentCoordinator, ShadeAgentConfig, ShadeAgentError,
+    ChainType, ChainKey, ChainKeyRegistry,
+    TachyonIntent, IntentResult,
+    GasConfig, GasPaymentToken, GasEstimate,
+};
+pub use pcd_keeper::{
+    PcdKeeper, PcdKeeperConfig, PcdKeeperError,
+    KeeperHandle, KeeperStatus, KeeperEvent,
+    EpochStrategy, EpochInfo,
+    PcdState, BlockDelta, NoteIdentifier, NullifierIdentifier,
+    Tachystamp, TachystampProof, PendingTachystamp,
+    SyncResult, ScheduledAction, ScheduledActionType,
+};
 pub use types::*;
 
 /// Version of the NEAR TEE agent protocol.

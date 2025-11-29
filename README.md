@@ -46,6 +46,50 @@ We integrated a **NEAR TEE-backed private AI agent** that runs wallet intelligen
 
 All sensitive operations happen inside the TEE enclave. The agent proves it's running in a genuine TEE via attestation, and outputs are filtered to prevent data leakage.
 
+### NEAR Intents + SwapKit: Cross-Chain ZEC Rail
+
+We implemented the **default cross-chain ZEC rail** using NEAR Intents and SwapKit. This is the "TachyonWallet Coordinator v0" — standardized cross-chain swaps at the application layer without requiring Zcash consensus changes.
+
+**What's built:**
+
+- **Swap to Shielded ZEC** — Any chain (ETH, BTC, SOL, etc.) → transparent ZEC → auto-shield to Orchard
+- **Spend Shielded ZEC** — Orchard → unshield to fresh t-addr → swap to destination chain
+- **Quote Aggregation** — Best routes from SwapKit (THORChain/Maya) and NEAR Intents (Defuse resolver)
+
+**Privacy features (Tachyon patterns at app layer):**
+
+- **Fresh addresses** — New t-addr and Orchard address for every swap. Never reuse.
+- **Auto-shield** — Incoming ZEC automatically shields to Orchard with timing randomization.
+- **Network separation** — Separate endpoints for swap queries vs. Zcash RPC to prevent correlation.
+- **Local metadata** — Swap quotes, routes, and tracking data never published on-chain.
+
+**How it works:**
+
+For inbound swaps:
+1. User selects source asset (e.g., ETH on Arbitrum)
+2. SwapKit/NEAR Intents returns quotes with deposit addresses
+3. User sends from their source wallet
+4. ZEC arrives at fresh t-addr
+5. Auto-shield to fresh Orchard address with random delay
+
+For outbound swaps:
+1. User selects destination asset (e.g., USDC on Base)
+2. Wallet generates fresh t-addr for unshielding
+3. ZEC unshields from Orchard to t-addr
+4. Transparent ZEC sent to swap provider deposit address
+5. Destination asset delivered to user's wallet
+
+This gives non-custodial on-ramp/off-ramp without CEXs, built entirely on Orchard + existing infra.
+
+**Production Configuration:**
+
+Set these environment variables for production deployment:
+- `VITE_SWAPKIT_API_KEY` — SwapKit API key (get one at swapkit.dev)
+- `VITE_NEAR_NETWORK` — "mainnet" or "testnet"
+- `VITE_NEAR_RPC_URL` — Custom NEAR RPC (optional)
+
+The swap service auto-detects the API key and uses production config when available. See `zkpf/web/src/services/swap/config.ts` for all options.
+
 ### MetaMask Snap for Proof-of-Funds
 
 We built a MetaMask Snap that lets anyone prove they have funds without revealing how much or where. The whole flow happens inside MetaMask—no external tools, no command line, no exposing your keys to random websites.
@@ -93,6 +137,66 @@ The web page constructs the transaction. The MetaMask Snap signs it (your seed p
 The webwallet has its own companion snap (`webwallet/snap/`) that holds your Zcash seed phrase securely in MetaMask's encrypted storage. When you want to spend, the snap signs the PCZT and returns it. The seed never leaves MetaMask.
 
 **Credits:**  WebZjs builds on [ChainSafe's fork of librustzcash](https://github.com/ChainSafe/librustzcash), which added WASM compatibility to the official Zcash libraries. Standing on the shoulders of giants.
+
+### WalletSend: Full Shielded Transaction Flow
+
+We implemented **complete shielded transaction support** in the browser wallet. Users can now send ZEC from Orchard/Sapling pools directly from the web interface—no native wallet required.
+
+**The Transaction Flow:**
+
+```
+Input → Confirm → Sign → Result
+         ↓
+    propose_transfer (create proposal)
+         ↓
+    create_proposed_transactions (sign + prove ZK proofs)
+         ↓
+    send_authorized_transactions (broadcast to network)
+```
+
+**Why this is hard:** Zcash shielded transactions require zero-knowledge proofs. Each spend generates a SNARK proof that the note exists in the commitment tree and the nullifier is correctly derived—without revealing which note is being spent. This is computationally expensive (30-60 seconds) and requires the full spending key.
+
+**How we handle signing:**
+
+The seed phrase never touches persistent storage. Users enter their 24-word mnemonic only when signing, and it's cleared immediately after. The flow:
+
+1. **Propose** — Wallet calls `propose_transfer(account_id, address, amount)` to create a transaction proposal. This selects notes to spend and computes change outputs.
+
+2. **Sign & Prove** — User enters seed phrase. Wallet calls `create_proposed_transactions(proposal, seed_phrase, 0)` which derives the spending key, signs inputs, and generates ZK proofs in a WebWorker.
+
+3. **Broadcast** — Wallet calls `send_authorized_transactions(txids)` to submit the raw transaction to lightwalletd.
+
+**Progress Feedback:**
+
+The UI shows real-time status during the multi-phase operation:
+- "Creating transaction proposal..." (fast, ~1s)
+- "Signing & generating proofs (this may take 30-60s)..." (the expensive part)
+- "Broadcasting to network..." (fast, ~2s)
+
+**Mina Rail Integration:**
+
+After successful broadcast, the transaction is automatically submitted to the **Mina Recursive Rail** for proof aggregation:
+
+```typescript
+// Non-blocking submission to Mina Rail
+submitToMinaRail(nullifier, policyId, threshold, height, txid)
+  .then((response) => {
+    console.log('Tachystamp submitted:', response.tachystampId);
+  });
+```
+
+This creates a "tachystamp"—a timestamped proof commitment that can be aggregated with other proofs across chains. The Mina zkApp batches these into recursive proofs, enabling cross-chain attestations without revealing individual transaction details.
+
+The UI displays:
+- Tachystamp ID and queue position
+- Current Mina epoch and shard assignment
+- Aggregation status (pending → included → finalized)
+
+**Security Properties:**
+- Seed phrase entered per-transaction, never stored
+- Seed cleared from memory immediately after signing
+- All proving happens in isolated WebWorker
+- Tachyon metadata (PCD state) captured for verifiable transaction history
 
 ### Browser Compatibility & WASM Loader
 

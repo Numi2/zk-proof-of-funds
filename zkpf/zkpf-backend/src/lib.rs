@@ -15,6 +15,9 @@ use axum::{
     Json, Router,
 };
 use once_cell::sync::Lazy;
+
+#[cfg(feature = "mina-rail")]
+mod mina_rail;
 use serde_json::Value as JsonValue;
 use sled::Db;
 use tokio::{fs::File, net::TcpListener};
@@ -483,7 +486,22 @@ pub fn app_router(state: AppState) -> Router {
         router
     };
 
-    router.with_state(state)
+    let router = router.with_state(state);
+
+    // Merge Mina Rail routes if enabled (after adding state since it has its own state)
+    #[cfg(feature = "mina-rail")]
+    let router = {
+        if let Some(mina_rail_router) = mina_rail::mina_rail_router() {
+            eprintln!("zkpf-backend: Mina Rail routes enabled at /mina-rail/*");
+            Router::new()
+                .merge(router)
+                .merge(mina_rail_router)
+        } else {
+            router
+        }
+    };
+
+    router
 }
 
 async fn get_artifact(

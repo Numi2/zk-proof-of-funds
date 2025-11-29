@@ -1,0 +1,45 @@
+/**
+ * Tachyon State Panel Button Styles
+ * Hover states and interactive styles for buttons
+ */
+
+.tachyon-action-button:hover:not(:disabled) {
+  background-color: #1e40af !important;
+  border-color: #60a5fa !important;
+}
+
+.tachyon-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tachyon-secondary-button:hover:not(:disabled) {
+  background-color: #1e40af !important;
+  border-color: #60a5fa !important;
+}
+
+.tachyon-secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tachyon-danger-button:hover:not(:disabled) {
+  background-color: #991b1b !important;
+  border-color: #ef4444 !important;
+}
+
+.tachyon-danger-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tachyon-primary-button:hover:not(:disabled) {
+  background-color: #2563eb !important;
+  border-color: #60a5fa !important;
+}
+
+.tachyon-primary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

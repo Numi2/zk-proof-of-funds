@@ -118,6 +118,116 @@ pub struct MinaProofOfStateProof {
     pub consensus_witness: Option<ConsensusWitness>,
 }
 
+impl MinaProofOfStateProof {
+    /// Deserialize a MinaProofOfStateProof from bytes.
+    ///
+    /// The format is:
+    /// - First 4 bytes: little-endian u32 length of candidate_tip_proof
+    /// - Next N bytes: candidate_tip_proof
+    /// - Remaining bytes: JSON-encoded metadata (states, witness)
+    ///
+    /// If the proof is in pure JSON format, this also supports direct JSON deserialization.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, crate::error::KimchiWrapperError> {
+        // Try JSON deserialization first (common case for API responses)
+        if bytes.starts_with(b"{") {
+            return serde_json::from_slice(bytes)
+                .map_err(|e| crate::error::KimchiWrapperError::InvalidInput(
+                    format!("failed to parse JSON proof: {}", e)
+                ));
+        }
+        
+        // Try MessagePack format
+        if bytes.len() < 4 {
+            return Err(crate::error::KimchiWrapperError::InvalidInput(
+                "proof bytes too short".into()
+            ));
+        }
+        
+        // Read proof length
+        let proof_len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        
+        if bytes.len() < 4 + proof_len {
+            return Err(crate::error::KimchiWrapperError::InvalidInput(
+                format!("proof bytes too short: expected {} + {} bytes, got {}", 
+                    4, proof_len, bytes.len())
+            ));
+        }
+        
+        let candidate_tip_proof = bytes[4..4 + proof_len].to_vec();
+        
+        // Parse remaining metadata as JSON
+        let metadata_bytes = &bytes[4 + proof_len..];
+        if metadata_bytes.is_empty() {
+            // No metadata, create placeholder states
+            return Ok(Self {
+                candidate_tip_proof,
+                candidate_chain_states: vec![MinaStateBody::placeholder(); CANDIDATE_CHAIN_LENGTH],
+                bridge_tip_state: MinaStateBody::placeholder(),
+                consensus_witness: None,
+            });
+        }
+        
+        // Parse metadata
+        #[derive(Deserialize)]
+        struct Metadata {
+            candidate_chain_states: Vec<MinaStateBody>,
+            bridge_tip_state: MinaStateBody,
+            #[serde(default)]
+            consensus_witness: Option<ConsensusWitness>,
+        }
+        
+        let metadata: Metadata = serde_json::from_slice(metadata_bytes)
+            .map_err(|e| crate::error::KimchiWrapperError::InvalidInput(
+                format!("failed to parse proof metadata: {}", e)
+            ))?;
+        
+        Ok(Self {
+            candidate_tip_proof,
+            candidate_chain_states: metadata.candidate_chain_states,
+            bridge_tip_state: metadata.bridge_tip_state,
+            consensus_witness: metadata.consensus_witness,
+        })
+    }
+    
+    /// Serialize the proof to bytes.
+    ///
+    /// Uses the same format as `from_bytes`:
+    /// - First 4 bytes: little-endian u32 length of candidate_tip_proof
+    /// - Next N bytes: candidate_tip_proof
+    /// - Remaining bytes: JSON-encoded metadata
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        
+        // Write proof length
+        let proof_len = self.candidate_tip_proof.len() as u32;
+        bytes.extend_from_slice(&proof_len.to_le_bytes());
+        
+        // Write proof
+        bytes.extend_from_slice(&self.candidate_tip_proof);
+        
+        // Write metadata as JSON
+        #[derive(Serialize)]
+        struct Metadata<'a> {
+            candidate_chain_states: &'a [MinaStateBody],
+            bridge_tip_state: &'a MinaStateBody,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            consensus_witness: &'a Option<ConsensusWitness>,
+        }
+        
+        let metadata = Metadata {
+            candidate_chain_states: &self.candidate_chain_states,
+            bridge_tip_state: &self.bridge_tip_state,
+            consensus_witness: &self.consensus_witness,
+        };
+        
+        if let Ok(json) = serde_json::to_vec(&metadata) {
+            bytes.extend_from_slice(&json);
+        }
+        
+        bytes
+    }
+}
+
 /// Mina protocol state body.
 ///
 /// Contains the essential fields of a Mina protocol state needed for
@@ -160,6 +270,28 @@ pub struct MinaStateBody {
     /// Sub window densities for long-range fork checks.
     #[serde(default)]
     pub sub_window_densities: Vec<u32>,
+}
+
+impl MinaStateBody {
+    /// Create a placeholder state body with default/zero values.
+    ///
+    /// Used when parsing proofs without metadata.
+    pub fn placeholder() -> Self {
+        Self {
+            state_hash: [0u8; 32],
+            ledger_hash: [0u8; 32],
+            blockchain_length: 0,
+            global_slot: 0,
+            timestamp: 0,
+            previous_state_hash: [0u8; 32],
+            snarked_ledger_hash: [0u8; 32],
+            genesis_state_hash: [0u8; 32],
+            staking_epoch_ledger_hash: [0u8; 32],
+            next_epoch_ledger_hash: [0u8; 32],
+            min_window_density: 0,
+            sub_window_densities: Vec::new(),
+        }
+    }
 }
 
 /// Auxiliary witness data for consensus verification.

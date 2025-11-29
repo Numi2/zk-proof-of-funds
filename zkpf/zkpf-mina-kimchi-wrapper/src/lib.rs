@@ -88,6 +88,7 @@ use serde::{Deserialize, Serialize};
 
 pub use circuit::{
     MinaProofOfStateWrapperCircuit, MinaProofOfStateWrapperInput,
+    MinaWrapperProof,
     mina_wrapper_default_params, mina_wrapper_keygen, create_wrapper_proof,
     WRAPPER_DEFAULT_K, WRAPPER_INSTANCE_COLUMNS,
 };

@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { WebZjsProvider } from './context/WebzjsContext';
 import { MetaMaskProvider } from './hooks/MetaMaskContext';
+import { AuthProvider } from './context/AuthContext';
+import { LoginModal } from './components/auth';
 import App from './App.tsx';
 
 const queryClient = new QueryClient();
@@ -22,11 +24,14 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <MetaMaskProvider>
-          <WebZjsProvider>
-            <App />
-          </WebZjsProvider>
-        </MetaMaskProvider>
+        <AuthProvider>
+          <MetaMaskProvider>
+            <WebZjsProvider>
+              <App />
+              <LoginModal />
+            </WebZjsProvider>
+          </MetaMaskProvider>
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

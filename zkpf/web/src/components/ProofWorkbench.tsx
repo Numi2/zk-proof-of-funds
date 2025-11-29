@@ -497,7 +497,7 @@ export function ProofWorkbench({
       if (hasMatchingCustomPolicy && customPolicy) {
         try {
           await client.composePolicy({
-            category: customPolicy.category ?? 'CUSTOM',
+            category: normalizePolicyCategory(customPolicy),
             rail_id: customPolicy.rail_id ?? 'CUSTODIAL_ATTESTATION',
             label: customPolicy.label ?? `Custom policy ${customPolicy.policy_id}`,
             options: customPolicy.options,

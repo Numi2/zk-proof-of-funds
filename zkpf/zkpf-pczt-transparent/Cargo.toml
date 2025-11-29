@@ -1,0 +1,54 @@
+[package]
+name = "zkpf-pczt-transparent"
+version = "0.1.0"
+edition = "2021"
+description = "PCZT library for transparent-only wallets sending to shielded (Orchard) recipients"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["wasm"]
+wasm = ["wasm-bindgen", "console_error_panic_hook", "js-sys"]
+
+[dependencies]
+# PCZT and Zcash dependencies
+pczt = { git = "https://github.com/ChainSafe/librustzcash", rev = "46e8ee0937b61fdbb417df7c663f62e6945d8090", default-features = false, features = [
+    "orchard",
+    "transparent",
+    "signer",
+    "prover",
+    "tx-extractor",
+] }
+orchard = { version = "0.10", default-features = false }
+zcash_primitives = "0.20"
+zcash_protocol = "0.4"
+zcash_transparent = "0.2"
+zcash_keys = "0.5"
+
+# ZIP 321 for payment requests
+zip321 = "0.2"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+postcard = { version = "1.0", features = ["alloc"] }
+
+# Error handling
+thiserror = "1.0"
+
+# WASM bindings (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+# Crypto primitives
+secp256k1 = { version = "0.29", features = ["global-context"] }
+ripemd = "0.1"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+

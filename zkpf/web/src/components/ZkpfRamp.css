@@ -1144,6 +1144,81 @@
   font-size: 1rem;
 }
 
+/* Demo Mode Notice */
+.demo-mode-notice {
+  margin-bottom: 1.5rem;
+}
+
+.demo-banner {
+  display: flex;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.05));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: var(--ramp-radius-sm);
+  color: var(--ramp-text);
+}
+
+.demo-icon {
+  font-size: 1.75rem;
+  flex-shrink: 0;
+}
+
+.demo-content {
+  flex: 1;
+}
+
+.demo-content strong {
+  display: block;
+  font-size: 1rem;
+  color: var(--ramp-warning);
+  margin-bottom: 0.5rem;
+}
+
+.demo-content p {
+  font-size: 0.85rem;
+  color: var(--ramp-text-muted);
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.demo-env-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+}
+
+.demo-env-list li {
+  padding: 0.35rem 0;
+  color: var(--ramp-text-muted);
+}
+
+.demo-env-list code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  color: var(--ramp-primary);
+}
+
+.demo-hint {
+  font-size: 0.8rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(251, 191, 36, 0.3);
+}
+
+.demo-hint a {
+  color: var(--ramp-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.demo-hint a:hover {
+  text-decoration: underline;
+}
+
 /* Responsive adjustments for Wallet Buy */
 @media (max-width: 520px) {
   .wallet-buy-page {

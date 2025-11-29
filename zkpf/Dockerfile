@@ -4,8 +4,8 @@ WORKDIR /app
 # Copy the full workspace so we can build zkpf-backend with its dependencies.
 COPY . .
 
-# Build only the backend binary in release mode.
-RUN cargo build --release -p zkpf-backend
+# Build the backend binary with mina-rail feature in release mode.
+RUN cargo build --release -p zkpf-backend --features mina-rail
 
 # Build the MetaMask Snap
 FROM node:24-slim as snap-builder

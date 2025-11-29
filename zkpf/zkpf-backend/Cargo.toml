@@ -3,6 +3,10 @@ name = "zkpf-backend"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["mina-rail"]
+mina-rail = ["dep:zkpf-mina-rail"]
+
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
@@ -24,6 +28,7 @@ halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-featu
 halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
 zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
 zkpf-wallet-state = { path = "../zkpf-wallet-state" }
+zkpf-mina-rail = { path = "../zkpf-mina-rail", default-features = false, features = ["server"], optional = true }
 rand = "0.8"
 
 [dev-dependencies]

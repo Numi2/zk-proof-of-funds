@@ -3272,102 +3272,23 @@ dd {
   }
 }
 
-/* Wallet Entry Button */
-.wallet-entry {
-  position: absolute;
-  top: 1rem;
-  left: 1.5rem;
-  z-index: 100;
+/* Top Bar Navigation */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  margin-bottom: 1rem;
 }
 
-.wallet-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.35rem;
-  font-size: 0.6rem;
-  font-weight: 600;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(129, 140, 248, 0.15));
-  color: #e0f2fe;
+.top-nav-link {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #64748b;
   text-decoration: none;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.5);
 }
 
-.wallet-button:hover {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(129, 140, 248, 0.25));
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 3px 10px rgba(56, 189, 248, 0.3);
-  transform: translateY(-1px);
-}
-
-/* ZKPassport Entry Button */
-.zkpassport-entry {
-  position: absolute;
-  top: 1rem;
-  right: 1.5rem;
-  z-index: 100;
-}
-
-.zkpassport-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.35rem;
-  font-size: 0.6rem;
-  font-weight: 600;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(129, 140, 248, 0.15));
-  color: #e0f2fe;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.5);
-}
-
-.zkpassport-button:hover {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(129, 140, 248, 0.25));
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 3px 10px rgba(56, 189, 248, 0.3);
-  transform: translateY(-1px);
-}
-
-.zkpassport-icon {
-  font-size: 0.65rem;
-}
-
-/* P2P Marketplace Entry Button */
-.p2p-entry {
-  position: absolute;
-  top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-}
-
-.p2p-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.35rem;
-  font-size: 0.6rem;
-  font-weight: 600;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(129, 140, 248, 0.15));
-  color: #e0f2fe;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.5);
-}
-
-.p2p-button:hover {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(129, 140, 248, 0.25));
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 3px 10px rgba(56, 189, 248, 0.3);
-  transform: translateY(-1px);
+.top-nav-link:hover {
+  color: #94a3b8;
 }
 
 .zkpassport-app .hero {
@@ -7075,6 +6996,36 @@ dd {
   /* Colors removed to match regular nav links */
 }
 
+/* Swap Nav Link - NEAR Intents + SwapKit */
+.wallet-nav-link-swap {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(129, 140, 248, 0.1));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.wallet-nav-link-swap:hover {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.wallet-nav-link-swap.wallet-nav-link-active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(129, 140, 248, 0.25));
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+/* PCZT Nav Link - Transparent to Shielded */
+.wallet-nav-link-pczt {
+  /* Colors removed to match regular nav links */
+}
+
+.wallet-nav-link-pczt:hover {
+  /* Colors removed to match regular nav links */
+}
+
+.wallet-nav-link-pczt.wallet-nav-link-active {
+  /* Colors removed to match regular nav links */
+}
+
 /* ==================================
    Proof Sharing Styles
    ================================== */
@@ -8737,5 +8688,257 @@ dd {
   
   .complete-actions {
     flex-direction: column;
+  }
+}
+
+/* ================================================ */
+/* Mina Recursive Rail Styles                        */
+/* ================================================ */
+
+.wallet-mina-rail-card {
+  margin-top: 1rem;
+}
+
+.mina-rail-panel {
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.95), rgba(20, 30, 48, 0.95));
+  backdrop-filter: blur(10px);
+}
+
+.mina-rail-panel .shard-card {
+  transition: all 0.2s ease;
+}
+
+.mina-rail-panel .shard-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+.mina-rail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.mina-rail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mina-rail-title h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.mina-rail-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.mina-rail-badge.idle {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.mina-rail-badge.syncing {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.mina-rail-badge.aggregating {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  animation: pulse 2s infinite;
+}
+
+.mina-rail-badge.finalizing {
+  background: rgba(139, 92, 246, 0.2);
+  color: #8b5cf6;
+  animation: pulse 1.5s infinite;
+}
+
+.mina-rail-badge.bridging {
+  background: rgba(6, 182, 212, 0.2);
+  color: #06b6d4;
+}
+
+.mina-rail-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.mina-rail-epoch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.mina-rail-epoch-card {
+  background: rgba(37, 37, 64, 0.8);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.mina-rail-epoch-label {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.mina-rail-epoch-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.mina-rail-progress {
+  margin-bottom: 1rem;
+}
+
+.mina-rail-progress-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.mina-rail-progress-label {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.mina-rail-progress-value {
+  font-size: 0.8rem;
+  color: #f3f4f6;
+  font-weight: 500;
+}
+
+.mina-rail-progress-bar {
+  height: 6px;
+  background: rgba(45, 45, 68, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mina-rail-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.mina-rail-finalized {
+  background: rgba(26, 46, 26, 0.8);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.mina-rail-finalized-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.mina-rail-finalized-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #22c55e;
+}
+
+.mina-rail-finalized-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mina-rail-detail-item {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+.mina-rail-time {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(37, 37, 64, 0.6);
+  border-radius: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.mina-rail-time-icon {
+  font-size: 0.875rem;
+}
+
+.mina-rail-time-text {
+  font-size: 0.8rem;
+  color: #f3f4f6;
+}
+
+.mina-rail-refresh {
+  width: 100%;
+  padding: 0.625rem;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.mina-rail-refresh:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-1px);
+}
+
+.mina-rail-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Spinner for inline loading states */
+.spinner-inline {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(139, 92, 246, 0.3);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Responsive Mina Rail */
+@media (max-width: 640px) {
+  .mina-rail-epoch-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .mina-rail-epoch-card:last-child {
+    grid-column: span 2;
   }
 }

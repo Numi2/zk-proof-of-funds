@@ -1,0 +1,571 @@
+/**
+ * Login Modal Styles
+ * 
+ * Modern, glassmorphic design with smooth animations
+ */
+
+.login-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.85);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.login-modal {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(
+    145deg,
+    rgba(15, 23, 42, 0.95) 0%,
+    rgba(30, 41, 59, 0.9) 100%
+  );
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 24px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 80px -20px rgba(56, 189, 248, 0.15);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.login-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.5rem;
+  background: rgba(148, 163, 184, 0.1);
+  border: none;
+  border-radius: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-modal-close:hover {
+  background: rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+  transform: none;
+  box-shadow: none;
+}
+
+.login-modal-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 2rem 1rem;
+  text-align: center;
+}
+
+.login-modal-icon {
+  margin-bottom: 1rem;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.login-modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-modal-subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+/* Tabs */
+.login-modal-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.login-modal-tab {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-modal-tab:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  transform: none;
+  box-shadow: none;
+}
+
+.login-modal-tab.active {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+/* Content */
+.login-modal-content {
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* Wallet Sections */
+.wallet-section {
+  margin-bottom: 1.25rem;
+}
+
+.wallet-section:last-child {
+  margin-bottom: 0;
+}
+
+.wallet-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-left: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.wallet-section-icon {
+  font-size: 0.875rem;
+}
+
+.wallet-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Wallet Option Button */
+.wallet-option {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 14px;
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wallet-option:hover:not(:disabled):not(.unavailable) {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.1);
+}
+
+.wallet-option.unavailable {
+  opacity: 0.6;
+}
+
+.wallet-option.unavailable:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
+  transform: none;
+  box-shadow: none;
+}
+
+.wallet-option.connecting {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+  pointer-events: none;
+}
+
+.wallet-option-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.wallet-option-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.wallet-option-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.wallet-option-status {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.wallet-option-install {
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.wallet-option-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(56, 189, 248, 0.2);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* NEAR Connect Section */
+.near-connect-section {
+  border: 1px solid rgba(0, 192, 139, 0.15);
+  border-radius: 16px;
+  padding: 1rem;
+  background: linear-gradient(
+    145deg,
+    rgba(0, 192, 139, 0.03) 0%,
+    rgba(0, 192, 139, 0.01) 100%
+  );
+}
+
+.near-connect-section .wallet-section-header {
+  color: #00C08B;
+}
+
+.near-wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.near-connect-wallet {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem 0.75rem;
+}
+
+.near-connect-wallet .wallet-option-icon {
+  margin-bottom: 0.375rem;
+}
+
+.near-connect-wallet .wallet-option-info {
+  align-items: center;
+}
+
+.near-connect-wallet .wallet-option-name {
+  font-size: 0.85rem;
+}
+
+.near-connect-wallet .wallet-option-status {
+  font-size: 0.7rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.near-connect-wallet:hover:not(:disabled) {
+  background: rgba(0, 192, 139, 0.1);
+  border-color: rgba(0, 192, 139, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 192, 139, 0.15);
+}
+
+.near-connect-powered {
+  margin: 0.75rem 0 0;
+  font-size: 0.7rem;
+  color: #475569;
+  text-align: center;
+}
+
+.near-connect-powered a {
+  color: #00C08B;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.near-connect-powered a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.wallet-section-loading {
+  margin-left: auto;
+}
+
+.wallet-section-loading .wallet-option-spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+/* Passkey Section */
+.passkey-section {
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.passkey-option {
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.08) 0%,
+    rgba(6, 182, 212, 0.08) 100%
+  );
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.passkey-option:hover:not(:disabled):not(.unavailable) {
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.15) 0%,
+    rgba(6, 182, 212, 0.15) 100%
+  );
+  border-color: rgba(16, 185, 129, 0.35);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+}
+
+.passkey-option.no-passkeys {
+  border-style: dashed;
+}
+
+/* Passkey Register Form */
+.passkey-register {
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.passkey-register-icon {
+  margin-bottom: 1rem;
+}
+
+.passkey-register h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.passkey-register-description {
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.passkey-register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.input-group {
+  text-align: left;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 12px;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.input-group input::placeholder {
+  color: #475569;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.passkey-register-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  border: none;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #020617;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.passkey-register-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+}
+
+.passkey-register-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.passkey-register-note {
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+/* Error */
+.login-modal-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.875rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+.error-icon {
+  flex-shrink: 0;
+}
+
+/* Footer */
+.login-modal-footer {
+  padding: 1rem 1.5rem 1.5rem;
+  text-align: center;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.login-modal-footer p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.login-modal-footer a {
+  color: #64748b;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.login-modal-footer a:hover {
+  color: #94a3b8;
+  text-decoration: underline;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 480px) {
+  .login-modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .login-modal {
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 24px 24px 0 0;
+    animation: slideUpMobile 0.3s ease-out;
+  }
+
+  @keyframes slideUpMobile {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .login-modal-header {
+    padding: 1.5rem 1.5rem 1rem;
+  }
+
+  .login-modal-icon svg {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .login-modal-backdrop,
+  .login-modal,
+  .login-modal-icon,
+  .wallet-option,
+  .wallet-option-spinner {
+    animation: none;
+    transition: none;
+  }
+}
+

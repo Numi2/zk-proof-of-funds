@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { PcdProvider } from '../../context/PcdContext';
+import { AuthButton } from '../auth/AuthButton';
 
 export function WalletLayout() {
   const { state } = useWebZjsContext();
@@ -58,16 +59,16 @@ export function WalletLayout() {
               Dashboard
             </NavLink>
             <NavLink
-              to="/wallet/buy"
-              className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active wallet-nav-link-buy' : 'wallet-nav-link wallet-nav-link-buy')}
-            >
-              Buy
-            </NavLink>
-            <NavLink
               to="/wallet/receive"
               className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active' : 'wallet-nav-link')}
             >
               Receive
+            </NavLink>
+            <NavLink
+              to="/wallet/send-to-shielded"
+              className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active wallet-nav-link-pczt' : 'wallet-nav-link wallet-nav-link-pczt')}
+            >
+              PCZT
             </NavLink>
             {/* Hidden navigation links
             <NavLink
@@ -89,6 +90,10 @@ export function WalletLayout() {
         <Suspense fallback={<div className="wallet-loading">Loading...</div>}>
           <Outlet />
         </Suspense>
+        
+        <div className="wallet-footer-auth">
+          <AuthButton />
+        </div>
       </div>
     </PcdProvider>
   );

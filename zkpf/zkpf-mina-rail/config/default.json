@@ -1,0 +1,16 @@
+{
+  "listen_addr": "0.0.0.0:3001",
+  "rail_config": {
+    "num_shards": 16,
+    "max_tachystamps_per_epoch": 10000,
+    "epoch_duration_slots": 7200,
+    "ivc_tree_depth": 14
+  },
+  "bridge_config": {
+    "l1_rpc_url": "http://localhost:8232",
+    "mina_graphql_url": "http://localhost:3085/graphql",
+    "confirmation_blocks": 6
+  },
+  "enable_cors": true
+}
+
