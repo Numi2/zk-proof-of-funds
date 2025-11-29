@@ -96,13 +96,39 @@ The webwallet has its own companion snap (`webwallet/snap/`) that holds your Zca
 
 ### Browser Compatibility & WASM Loader
 
-We built a comprehensive browser compatibility system that automatically detects SharedArrayBuffer support and provides graceful fallbacks. The system includes:
+We built a comprehensive browser compatibility system that automatically detects SharedArrayBuffer support and provides graceful fallbacks. This was non-trivial—WASM threading with Rayon requires specific browser conditions that aren't universally available.
 
-**Browser Detection** — Detects Chrome, Firefox, Edge, Safari (desktop and mobile) and their capabilities. Checks for SharedArrayBuffer, cross-origin isolation, and secure context requirements.
+**The Problem:** Zcash proof generation uses `wasm-bindgen-rayon` for parallel proving, which requires:
+1. `SharedArrayBuffer` — For shared memory between threads
+2. Cross-origin isolation — `COOP: same-origin` + `COEP: credentialless` headers
+3. Secure context — HTTPS or localhost
 
-**Dual WASM Builds** — The wallet loader automatically selects between:
-- **Threaded build** (pkg-threads): For browsers with SharedArrayBuffer + cross-origin isolation. Uses all CPU cores for faster sync and proving.
-- **Single-threaded build** (pkg-single): For all other browsers. Slower but works everywhere.
+Without all three, the threaded WASM build crashes on load. Many browsers (especially mobile Safari, older Chrome, some corporate proxies) don't meet these requirements.
+
+**The Solution: Dual WASM Builds**
+
+We compile the wallet twice:
+- **`pkg-threads`** — Built with `+atomics,+bulk-memory` target features, uses `wasm-bindgen-rayon` for parallel Rayon iterators
+- **`pkg-single`** — Standard WASM build, no threading, no SharedArrayBuffer dependency
+
+At runtime, `wallet-loader.ts` detects browser capabilities:
+
+```typescript
+function supportsSharedArrayBuffer(): boolean {
+  if (typeof SharedArrayBuffer === 'undefined') return false;
+  if (!self.crossOriginIsolated) return false;
+  // Functional test - actually try to use Atomics
+  const sab = new SharedArrayBuffer(4);
+  const view = new Int32Array(sab);
+  Atomics.store(view, 0, 42);
+  return Atomics.load(view, 0) === 42;
+}
+```
+
+If threads are available → load `pkg-threads`, call `initThreadPool(navigator.hardwareConcurrency)`.
+Otherwise → load `pkg-single`, skip thread pool, accept slower sync/proving.
+
+**The Bundler Fix:** The threaded build includes `wasm_thread` snippets that spawn individual web workers via `new Worker(new URL(...))`. This pattern causes Vite/Rollup to try bundling the worker as a separate entry point—but the referenced file doesn't exist in `wasm-bindgen` output. We fixed this by stubbing `module_worker_start.js` to return a no-op fake worker. The actual thread pool uses `wasm-bindgen-rayon`'s `workerHelpers.js` which works correctly with Vite's worker bundling.
 
 **Lite Mode** — When full wallet mode isn't available, users can still:
 - Use the P2P marketplace (post and respond to offers)
@@ -111,7 +137,20 @@ We built a comprehensive browser compatibility system that automatically detects
 - Browse the policy catalog
 - Share offers via links
 
-**Smart Fallbacks** — The system provides clear guidance: Safari users get instructions for proper server headers, mobile users get desktop recommendations, and everyone gets the option to continue in lite mode.
+**Server Headers** — Cross-origin isolation requires specific HTTP headers. Our `vercel.json` sets these globally:
+```json
+{
+  "headers": [{
+    "source": "/(.*)",
+    "headers": [
+      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+      { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" }
+    ]
+  }]
+}
+```
+
+We use `credentialless` instead of `require-corp` to allow loading external resources (like third-party APIs) without requiring them to have CORP headers.
 
 ### Mina Recursive Proof Hub Rail
 

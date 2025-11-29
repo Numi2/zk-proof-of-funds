@@ -64,11 +64,11 @@ pub mod near_agent;
 
 pub use aggregator::{ProofAggregator, AggregationStrategy};
 pub use attestation::{UnifiedAttestation, AttestationProof};
-pub use config::{TachyonConfig, RailConfig, ChainEndpoint};
-pub use coordinator::{TachyonWallet, WalletState};
+pub use config::{TachyonConfig, RailConfig, ChainEndpoint, RailCapability};
+pub use coordinator::TachyonWallet;
 pub use error::TachyonError;
-pub use rails::{Rail, RailId, RailCapability};
-pub use state::{UnifiedBalance, ChainBalance, ProofState};
+pub use rails::{Rail, RailId};
+pub use state::{UnifiedBalance, ChainBalance, ProofState, WalletState};
 pub use transport::{AxelarTransport, CrossChainMessage};
 pub use types::*;
 

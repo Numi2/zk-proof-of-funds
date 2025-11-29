@@ -6,11 +6,12 @@
 //! 2. Each payment uses a unique, non-reusable key
 //! 3. The derivation follows ZIP 32 conventions
 
-use blake2b_simd::{Params as Blake2bParams, Hash as Blake2bHash};
+use blake2b_simd::Params as Blake2bParams;
 use rand::{CryptoRng, RngCore};
 use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_protocol::consensus::Parameters;
-use zip32::AccountId;
+use zeroize::{Zeroize, ZeroizeOnDrop};
+use zip32::{AccountId, DiversifierIndex};
 
 use crate::{Error, Result};
 
@@ -24,11 +25,12 @@ pub const GAP_LIMIT: u32 = 3;
 const PAYMENT_URI_PERSONALIZATION: &[u8; 16] = b"Zcash_PaymentURI";
 
 /// A 256-bit ephemeral payment key
-#[derive(Clone)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct EphemeralPaymentKey {
     /// The raw 256-bit key material
     inner: [u8; 32],
     /// The payment index used to derive this key (if derived from seed)
+    #[zeroize(skip)]
     payment_index: Option<u32>,
 }
 
@@ -61,21 +63,22 @@ impl EphemeralPaymentKey {
         self.payment_index
     }
 
-    /// Derive the Sapling spending key (sk) from this payment key
+    /// Derive the Sapling expanded spending key from this payment key
     /// 
-    /// This follows the spec: sk = key (the payment key is used directly as sk)
-    pub fn to_sapling_spending_key(&self) -> sapling::keys::SpendingKey {
+    /// The payment key bytes are used directly as the spending key input.
+    pub fn to_sapling_expanded_spending_key(&self) -> sapling::keys::ExpandedSpendingKey {
         // The payment key IS the spending key per the spec
-        sapling::keys::SpendingKey::from_bytes(self.inner)
-            .expect("payment key should be valid spending key")
+        // ExpandedSpendingKey::from_spending_key takes raw bytes and derives ask, nsk, ovk
+        sapling::keys::ExpandedSpendingKey::from_spending_key(&self.inner)
     }
 
     /// Derive rseed for note construction using PRF^expand
     /// 
     /// rseed = PRF^expand(sk || [domain_sep])
     pub fn derive_rseed(&self) -> [u8; 32] {
-        // Domain separator for rseed derivation (to be assigned in final spec)
-        const RSEED_DOMAIN_SEP: u8 = 0x05; // Placeholder
+        // Domain separator for rseed derivation
+        // TODO: This should be assigned in the final ZIP spec
+        const RSEED_DOMAIN_SEP: u8 = 0x05;
 
         let mut input = Vec::with_capacity(33);
         input.extend_from_slice(&self.inner);
@@ -91,47 +94,39 @@ impl EphemeralPaymentKey {
         rseed
     }
 
-    /// Compute the default diversifier for this payment key
-    /// 
-    /// Uses the first valid diversifier derived from the spending key
-    pub fn default_diversifier(&self) -> Result<sapling::Diversifier> {
-        let expsk = self.to_sapling_expanded_spending_key();
-        let fvk = sapling::keys::FullViewingKey::from_expanded_spending_key(&expsk);
-        
-        // Find the first valid diversifier
-        let dk = sapling::keys::DiversifierKey::from_fvk(&fvk);
-        
-        // Try diversifier indices starting from 0
-        for idx in 0u64..1000 {
-            let d_bytes = dk.diversifier(sapling::zip32::DiversifierIndex::from(idx));
-            let diversifier = sapling::Diversifier(d_bytes.0);
-            if diversifier.g_d().is_some().into() {
-                return Ok(diversifier);
-            }
-        }
-        
-        Err(Error::InvalidDiversifier)
-    }
-
-    /// Get the expanded spending key for Sapling operations
-    fn to_sapling_expanded_spending_key(&self) -> sapling::keys::ExpandedSpendingKey {
-        let sk = self.to_sapling_spending_key();
-        sapling::keys::ExpandedSpendingKey::from_spending_key(&sk)
-    }
-
     /// Derive the full viewing key
     pub fn to_full_viewing_key(&self) -> sapling::keys::FullViewingKey {
         let expsk = self.to_sapling_expanded_spending_key();
         sapling::keys::FullViewingKey::from_expanded_spending_key(&expsk)
     }
 
+    /// Derive the diversifier key for address derivation
+    fn to_diversifier_key(&self) -> sapling::zip32::DiversifierKey {
+        // DiversifierKey is derived from the spending key bytes
+        sapling::zip32::DiversifierKey::master(&self.inner)
+    }
+
+    /// Compute the default diversifier for this payment key
+    /// 
+    /// Uses the first valid diversifier (starting from index 0)
+    pub fn default_diversifier(&self) -> Result<sapling::Diversifier> {
+        let dk = self.to_diversifier_key();
+        
+        // Find the first valid diversifier starting from index 0
+        let (_, diversifier) = dk.find_diversifier(DiversifierIndex::new())
+            .ok_or(Error::InvalidDiversifier)?;
+        
+        Ok(diversifier)
+    }
+
     /// Derive the payment address (default diversifier)
     pub fn to_payment_address(&self) -> Result<sapling::PaymentAddress> {
         let fvk = self.to_full_viewing_key();
-        let diversifier = self.default_diversifier()?;
+        let dk = self.to_diversifier_key();
         
-        fvk.to_payment_address(diversifier)
-            .ok_or(Error::InvalidDiversifier)
+        // Use the sapling helper to get the default address
+        let (_, address) = sapling::zip32::sapling_default_address(&fvk, &dk);
+        Ok(address)
     }
 }
 
@@ -144,15 +139,15 @@ impl std::fmt::Debug for EphemeralPaymentKey {
     }
 }
 
-impl Drop for EphemeralPaymentKey {
-    fn drop(&mut self) {
-        // Zero out the key material on drop
-        self.inner.iter_mut().for_each(|b| *b = 0);
-    }
-}
+// Note: ZeroizeOnDrop derive macro handles secure key erasure automatically
 
 /// Manages derivation of payment keys from wallet seed
+/// 
+/// This struct provides a stateful context for deriving multiple payment keys
+/// from the same seed, tracking the seed fingerprint for identification.
 pub struct PaymentKeyDerivation {
+    /// The raw seed bytes (zeroized on drop)
+    seed: zeroize::Zeroizing<Vec<u8>>,
     /// The seed fingerprint for identification
     seed_fingerprint: zip32::fingerprint::SeedFingerprint,
     /// Network parameters
@@ -169,12 +164,21 @@ impl PaymentKeyDerivation {
             .ok_or_else(|| Error::KeyDerivation("Invalid seed".to_string()))?;
         
         Ok(Self {
+            seed: zeroize::Zeroizing::new(seed.to_vec()),
             seed_fingerprint,
             network,
         })
     }
 
     /// Derive an ephemeral payment key at a specific index
+    /// 
+    /// Uses ZIP 32 derivation: m_Sapling / 324' / coin_type' / payment_index'
+    /// Then: key = BLAKE2b-256(extended_spending_key, personal="Zcash_PaymentURI")
+    pub fn derive_key(&self, payment_index: u32) -> Result<EphemeralPaymentKey> {
+        Self::derive_payment_key(&self.seed, &self.network, payment_index)
+    }
+
+    /// Derive an ephemeral payment key at a specific index (static version)
     /// 
     /// Uses ZIP 32 derivation: m_Sapling / 324' / coin_type' / payment_index'
     /// Then: key = BLAKE2b-256(extended_spending_key, personal="Zcash_PaymentURI")
@@ -257,5 +261,25 @@ mod tests {
         let key2 = EphemeralPaymentKey::from_bytes([2u8; 32]);
         assert_ne!(key1.derive_rseed(), key2.derive_rseed());
     }
-}
 
+    #[test]
+    fn test_key_to_address() {
+        let key = EphemeralPaymentKey::from_bytes([42u8; 32]);
+        // Should successfully derive a payment address
+        let address = key.to_payment_address();
+        assert!(address.is_ok());
+    }
+
+    #[test]
+    fn test_deterministic_address() {
+        let bytes = [42u8; 32];
+        let key1 = EphemeralPaymentKey::from_bytes(bytes);
+        let key2 = EphemeralPaymentKey::from_bytes(bytes);
+        
+        let addr1 = key1.to_payment_address().unwrap();
+        let addr2 = key2.to_payment_address().unwrap();
+        
+        // Same key should produce same address
+        assert_eq!(addr1.to_bytes(), addr2.to_bytes());
+    }
+}

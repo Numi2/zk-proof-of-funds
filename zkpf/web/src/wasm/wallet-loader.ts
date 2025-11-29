@@ -8,7 +8,7 @@
  * Based on the dual-build pattern from wasm-bindgen-rayon docs.
  */
 
-import type { WalletSummary, WebWallet } from '@chainsafe/webzjs-wallet';
+import type { WebWallet } from '@chainsafe/webzjs-wallet';
 
 // Track which variant was loaded
 let loadedVariant: 'threads' | 'single' | null = null;

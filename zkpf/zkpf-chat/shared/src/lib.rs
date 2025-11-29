@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -24,6 +24,15 @@ use tracing::{debug, info, warn};
 
 pub const TOPIC_PREFIX: &str = "iroh-example-chat/0:";
 pub const PRESENCE_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Maximum allowed length for nicknames (in bytes)
+pub const MAX_NICKNAME_LENGTH: usize = 64;
+/// Maximum allowed length for message text (in bytes)
+pub const MAX_MESSAGE_LENGTH: usize = 4096;
+/// Maximum age (in seconds) for a message to be considered valid (prevents replay of old messages)
+pub const MAX_MESSAGE_AGE_SECS: u64 = 300; // 5 minutes
+/// Maximum number of message IDs to track for replay protection
+pub const MAX_SEEN_MESSAGES: usize = 10000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatTicket {
@@ -131,11 +140,22 @@ impl ChatNode {
 
             async move {
                 loop {
-                    let nickname = nickname.lock().expect("poisened").clone();
+                    let nickname = match nickname.lock() {
+                        Ok(guard) => guard.clone(),
+                        Err(_) => {
+                            tracing::warn!("presence task: nickname mutex poisoned");
+                            break;
+                        }
+                    };
                     let message = Message::Presence { nickname };
                     debug!("send presence {message:?}");
-                    let signed_message = SignedMessage::sign_and_encode(&secret_key, message)
-                        .expect("failed to encode message");
+                    let signed_message = match SignedMessage::sign_and_encode(&secret_key, message) {
+                        Ok(msg) => msg,
+                        Err(err) => {
+                            tracing::warn!("presence task failed to encode message: {err}");
+                            break;
+                        }
+                    };
                     if let Err(err) = sender.lock().await.broadcast(signed_message.into()).await {
                         tracing::warn!("presence task failed to broadcast: {err}");
                         break;
@@ -153,9 +173,10 @@ impl ChatNode {
         // We'll want to map the events to our own event type, which includes parsing
         // the messages and verifying the signatures, and trigger presence
         // once the swarm is joined initially.
-        let receiver = n0_future::stream::try_unfold(receiver, {
+        let replay_protection = Arc::new(Mutex::new(ReplayProtection::new()));
+        let receiver = n0_future::stream::try_unfold((receiver, replay_protection), {
             let trigger_presence = trigger_presence.clone();
-            move |mut receiver| {
+            move |(mut receiver, replay_protection)| {
                 let trigger_presence = trigger_presence.clone();
                 async move {
                     loop {
@@ -166,10 +187,8 @@ impl ChatNode {
                         let Some(event) = receiver.try_next().await? else {
                             return Ok(None);
                         };
-                        // Convert into our event type. this fails if we receive a message
-                        // that cannot be decoced into our event type. If that is the case,
-                        // we just keep and log the error.
-                        let event: Event = match event.try_into() {
+                        // Convert into our event type with replay protection
+                        let event: Event = match convert_event(event, &replay_protection) {
                             Ok(event) => event,
                             Err(err) => {
                                 warn!("received invalid message: {err}");
@@ -181,7 +200,7 @@ impl ChatNode {
                             trigger_presence.notify_waiters()
                         };
 
-                        break Ok(Some((event, receiver)));
+                        break Ok(Some((event, (receiver, replay_protection))));
                     }
                 }
             }
@@ -216,7 +235,19 @@ pub struct ChatSender {
 
 impl ChatSender {
     pub async fn send(&self, text: String) -> Result<()> {
-        let nickname = self.nickname.lock().expect("poisened").clone();
+        // Validate message length
+        if text.len() > MAX_MESSAGE_LENGTH {
+            anyhow::bail!(
+                "Message too long: {} bytes (max {})",
+                text.len(),
+                MAX_MESSAGE_LENGTH
+            );
+        }
+        let nickname = self
+            .nickname
+            .lock()
+            .map_err(|_| anyhow::anyhow!("nickname mutex poisoned"))?
+            .clone();
         let message = Message::Message { text, nickname };
         let signed_message = SignedMessage::sign_and_encode(&self.secret_key, message)?;
         self.sender
@@ -227,9 +258,23 @@ impl ChatSender {
         Ok(())
     }
 
-    pub fn set_nickname(&self, name: String) {
-        *self.nickname.lock().expect("poisened") = name;
+    pub fn set_nickname(&self, name: String) -> Result<()> {
+        // Validate nickname length
+        if name.len() > MAX_NICKNAME_LENGTH {
+            anyhow::bail!(
+                "Nickname too long: {} bytes (max {})",
+                name.len(),
+                MAX_NICKNAME_LENGTH
+            );
+        }
+        let mut guard = self
+            .nickname
+            .lock()
+            .map_err(|_| anyhow::anyhow!("nickname mutex poisoned"))?;
+        *guard = name;
+        drop(guard);
         self.trigger_presence.notify_waiters();
+        Ok(())
     }
 }
 
@@ -264,34 +309,42 @@ pub enum Event {
     Lagged,
 }
 
-impl TryFrom<GossipEvent> for Event {
-    type Error = anyhow::Error;
-    fn try_from(event: GossipEvent) -> Result<Self, Self::Error> {
-        let converted = match event {
-            GossipEvent::NeighborUp(endpoint_id) => Self::NeighborUp { endpoint_id },
-            GossipEvent::NeighborDown(endpoint_id) => Self::NeighborDown { endpoint_id },
-            GossipEvent::Received(message) => {
-                let message = SignedMessage::verify_and_decode(&message.content)
-                    .context("failed to parse and verify signed message")?;
-                match message.message {
-                    Message::Presence { nickname } => Self::Presence {
-                        from: message.from,
-                        nickname,
-                        sent_timestamp: message.timestamp,
-                    },
-                    Message::Message { text, nickname } => Self::MessageReceived {
-                        from: message.from,
-                        text,
-                        nickname,
-                        sent_timestamp: message.timestamp,
-                    },
-                }
+/// Converts a gossip event into our Event type, with replay protection for received messages
+fn convert_event(
+    event: GossipEvent,
+    replay_protection: &Arc<Mutex<ReplayProtection>>,
+) -> Result<Event> {
+    let converted = match event {
+        GossipEvent::NeighborUp(endpoint_id) => Event::NeighborUp { endpoint_id },
+        GossipEvent::NeighborDown(endpoint_id) => Event::NeighborDown { endpoint_id },
+        GossipEvent::Received(message) => {
+            let mut guard = replay_protection
+                .lock()
+                .map_err(|_| anyhow::anyhow!("replay protection mutex poisoned"))?;
+            let message = SignedMessage::verify_and_decode(&message.content, &mut guard)
+                .context("failed to parse and verify signed message")?;
+            drop(guard);
+            match message.message {
+                Message::Presence { nickname } => Event::Presence {
+                    from: message.from,
+                    nickname,
+                    sent_timestamp: message.timestamp,
+                },
+                Message::Message { text, nickname } => Event::MessageReceived {
+                    from: message.from,
+                    text,
+                    nickname,
+                    sent_timestamp: message.timestamp,
+                },
             }
-            GossipEvent::Lagged => Self::Lagged,
-        };
-        Ok(converted)
-    }
+        }
+        GossipEvent::Lagged => Event::Lagged,
+    };
+    Ok(converted)
 }
+
+/// Unique identifier for a message, used for replay protection
+pub type MessageId = [u8; 32];
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SignedMessage {
@@ -300,13 +353,82 @@ struct SignedMessage {
     signature: Signature,
 }
 
+/// Computes a message ID from the signed message bytes for replay detection
+fn compute_message_id(bytes: &[u8]) -> MessageId {
+    use blake3::Hasher;
+    let mut hasher = Hasher::new();
+    hasher.update(bytes);
+    let hash = hasher.finalize();
+    let mut id = [0u8; 32];
+    id.copy_from_slice(hash.as_bytes());
+    id
+}
+
+/// Tracks seen message IDs to prevent replay attacks
+#[derive(Debug, Default)]
+pub struct ReplayProtection {
+    seen: HashSet<MessageId>,
+    // We use a Vec as a simple ring buffer for eviction
+    order: Vec<MessageId>,
+}
+
+impl ReplayProtection {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns true if this message ID has been seen before (duplicate/replay)
+    /// Also records the ID if it's new
+    pub fn check_and_record(&mut self, id: MessageId) -> bool {
+        if self.seen.contains(&id) {
+            return true; // Already seen = replay
+        }
+        
+        // Evict oldest if at capacity
+        if self.seen.len() >= MAX_SEEN_MESSAGES {
+            if let Some(oldest) = self.order.first().cloned() {
+                self.seen.remove(&oldest);
+                self.order.remove(0);
+            }
+        }
+        
+        self.seen.insert(id);
+        self.order.push(id);
+        false // Not seen before = fresh message
+    }
+}
+
 impl SignedMessage {
-    pub fn verify_and_decode(bytes: &[u8]) -> Result<ReceivedMessage> {
+    pub fn verify_and_decode(
+        bytes: &[u8],
+        replay_protection: &mut ReplayProtection,
+    ) -> Result<ReceivedMessage> {
+        // Check for replay attack first
+        let message_id = compute_message_id(bytes);
+        if replay_protection.check_and_record(message_id) {
+            anyhow::bail!("Duplicate message detected (possible replay attack)");
+        }
+
         let signed_message: Self = postcard::from_bytes(bytes)?;
         let key: PublicKey = signed_message.from;
         key.verify(&signed_message.data, &signed_message.signature)?;
         let message: WireMessage = postcard::from_bytes(&signed_message.data)?;
         let WireMessage::VO { timestamp, message } = message;
+
+        // Validate timestamp is not too old (prevents replay of very old messages)
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+        let age_secs = now.saturating_sub(timestamp) / 1_000_000;
+        if age_secs > MAX_MESSAGE_AGE_SECS {
+            anyhow::bail!(
+                "Message too old: {} seconds (max {})",
+                age_secs,
+                MAX_MESSAGE_AGE_SECS
+            );
+        }
+
         Ok(ReceivedMessage {
             from: signed_message.from,
             timestamp,

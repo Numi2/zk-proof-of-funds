@@ -19,18 +19,15 @@ import {
   type TradingMethod,
   type OfferSortBy,
 } from '../../types/p2p';
-import { ShareButton } from './ShareOffer';
 import './P2PMarketplace.css';
 
 // ============ Offer Card ============
 function OfferCard({
   offer,
   onSelect,
-  onStartTrade,
 }: {
   offer: P2POffer;
   onSelect: (offer: P2POffer) => void;
-  onStartTrade?: (offer: P2POffer) => void;
 }) {
   const isSelling = offer.offerType === 'sell';
   
@@ -106,30 +103,35 @@ function OfferCard({
           )}
         </div>
         
-        {offer.location?.city && (
-          <span className="offer-location">
-            📍 {offer.location.city}{offer.location.country ? `, ${offer.location.country}` : ''}
-          </span>
+        {offer.location && (
+          <div className="offer-location-info">
+            {offer.location.city && (
+              <span className="offer-location">
+                📍 {offer.location.city}{offer.location.country ? `, ${offer.location.country}` : ''}
+              </span>
+            )}
+            {offer.location.area && (
+              <span className="offer-area">
+                🏘️ {offer.location.area}
+              </span>
+            )}
+            {offer.location.meetingPoints && (
+              <span className="offer-meeting-points" title="Suggested meeting spots">
+                🤝 {offer.location.meetingPoints}
+              </span>
+            )}
+          </div>
         )}
         
         <div className="offer-card-actions">
-          <ShareButton offer={offer} variant="icon" size="small" />
           <button
             className={`offer-action ${isSelling ? 'buy' : 'sell'}`}
             onClick={(e) => {
-              // Don’t double-trigger the card click; this button is the
-              // one-click “Start trade + open chat” CTA. It navigates to
-              // the offer detail view with query params that auto-open
-              // the trade modal and pre-fill an amount.
               e.stopPropagation();
-              if (onStartTrade) {
-                onStartTrade(offer);
-              } else {
-                onSelect(offer);
-              }
+              onSelect(offer);
             }}
           >
-            {isSelling ? 'Inspect' : 'Inspect'}
+            Inspect
           </button>
         </div>
       </div>
@@ -290,6 +292,7 @@ export function P2PMarketplace() {
   const [activeTab, setActiveTab] = useState<'all' | 'sell' | 'buy'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMethods, setSelectedMethods] = useState<TradingMethod[]>([]);
+  const [showMethodFilters, setShowMethodFilters] = useState(false);
   
   // Filter offers
   const displayOffers = useMemo(() => {
@@ -329,15 +332,6 @@ export function P2PMarketplace() {
   const handleOfferSelect = useCallback((offer: P2POffer) => {
     selectOffer(offer);
     navigate(`/p2p/offer/${offer.offerId}`);
-  }, [selectOffer, navigate]);
-
-  const handleStartTrade = useCallback((offer: P2POffer) => {
-    selectOffer(offer);
-    // Pre-fill the trade amount with a sensible default: use the minimum
-    // if specified, otherwise the full offer amount.
-    const defaultAmount = offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : offer.zecAmount);
-    const amountParam = Number.isFinite(defaultAmount) ? `&amount=${encodeURIComponent(String(defaultAmount))}` : '';
-    navigate(`/p2p/offer/${offer.offerId}?trade=1${amountParam}`);
   }, [selectOffer, navigate]);
   
   const handleCreateOffer = useCallback((type: OfferType) => {
@@ -398,13 +392,6 @@ export function P2PMarketplace() {
           
           <div className="header-actions">
             <button 
-              className="import-btn-header"
-              onClick={() => setShowImportModal(true)}
-            >
-              <span>📥</span>
-              Import Offer
-            </button>
-            <button 
               className="create-btn"
               onClick={() => setShowCreateModal(true)}
             >
@@ -454,22 +441,33 @@ export function P2PMarketplace() {
       
       {/* Method Filters */}
       <div className="method-filters">
-        <span className="filter-label">How to trade:</span>
-        <div className="method-chips">
-          {Object.entries(TRADING_METHOD_INFO).map(([method, info]) => (
-            <button
-              key={method}
-              className={`method-chip ${selectedMethods.includes(method as TradingMethod) ? 'active' : ''}`}
-              onClick={() => toggleMethod(method as TradingMethod)}
-            >
-              {info.icon} {info.label}
-            </button>
-          ))}
-        </div>
-        {hasFilters && (
-          <button className="clear-filters" onClick={clearFilters}>
-            Clear all
+        <div className="method-filters-header">
+          <span className="filter-label">Filter</span>
+          <button 
+            className="toggle-filters-btn"
+            onClick={() => setShowMethodFilters(!showMethodFilters)}
+            title={showMethodFilters ? 'Hide filters' : 'Show filters'}
+          >
+            {showMethodFilters ? 'Hide' : 'Show'}
           </button>
+          {hasFilters && (
+            <button className="clear-filters" onClick={clearFilters}>
+              Clear all
+            </button>
+          )}
+        </div>
+        {showMethodFilters && (
+          <div className="method-chips">
+            {Object.entries(TRADING_METHOD_INFO).map(([method, info]) => (
+              <button
+                key={method}
+                className={`method-chip ${selectedMethods.includes(method as TradingMethod) ? 'active' : ''}`}
+                onClick={() => toggleMethod(method as TradingMethod)}
+              >
+                {info.icon} {info.label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
       
@@ -518,42 +516,11 @@ export function P2PMarketplace() {
                 key={offer.offerId} 
                 offer={offer}
                 onSelect={handleOfferSelect}
-                onStartTrade={handleStartTrade}
               />
             ))}
           </div>
         )}
       </div>
-      
-      {/* How it works - simpler */}
-      <section className="how-section">
-        <h2>Marketplace</h2>
-        <div className="how-grid">
-          <div className="how-item">
-            <span className="how-icon">💬</span>
-            <h3>Connect</h3>
-            <p>Find someone trading what you need. Message them to agree on terms.</p>
-          </div>
-          <div className="how-item">
-            <span className="how-icon">🤝</span>
-            <h3>Trade</h3>
-            <p>Exchange however works for both of you — in person, online, any method.</p>
-          </div>
-          <div className="how-item">
-            <span className="how-icon"></span>
-            <h3>Done</h3>
-            <p>Complete the trade.</p>
-          </div>
-        </div>
-        
-        <div className="trust-note">
-          <p>
-            <strong>About trust:</strong> This is a human-to-human marketplace. 
-            We show reputation scores, but ultimately you decide who to trade with. 
-            Start small with new traders. Meet in public places for in-person trades.
-          </p>
-        </div>
-      </section>
       
       {/* Traveler callout */}
       <section className="traveler-section">
@@ -604,6 +571,36 @@ export function P2PMarketplace() {
           ← Back to Wallet
         </button>
       </div>
+      
+      {/* How it works - simpler */}
+      <section className="how-section">
+        <h2>Marketplace</h2>
+        <div className="how-grid">
+          <div className="how-item">
+            <span className="how-icon">💬</span>
+            <h3>Connect</h3>
+            <p>Find someone trading what you need. Message them to agree on terms.</p>
+          </div>
+          <div className="how-item">
+            <span className="how-icon">🤝</span>
+            <h3>Trade</h3>
+            <p>Exchange however works for both of you — in person, online, any method.</p>
+          </div>
+          <div className="how-item">
+            <span className="how-icon"></span>
+            <h3>Done</h3>
+            <p>Complete the trade.</p>
+          </div>
+        </div>
+        
+        <div className="trust-note">
+          <p>
+            <strong>About trust:</strong> This is a human-to-human marketplace. 
+            We show reputation scores, but ultimately you decide who to trade with. 
+            Start small with new traders. Meet in public places for in-person trades.
+          </p>
+        </div>
+      </section>
       
       {/* Create Modal */}
       <QuickCreateModal 

@@ -86,7 +86,7 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
   return (
     <div className="share-overlay" onClick={onClose}>
       <div className="share-modal" onClick={e => e.stopPropagation()}>
-        <button className="share-close" onClick={onClose}>×</button>
+        <button type="button" className="share-close" onClick={onClose}>×</button>
         
         <div className="share-header">
           <span className="share-icon">📤</span>
@@ -98,7 +98,7 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
         
         {/* Native share button (mobile) */}
         {hasNativeShare && (
-          <button className="share-native-btn" onClick={handleNativeShare}>
+          <button type="button" className="share-native-btn" onClick={handleNativeShare}>
             <span>📱</span>
             Share via...
           </button>
@@ -107,18 +107,21 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
         {/* Tab navigation */}
         <div className="share-tabs">
           <button 
+            type="button"
             className={`share-tab ${activeTab === 'link' ? 'active' : ''}`}
             onClick={() => setActiveTab('link')}
           >
             🔗 Link
           </button>
           <button 
+            type="button"
             className={`share-tab ${activeTab === 'qr' ? 'active' : ''}`}
             onClick={() => setActiveTab('qr')}
           >
             📱 QR Code
           </button>
           <button 
+            type="button"
             className={`share-tab ${activeTab === 'text' ? 'active' : ''}`}
             onClick={() => setActiveTab('text')}
           >
@@ -142,6 +145,7 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
                   className="share-link-input"
                 />
                 <button 
+                  type="button"
                   className={`share-copy-btn ${copied ? 'copied' : ''}`}
                   onClick={handleCopyLink}
                 >
@@ -208,7 +212,7 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
                 )}
               </div>
               {qrCodeUrl && (
-                <button className="share-download-btn" onClick={handleDownloadQR}>
+                <button type="button" className="share-download-btn" onClick={handleDownloadQR}>
                   ⬇️ Download QR Code
                 </button>
               )}
@@ -230,6 +234,7 @@ export function ShareOffer({ offer, isOpen, onClose }: ShareOfferProps) {
                 />
               </div>
               <button 
+                type="button"
                 className={`share-copy-btn full ${copied ? 'copied' : ''}`}
                 onClick={handleCopyText}
               >
@@ -268,6 +273,7 @@ export function ShareButton({ offer, size = 'medium', variant = 'button' }: Shar
     return (
       <>
         <button 
+          type="button"
           className={`share-icon-btn share-icon-${size}`}
           onClick={handleClick}
           title="Share offer"
@@ -286,6 +292,7 @@ export function ShareButton({ offer, size = 'medium', variant = 'button' }: Shar
   return (
     <>
       <button 
+        type="button"
         className={`share-btn share-btn-${size}`}
         onClick={handleClick}
       >

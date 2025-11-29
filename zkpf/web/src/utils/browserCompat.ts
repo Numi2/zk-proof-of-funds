@@ -105,11 +105,13 @@ export function detectBrowser(): BrowserInfo {
     if (isMobileSafari()) {
       const iosVersion = getIOSVersion();
       const iosHasSAB = iosSupportsSharedArrayBuffer();
+      // Check cross-origin isolation directly (supportDetails isn't declared yet)
+      const hasCOI = typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : false;
       
       if (iosHasSAB) {
         // iOS 15.2+ supports SAB with cross-origin isolation
         isSupported = true;
-        if (!supportDetails.hasCrossOriginIsolation) {
+        if (!hasCOI) {
           technicalReason = `iOS ${iosVersion?.major}.${iosVersion?.minor} supports SharedArrayBuffer, but page is not cross-origin isolated.`;
           recommendation = 'Cross-origin isolation headers may be missing. Try refreshing or contact support.';
           isSupported = false;

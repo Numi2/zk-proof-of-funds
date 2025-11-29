@@ -8,6 +8,9 @@ export type LogMessage = {
   message: string
 }
 
+/** Maximum number of log messages to retain in memory */
+const MAX_LOG_MESSAGES = 1000
+
 class LogSystem {
   private logs: LogMessage[] = []
   private subscribers: Set<(log: LogMessage) => void> = new Set()
@@ -15,6 +18,11 @@ class LogSystem {
   error(message: any, error?: any) {
     console.error(message, error)
     this.log(`${message} ${error || ""}`, "error")
+  }
+
+  warn(message: string) {
+    console.warn(message)
+    this.log(message, "warn")
   }
 
   info(message: string) {
@@ -28,12 +36,19 @@ class LogSystem {
       message,
     }
     this.logs.push(logMessage)
+    // Prevent unbounded memory growth by trimming old logs
+    if (this.logs.length > MAX_LOG_MESSAGES) {
+      this.logs = this.logs.slice(-MAX_LOG_MESSAGES)
+    }
     this.notifySubscribers(logMessage)
-
   }
 
   get(): LogMessage[] {
     return this.logs
+  }
+
+  clear(): void {
+    this.logs = []
   }
 
   subscribe(callback: (log: LogMessage) => void): () => void {

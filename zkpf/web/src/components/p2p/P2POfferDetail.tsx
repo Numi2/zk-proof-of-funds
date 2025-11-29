@@ -28,7 +28,7 @@ import { decodeOffer } from '../../utils/p2p-share';
 import { ShareButton } from './ShareOffer';
 import { PaymentLinkButton } from './P2PPaymentLink';
 import './P2PMarketplace.css';
-import { chatService } from '../../services/chat';
+import { chatService, type PeerInfo } from '../../services/chat';
 
 // Trade Chat Component
 function TradeChat({
@@ -85,6 +85,7 @@ function TradeChat({
         </span>
         {!!onCopyInvite && (
           <button 
+            type="button"
             className={`copy-invite-btn ${copyStatus !== 'idle' ? copyStatus : ''}`} 
             onClick={handleCopyInvite} 
             style={{ marginLeft: 'auto' }}
@@ -156,6 +157,7 @@ function TradeChat({
           rows={2}
         />
         <button 
+          type="button"
           className="send-btn" 
           onClick={handleSend}
           disabled={!message.trim()}
@@ -184,9 +186,28 @@ function OfferChat({
   const [message, setMessage] = useState('');
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [peers, setPeers] = useState<PeerInfo[]>([]);
+  
+  // Subscribe to peer updates
+  useEffect(() => {
+    if (!chatChannelId) {
+      setPeers([]);
+      return;
+    }
+    // Get initial peers
+    setPeers(chatService.getPeers(chatChannelId));
+    // Subscribe to updates
+    const unsubscribe = chatService.subscribeToPeers(chatChannelId, () => {
+      setPeers(chatService.getPeers(chatChannelId));
+    });
+    return () => unsubscribe();
+  }, [chatChannelId]);
   
   const isConnected = !!chatChannelId;
   const hasMessages = messages.length > 0;
+  // Count online peers + ourselves (peers array only has OTHER peers who sent presence)
+  const otherOnlinePeers = peers.filter(p => p.status === 'online').length;
+  const onlinePeerCount = isConnected ? otherOnlinePeers + 1 : 0; // +1 for ourselves
   
   const handleSend = useCallback(() => {
     if (!message.trim() || !isConnected) return;
@@ -224,9 +245,14 @@ function OfferChat({
           <span className={`connection-status ${isConnected ? 'connected' : 'connecting'}`}>
             {isConnected ? '● Connected' : '○ Connecting...'}
           </span>
+          {isConnected && onlinePeerCount > 0 && (
+            <span className="peer-count" title={['You', ...peers.filter(p => p.status === 'online').map(p => p.name)].join(', ')}>
+              👥 {onlinePeerCount} online
+            </span>
+          )}
           {hasMessages && <span className="message-count">{messages.length}</span>}
         </div>
-        <button className="expand-toggle">{isExpanded ? '▼' : '▲'}</button>
+        <button type="button" className="expand-toggle">{isExpanded ? '▼' : '▲'}</button>
       </div>
       
       {isExpanded && (
@@ -234,6 +260,7 @@ function OfferChat({
           <div className="offer-chat-info">
             <p>Ask questions, negotiate terms, or discuss the trade with other interested parties.</p>
             <button 
+              type="button"
               className={`copy-invite-btn small ${copyStatus !== 'idle' ? copyStatus : ''}`}
               onClick={(e) => { e.stopPropagation(); handleCopyInvite(); }}
               disabled={copyStatus === 'copying'}
@@ -289,6 +316,7 @@ function OfferChat({
               rows={2}
             />
             <button 
+              type="button"
               className="send-btn" 
               onClick={handleSend}
               disabled={!message.trim() || !isConnected}
@@ -429,6 +457,7 @@ function TradeFlow({
               receiving the payment.
             </p>
             <button 
+              type="button"
               className="action-btn primary"
               onClick={() => handleAction(onDepositEscrow)}
               disabled={actionLoading}
@@ -501,6 +530,7 @@ function TradeFlow({
             </div>
             
             <button 
+              type="button"
               className="action-btn primary"
               onClick={() => handleAction(() => onMarkFiatSent(paymentReference))}
               disabled={actionLoading || !paymentReference.trim()}
@@ -568,6 +598,7 @@ function TradeFlow({
             )}
             <div className="action-buttons">
               <button 
+                type="button"
                 className="action-btn primary"
                 onClick={() => handleAction(onConfirmFiatReceived)}
                 disabled={actionLoading}
@@ -575,6 +606,7 @@ function TradeFlow({
                 {actionLoading ? 'Releasing...' : 'Confirm & Release ZEC'}
               </button>
               <button 
+                type="button"
                 className="action-btn secondary"
                 onClick={() => setShowDispute(true)}
               >
@@ -601,6 +633,7 @@ function TradeFlow({
               If the seller doesn't respond within the time limit, you can open a dispute.
             </p>
             <button 
+              type="button"
               className="action-btn secondary"
               onClick={() => setShowDispute(true)}
             >
@@ -686,12 +719,14 @@ function TradeFlow({
             />
             <div className="modal-actions">
               <button 
+                type="button"
                 className="cancel-btn"
                 onClick={() => setShowDispute(false)}
               >
                 Cancel
               </button>
               <button 
+                type="button"
                 className="submit-dispute-btn"
                 onClick={() => {
                   onOpenDispute(disputeReason);
@@ -709,6 +744,7 @@ function TradeFlow({
       {/* Cancel Button (only in pending state) */}
       {trade.status === 'pending' && (
         <button 
+          type="button"
           className="cancel-trade-btn"
           onClick={() => handleAction(onCancelTrade)}
           disabled={actionLoading}
@@ -1062,7 +1098,7 @@ export function P2POfferDetail() {
         <span className="not-found-icon">🔍</span>
         <h2>Offer Not Found</h2>
         <p>This offer may have been cancelled or completed.</p>
-        <button onClick={() => navigate('/p2p')}>
+        <button type="button" onClick={() => navigate('/p2p')}>
           Browse Offers
         </button>
       </div>
@@ -1089,7 +1125,7 @@ export function P2POfferDetail() {
     <div className="p2p-offer-detail">
       {/* Header */}
       <div className="detail-header">
-        <button className="back-btn" onClick={() => navigate('/p2p')}>
+        <button type="button" className="back-btn" onClick={() => navigate('/p2p')}>
           ← Back to Marketplace
         </button>
         {offer && <ShareButton offer={offer} variant="button" size="medium" />}
@@ -1108,7 +1144,7 @@ export function P2POfferDetail() {
         <div className="p2p-error">
           <span className="error-icon">⚠️</span>
           <span>{error}</span>
-          <button className="dismiss-error" onClick={clearError}>×</button>
+          <button type="button" className="dismiss-error" onClick={clearError}>×</button>
         </div>
       )}
       
@@ -1142,7 +1178,7 @@ export function P2POfferDetail() {
         <div className="offer-detail-content">
           {/* Offer Card */}
           <div className="offer-detail-card">
-            <div className="offer-detail-header">
+            <div className="offer-detail-header" style={{ display: 'none' }}>
               <div className={`offer-type-badge large ${isSelling ? 'sell' : 'buy'}`}>
                 {isSelling ? '🛒 Selling ZEC' : '💸 Buying ZEC'}
               </div>
@@ -1157,21 +1193,59 @@ export function P2POfferDetail() {
             
             {/* Amounts */}
             <div className="offer-detail-amounts">
-              <div className="amount-block zec">
-                <span className="amount-label">Amount</span>
-                <span className="amount-value">{formatZecFromZec(offer.zecAmount)}</span>
-                <span className="amount-unit">ZEC</span>
+              <div className="amounts-header">
+                <div className={`offer-type-badge ${isSelling ? 'sell' : 'buy'}`}>
+                  {isSelling ? '🛒 Selling ZEC' : '💸 Buying ZEC'}
+                </div>
+                <div className="offer-header-actions">
+                  <PaymentLinkButton offer={offer} variant="icon" size="small" />
+                  <ShareButton offer={offer} size="small" />
+                  <div className="offer-created">
+                    Posted {new Date(offer.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
               </div>
-              <div className="amount-arrow">⇄</div>
-              <div className="amount-block fiat">
-                <span className="amount-label">For</span>
-                <span className="amount-value">
-                  {offer.fiatAmountCents 
-                    ? formatFiat(offer.fiatAmountCents, offer.fiatCurrency || offer.exchangeCurrency)
-                    : formatExchangeValue(offer.exchangeValue, offer.exchangeCurrency)
-                  }
-                </span>
-                <span className="amount-unit">{offer.fiatCurrency || offer.exchangeCurrency}</span>
+              
+              <div className="amounts-main">
+                <div className="amount-block zec">
+                  <span className="amount-label">Amount</span>
+                  <span className="amount-value">{formatZecFromZec(offer.zecAmount)}</span>
+                  <span className="amount-unit">ZEC</span>
+                </div>
+                <div className="amount-arrow">⇄</div>
+                <div className="amount-block fiat">
+                  <span className="amount-label">For</span>
+                  <span className="amount-value">
+                    {offer.fiatAmountCents 
+                      ? formatFiat(offer.fiatAmountCents, offer.fiatCurrency || offer.exchangeCurrency)
+                      : formatExchangeValue(offer.exchangeValue, offer.exchangeCurrency)
+                    }
+                  </span>
+                  <span className="amount-unit">{offer.fiatCurrency || offer.exchangeCurrency}</span>
+                </div>
+              </div>
+              
+              <div className="amounts-details">
+                {offer.pricePerZecCents && offer.fiatCurrency && (
+                  <div className="amount-detail-item">
+                    <span className="detail-label">Price</span>
+                    <span className="detail-value">{formatPricePerZec(offer.pricePerZecCents, offer.fiatCurrency)}</span>
+                  </div>
+                )}
+                {(offer.minTradeZec || offer.minTradeZatoshi) && (
+                  <div className="amount-detail-item">
+                    <span className="detail-label">Trade limits</span>
+                    <span className="detail-value">
+                      {formatZecFromZec(offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : 0), 2)} - {formatZecFromZec(offer.maxTradeZec ?? (offer.maxTradeZatoshi ? offer.maxTradeZatoshi / 100_000_000 : offer.zecAmount), 2)} ZEC
+                    </span>
+                  </div>
+                )}
+                {offer.paymentWindow && (
+                  <div className="amount-detail-item">
+                    <span className="detail-label">Payment window</span>
+                    <span className="detail-value">{offer.paymentWindow} min</span>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -1196,6 +1270,30 @@ export function P2POfferDetail() {
                 <div className="info-row">
                   <span className="info-label">Payment window</span>
                   <span className="info-value">{offer.paymentWindow} minutes</span>
+                </div>
+              )}
+              {offer.location?.city && (
+                <div className="info-row">
+                  <span className="info-label">Location</span>
+                  <span className="info-value">
+                    {offer.location.city}{offer.location.country ? `, ${offer.location.country}` : ''}
+                  </span>
+                </div>
+              )}
+              <div className="info-row">
+                <span className="info-label">Status</span>
+                <span className="info-value">
+                  <span className={`status-badge status-${offer.status || 'active'}`}>
+                    {offer.status === 'active' ? 'Active' : offer.status === 'completed' ? 'Completed' : offer.status === 'cancelled' ? 'Cancelled' : 'Active'}
+                  </span>
+                </span>
+              </div>
+              {offer.expiresAt && (
+                <div className="info-row">
+                  <span className="info-label">Expires</span>
+                  <span className="info-value">
+                    {new Date(offer.expiresAt).toLocaleDateString()} {new Date(offer.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               )}
             </div>
@@ -1240,6 +1338,7 @@ export function P2POfferDetail() {
             <div className="offer-action-buttons">
               {offer.status === 'active' && (
                 <button 
+                  type="button"
                   className={`start-trade-btn ${isSelling ? 'buy' : 'sell'}`}
                   onClick={() => setShowTradeModal(true)}
                 >
@@ -1305,7 +1404,7 @@ export function P2POfferDetail() {
       {showTradeModal && offer && (
         <div className="trade-modal-overlay" onClick={() => setShowTradeModal(false)}>
           <div className="trade-modal" onClick={e => e.stopPropagation()}>
-            <button className="close-modal" onClick={() => setShowTradeModal(false)}>×</button>
+            <button type="button" className="close-modal" onClick={() => setShowTradeModal(false)}>×</button>
             
             <h2>{isSelling ? 'Buy ZEC' : 'Sell ZEC'}</h2>
             <p className="modal-subtitle">
@@ -1376,6 +1475,7 @@ export function P2POfferDetail() {
               
               {/* Submit */}
               <button
+                type="button"
                 className="submit-trade-btn"
                 onClick={handleInitiateTrade}
                 disabled={!isValidTradeAmount || (offer.paymentMethods && offer.paymentMethods.length > 0 && !selectedPaymentMethod) || isInitiating}

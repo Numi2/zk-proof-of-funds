@@ -73,7 +73,7 @@ version = "0.1.2"
 version = "0.5"
 optional = true
 default-features = false
-features = ["batch", "circuit-params"]
+features = ["batch", "circuit-params", "multicore"]
 package = "halo2-axiom"
 
 [dependencies.itertools]

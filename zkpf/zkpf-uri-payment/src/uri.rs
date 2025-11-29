@@ -3,11 +3,12 @@
 //! ## URI Format
 //!
 //! ```text
-//! https://pay.withzcash.com:65536/v1#amount=1.23&desc=Payment+for+foo&key=zkey1...
+//! https://pay.withzcash.com:65535/v1#amount=1.23&desc=Payment+for+foo&key=zkey1...
 //! ```
 //!
-//! The URI uses HTTPS scheme with an intentionally invalid port (65536) to prevent
-//! accidental network requests while still allowing deep linking on mobile platforms.
+//! The URI uses HTTPS scheme with an unusual high port (65535, the maximum valid TCP port)
+//! which is unlikely to have an HTTP server running. The primary security comes from the
+//! key being in the URL fragment (never sent to servers) and the domain not resolving.
 
 use bech32::{Bech32m, Hrp};
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
@@ -15,7 +16,7 @@ use std::str::FromStr;
 
 use crate::{
     EphemeralPaymentKey, Error, Result, 
-    MAINNET_HOST, MAINNET_KEY_HRP, TESTNET_HOST, TESTNET_KEY_HRP, URI_PATH,
+    MAINNET_HOST, MAINNET_KEY_HRP, TESTNET_HOST, TESTNET_KEY_HRP, URI_PORT, URI_VERSION,
 };
 
 /// Network selection for URI generation
@@ -131,9 +132,10 @@ impl PaymentUri {
             fragment = format!("amount={}&desc={}&key={}", self.amount, encoded_desc, key_encoded);
         }
         
-        // Note: We use port 65536 conceptually, but represent it as :65536 in the string
-        // Even though it's not a valid TCP port, it works for URL parsing and deep linking
-        format!("https://{}:65536/{}#{}", host, URI_PATH, fragment)
+        // Note: We use port 65535 (maximum valid TCP port) which is unlikely
+        // to have an HTTP server running. The key security comes from the
+        // fragment (never sent to servers) and the domain not resolving.
+        format!("https://{}:{}/{}#{}", host, URI_PORT, URI_VERSION, fragment)
     }
 
     /// Generate a short display version (for showing to users)
@@ -227,18 +229,26 @@ pub fn parse_uri(uri_str: &str) -> Result<PaymentUri> {
     let network = UriNetwork::from_host(host)
         .ok_or_else(|| Error::InvalidUri(format!("Unknown host: {}", host)))?;
 
-    // Validate port (should be 65536, but browsers may reject this)
-    // We're lenient here and accept the URL even without the port
-    if let Some(port) = url.port() {
-        // Port 65536 will be parsed as 0 due to overflow, or may error
-        // We accept any port for compatibility
-        let _ = port;
+    // Validate port - must be 65535 (the maximum valid TCP port)
+    match url.port() {
+        Some(port) if port == URI_PORT => {}
+        Some(port) => {
+            return Err(Error::InvalidUri(format!(
+                "Invalid port: {}, expected {}",
+                port, URI_PORT
+            )));
+        }
+        None => {
+            return Err(Error::InvalidUri(
+                format!("Missing port, expected :{}", URI_PORT)
+            ));
+        }
     }
 
     // Validate path
     let path = url.path();
-    if path != format!("/{}", URI_PATH) && path != format!("/{}/", URI_PATH) {
-        return Err(Error::InvalidUri(format!("Invalid path: {}", path)));
+    if path != format!("/{}", URI_VERSION) && path != format!("/{}/", URI_VERSION) {
+        return Err(Error::InvalidUri(format!("Invalid path: {}, expected /{}", path, URI_VERSION)));
     }
 
     // Parse fragment parameters
@@ -280,8 +290,16 @@ pub fn parse_uri(uri_str: &str) -> Result<PaymentUri> {
     // Parse amount
     let amount_zats = parse_zec_amount(&amount_str)?;
 
-    // Decode key
-    let key = decode_key(&key_encoded)?;
+    // Decode key and validate network consistency
+    let (key, key_network) = decode_key_with_network(&key_encoded)?;
+    
+    // Verify key network matches host network
+    if key_network != network {
+        return Err(Error::InvalidUri(format!(
+            "Network mismatch: host indicates {:?} but key HRP indicates {:?}",
+            network, key_network
+        )));
+    }
 
     Ok(PaymentUri {
         amount: amount_str,
@@ -298,14 +316,14 @@ fn encode_key(key: &EphemeralPaymentKey, network: UriNetwork) -> String {
     bech32::encode::<Bech32m>(hrp, key.as_bytes()).expect("valid encoding")
 }
 
-/// Decode a Bech32m-encoded payment key
-fn decode_key(encoded: &str) -> Result<EphemeralPaymentKey> {
+/// Decode a Bech32m-encoded payment key and return the detected network
+fn decode_key_with_network(encoded: &str) -> Result<(EphemeralPaymentKey, UriNetwork)> {
     let (hrp, data) = bech32::decode(encoded)
         .map_err(|e| Error::InvalidKeyEncoding(e.to_string()))?;
 
-    // Validate HRP
+    // Validate HRP and extract network
     let hrp_str = hrp.as_str();
-    let _network = UriNetwork::from_key_hrp(hrp_str)
+    let network = UriNetwork::from_key_hrp(hrp_str)
         .ok_or_else(|| Error::InvalidKeyEncoding(format!("Unknown HRP: {}", hrp_str)))?;
 
     // Validate data length
@@ -319,8 +337,9 @@ fn decode_key(encoded: &str) -> Result<EphemeralPaymentKey> {
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(&data);
 
-    Ok(EphemeralPaymentKey::from_bytes(key_bytes))
+    Ok((EphemeralPaymentKey::from_bytes(key_bytes), network))
 }
+
 
 /// Parse a ZEC amount string to zatoshis
 fn parse_zec_amount(amount_str: &str) -> Result<u64> {
@@ -403,7 +422,9 @@ mod tests {
         assert_eq!(parse_zec_amount("1.23").unwrap(), 123_000_000);
         assert_eq!(parse_zec_amount("0.00001").unwrap(), 1000);
         assert_eq!(parse_zec_amount("0.00000001").unwrap(), 1);
-        assert_eq!(parse_zec_amount("123.45678901").unwrap_err().to_string().contains("decimal"), true);
+        // 9 decimal places should fail (max is 8)
+        assert!(parse_zec_amount("0.123456789").is_err());
+        assert!(parse_zec_amount("0.123456789").unwrap_err().to_string().contains("decimal"));
     }
 
     #[test]
@@ -419,9 +440,10 @@ mod tests {
     fn test_key_encoding_roundtrip() {
         let key = EphemeralPaymentKey::random(&mut OsRng);
         let encoded = encode_key(&key, UriNetwork::Mainnet);
-        let decoded = decode_key(&encoded).unwrap();
+        let (decoded, network) = decode_key_with_network(&encoded).unwrap();
         
         assert_eq!(key.as_bytes(), decoded.as_bytes());
+        assert_eq!(network, UriNetwork::Mainnet);
         assert!(encoded.starts_with("zkey1"));
     }
 
@@ -438,7 +460,7 @@ mod tests {
         assert_eq!(uri.description(), Some("Test payment"));
         
         let uri_str = uri.to_uri_string();
-        assert!(uri_str.starts_with("https://pay.withzcash.com:65536/v1#"));
+        assert!(uri_str.starts_with("https://pay.withzcash.com:65535/v1#"));
         assert!(uri_str.contains("amount=1.23"));
         assert!(uri_str.contains("desc=Test%20payment"));
         assert!(uri_str.contains("key=zkey1"));

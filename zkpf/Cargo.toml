@@ -44,3 +44,4 @@ members = [
 [patch.crates-io]
 base64ct = { git = "https://github.com/RustCrypto/formats.git", rev = "0ebdd64122a6dc5f0461140a91c7f2cdcec8e015", package = "base64ct" }
 halo2-base = { path = "vendor/halo2-base" }
+halo2-axiom = { path = "vendor/halo2-axiom" }

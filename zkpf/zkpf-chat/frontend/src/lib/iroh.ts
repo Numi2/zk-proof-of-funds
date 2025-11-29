@@ -11,8 +11,10 @@ type ChannelState = {
   subscribers: SubscribeCb[]
   neighborSubscribers: ((neighbors: number) => void)[]
   peerSubscribers: (() => void)[]
+  laggedSubscribers: (() => void)[]
   neighbors: number
   nextId: number
+  isClosed: boolean
   onClose: (() => void)
 }
 
@@ -67,7 +69,9 @@ export class IrohAPI implements API {
       neighbors: 0,
       neighborSubscribers: [],
       peerSubscribers: [],
+      laggedSubscribers: [],
       myself,
+      isClosed: false,
       onClose: onClose!
     }
     state.peers.set(endpointId, myself)
@@ -86,6 +90,7 @@ export class IrohAPI implements API {
           const peerInfo: PeerInfo = {
             id: event.from,
             name: event.nickname,
+            // sentTimestamp is in microseconds, Date expects milliseconds
             lastSeen: new Date(event.sentTimestamp / 1000),
             status: "online",
             role: PeerRole.RemoteNode
@@ -106,6 +111,7 @@ export class IrohAPI implements API {
           const peerInfo: PeerInfo = {
             id: event.from,
             name: event.nickname,
+            // sentTimestamp is in microseconds, Date expects milliseconds
             lastSeen: new Date(event.sentTimestamp / 1000),
             status: "online",
             role: PeerRole.RemoteNode
@@ -122,12 +128,15 @@ export class IrohAPI implements API {
         } else if (event.type === "neighborDown") {
           state.neighbors -= 1
           for (const sub of state.neighborSubscribers) { sub(state.neighbors) }
+        } else if (event.type === "lagged") {
+          log.warn(`Channel ${id}: gossip stream lagged - some messages may have been missed`)
+          for (const sub of state.laggedSubscribers) { sub() }
         }
       }
     }
 
     const checkPeers = async () => {
-      while (true) {
+      while (!state.isClosed) {
         const now = new Date()
         for (const peer of state.peers.values()) {
           if (peer.id === endpointId) {
@@ -147,11 +156,9 @@ export class IrohAPI implements API {
       }
     }
 
-    Promise.race([
-      onClosePromise,
-      subscribe(),
-      checkPeers()
-    ])
+    // Start background tasks - they will stop when isClosed becomes true
+    subscribe().catch(err => log.error("Channel subscribe error", err))
+    checkPeers().catch(err => log.error("Check peers error", err))
 
     return { id, name: label }
   }
@@ -177,6 +184,8 @@ export class IrohAPI implements API {
     if (!state) {
       throw new Error("Channel not found")
     }
+    // Signal background tasks to stop
+    state.isClosed = true
     state.onClose()
     this.channels.delete(channelId)
   }
@@ -209,7 +218,7 @@ export class IrohAPI implements API {
     console.log('state', state)
     log.info(`changing nickname from ${state.myself.name} to ${nickname}`)
     state.myself.name = nickname
-    state.channel.sender.set_nickame(nickname)
+    state.channel.sender.set_nickname(nickname)
     for (const sub of state.peerSubscribers) { sub() }
   }
 

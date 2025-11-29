@@ -330,13 +330,30 @@ impl TachyonWallet {
             public_inputs_hash: compute_public_inputs_hash(&bundle.public_inputs),
         };
 
+        // Convert string chain IDs to ChainId enum
+        let valid_on: Vec<ChainId> = request
+            .target_chains
+            .iter()
+            .map(|s| match s.as_str() {
+                "starknet_mainnet" => ChainId::StarknetMainnet,
+                "starknet_sepolia" => ChainId::StarknetSepolia,
+                "mina_mainnet" => ChainId::MinaMainnet,
+                "mina_berkeley" => ChainId::MinaBerkeley,
+                "near_mainnet" => ChainId::NearMainnet,
+                "near_testnet" => ChainId::NearTestnet,
+                "zcash_mainnet" => ChainId::ZcashMainnet,
+                "zcash_testnet" => ChainId::ZcashTestnet,
+                other => ChainId::Custom(other.to_string()),
+            })
+            .collect();
+
         Ok(UnifiedAttestation {
             attestation_id,
             holder_binding,
             policy_id: request.policy.policy_id,
             epoch: request.epoch.timestamp,
             source_rail: bundle.rail_id.clone(),
-            valid_on: request.target_chains.clone(),
+            valid_on,
             created_at: current_timestamp(),
             expires_at: current_timestamp() + request.policy.validity_window_secs,
             revoked: false,
@@ -372,8 +389,6 @@ impl SyncAllResult {
     }
 }
 
-// Re-export WalletState for convenience
-pub use crate::state::WalletState;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS

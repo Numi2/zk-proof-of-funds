@@ -207,8 +207,8 @@ impl ChannelSender {
         Ok(())
     }
 
-    pub fn set_nickame(&self, nickname: String) {
-        self.0.set_nickname(nickname);
+    pub fn set_nickname(&self, nickname: String) -> Result<(), JsError> {
+        self.0.set_nickname(nickname).map_err(to_js_err)
     }
 }
 

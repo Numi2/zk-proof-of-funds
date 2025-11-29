@@ -112,6 +112,8 @@ export interface PolicyComposeRequest {
   threshold_raw: number;
   required_currency_code: number;
   verifier_scope_id: number;
+  /** Optional policy ID. If provided and not already in use, this ID will be used. */
+  policy_id?: number;
 }
 
 export interface PolicyComposeResponse {

@@ -31,7 +31,7 @@ impl HolderId {
     pub fn pseudonymous() -> Self {
         use rand::Rng;
         let random_bytes: [u8; 16] = rand::thread_rng().gen();
-        Self(hex::encode(random_bytes))
+        Self(hex::encode(&random_bytes))
     }
 }
 

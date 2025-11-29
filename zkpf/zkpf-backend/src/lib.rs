@@ -648,7 +648,13 @@ async fn compose_policy_handler(
         }
     }
 
+    // Check if a specific policy_id was requested and if it already exists
+    let requested_id_exists = req.policy_id.map(|id| {
+        entries.iter().any(|e| e.get("policy_id").and_then(|v| v.as_u64()) == Some(id))
+    }).unwrap_or(false);
+
     let (policy_value, created, policy_id) = if let Some(value) = existing {
+        // Found existing policy with matching parameters
         let policy_id = value
             .get("policy_id")
             .and_then(|v| v.as_u64())
@@ -656,7 +662,50 @@ async fn compose_policy_handler(
                 ApiError::internal("existing policy entry missing policy_id field".to_string())
             })?;
         (value, false, policy_id)
+    } else if let Some(requested_id) = req.policy_id {
+        if requested_id_exists {
+            // Requested policy_id exists but with different parameters
+            return Err(ApiError::bad_request(
+                CODE_POLICY_COMPOSE_INVALID,
+                format!(
+                    "policy_id {} already exists with different parameters",
+                    requested_id
+                ),
+            ));
+        }
+        // Use the requested policy_id for the new policy
+        let entry = serde_json::json!({
+            "category": req.category,
+            "label": req.label,
+            "rail_id": req.rail_id,
+            "options": req.options,
+            "threshold_raw": req.threshold_raw,
+            "required_currency_code": req.required_currency_code,
+            "verifier_scope_id": req.verifier_scope_id,
+            "policy_id": requested_id,
+        });
+
+        entries.push(entry.clone());
+
+        let json_bytes = serde_json::to_vec_pretty(&entries).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to serialize policy configuration to {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?;
+
+        fs::write(path_ref, json_bytes).map_err(|err| {
+            ApiError::internal(format!(
+                "failed to write policy configuration to {}: {}",
+                path_ref.display(),
+                err
+            ))
+        })?;
+
+        (entry, true, requested_id)
     } else {
+        // Auto-assign a new policy_id
         let new_policy_id = max_policy_id.saturating_add(1);
 
         let entry = serde_json::json!({
@@ -827,6 +876,10 @@ struct PolicyComposeRequest {
     threshold_raw: u64,
     required_currency_code: u32,
     verifier_scope_id: u64,
+    /// Optional policy ID. If provided and not already in use, this ID will be used.
+    /// If omitted, a new ID will be auto-assigned.
+    #[serde(default)]
+    policy_id: Option<u64>,
 }
 
 #[derive(serde::Serialize)]
@@ -1051,9 +1104,8 @@ impl PolicyStore {
     pub fn insert(&self, policy: PolicyExpectations) {
         let mut guard = self.policies.write().expect("policy store poisoned");
         let id = policy.policy_id;
-        if guard.insert(id, policy).is_some() {
-            panic!("duplicate policy_id {} in policy store insert", id);
-        }
+        // Upsert - allows re-registering the same policy without panic
+        guard.insert(id, policy);
     }
 }
 

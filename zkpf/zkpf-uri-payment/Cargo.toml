@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Zcash protocol
 zcash_primitives = "0.20"
-zcash_keys = "0.5"
+zcash_keys = { version = "0.5", features = ["sapling"] }
 zcash_protocol = "0.4"
 zcash_client_backend = "0.16"
 orchard = "0.10"
@@ -23,6 +23,7 @@ rand_core = "0.6"
 subtle = "2.5"
 ff = "0.13"
 group = "0.13"
+zeroize = { version = "1.7", features = ["derive"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

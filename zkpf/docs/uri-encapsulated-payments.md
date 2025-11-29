@@ -17,7 +17,7 @@ URI-Encapsulated Payments enable sending Zcash via any secure messaging channel.
 ## URI Format
 
 ```
-https://pay.withzcash.com:65536/v1#amount=1.23&desc=Payment+for+foo&key=zkey1...
+https://pay.withzcash.com:65535/v1#amount=1.23&desc=Payment+for+foo&key=zkey1...
 ```
 
 ### Components
@@ -26,7 +26,7 @@ https://pay.withzcash.com:65536/v1#amount=1.23&desc=Payment+for+foo&key=zkey1...
 |-----------|-------------|
 | `https://` | HTTPS scheme for deep linking |
 | `pay.withzcash.com` | Mainnet host (or `pay.testzcash.com` for testnet) |
-| `:65536` | Invalid port prevents accidental HTTP requests |
+| `:65535` | Maximum valid TCP port (unlikely to have HTTP server) |
 | `/v1` | Version path |
 | `#amount=` | Payment amount in ZEC |
 | `&desc=` | Optional percent-encoded description |
@@ -148,8 +148,8 @@ The payment URI contains the spending key. **Anyone with the URI can claim the f
 
 Multiple layers prevent accidental fund loss:
 
-1. **Invalid port (65536)** — Browsers cannot make HTTP requests
-2. **Fragment identifier** — Key is never sent to servers
+1. **Unusual port (65535)** — Maximum valid port, unlikely to have HTTP server
+2. **Fragment identifier** — Key is never sent to servers (critical security layer)
 3. **No DNS record** — Domain should not resolve
 4. **App whitelist** — Only approved wallets can handle URIs
 

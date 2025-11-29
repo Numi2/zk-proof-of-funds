@@ -17,7 +17,7 @@ interface NavItem {
 
 const walletNavItems: NavItem[] = [
   { path: '/wallet', label: 'Home', icon: '🏠', exact: true },
-  { path: '/wallet/send', label: 'Send', icon: '📤' },
+  { path: '/zkpassport', label: 'Passport', icon: '🛂' },
   { path: '/wallet/receive', label: 'Receive', icon: '📥' },
   { path: '/p2p', label: 'Trade', icon: '🔄' },
 ];

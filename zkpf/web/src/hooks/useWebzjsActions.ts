@@ -4,7 +4,8 @@ import { useWebZjsContext } from '../context/WebzjsContext';
 import { useMetaMask } from './snaps/useMetaMask';
 import { useInvokeSnap } from './snaps/useInvokeSnap';
 import { useRequestSnap } from './snaps/useRequestSnap';
-import { SeedFingerprint } from '@chainsafe/webzjs-wallet';
+// SeedFingerprint is imported dynamically to avoid forcing the threaded WASM bundle to load
+// on browsers without SharedArrayBuffer support
 
 type AccountData = {
   unifiedAddress: string;
@@ -157,6 +158,8 @@ export function useWebzjsActions() {
       for (let i = 0; i < seedFingerprintBytes.length; i += 1) {
         seedFingerprintBytes[i] = Number.parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
       }
+      // Dynamic import to avoid forcing threaded WASM on browsers without SharedArrayBuffer
+      const { SeedFingerprint } = await import('@chainsafe/webzjs-wallet');
       const seedFingerprint = SeedFingerprint.from_bytes(seedFingerprintBytes);
 
       const accountId = await state.webWallet.create_account_ufvk(

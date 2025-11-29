@@ -528,6 +528,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bip32"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2809,8 +2818,6 @@ dependencies = [
 [[package]]
 name = "halo2-axiom"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aee3f8178b78275038e5ea0e2577140056d2c4c87fccaf6777dc0a8eebe455a"
 dependencies = [
  "ark-std 0.3.0",
  "blake2b_simd",
@@ -3041,11 +3048,11 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.12"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8364,6 +8371,7 @@ dependencies = [
  "memuse",
  "nonempty 0.7.0",
  "rand_core 0.6.4",
+ "sapling-crypto 0.3.0",
  "secrecy",
  "subtle",
  "tracing",
@@ -8886,9 +8894,22 @@ dependencies = [
 name = "zkpf-orchard-pof-circuit"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
+ "blake2b_simd",
+ "blake3",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "halo2_gadgets",
+ "halo2_proofs",
+ "once_cell",
  "orchard 0.11.0",
+ "pasta_curves",
+ "proptest",
+ "rand 0.8.5",
+ "rand_core 0.6.4",
  "serde",
  "thiserror 1.0.69",
+ "tracing",
  "zkpf-orchard-inner",
 ]
 
@@ -9014,6 +9035,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bincode",
  "blake3",
  "chrono",
  "futures",
@@ -9030,6 +9052,7 @@ dependencies = [
  "zkpf-axelar-gmp",
  "zkpf-common",
  "zkpf-mina",
+ "zkpf-orchard-inner",
  "zkpf-orchard-pof-circuit",
  "zkpf-starknet-l2",
  "zkpf-wallet-state",
@@ -9097,6 +9120,7 @@ dependencies = [
  "zcash_keys 0.5.1",
  "zcash_primitives 0.20.1",
  "zcash_protocol",
+ "zeroize",
  "zip32 0.1.3",
 ]
 

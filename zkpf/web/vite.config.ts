@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -17,35 +19,15 @@ const crossOriginIsolationHeaders = {
 export default defineConfig({
   plugins: [
     react(),
-    {
-      name: 'wasm-worker-resolve',
-      enforce: 'pre',
-      resolveId(id) {
-        // Handle worker module imports that reference non-existent bundler files
-        if (id && id.includes('web_worker_module.bundler.js')) {
-          // Create a virtual module ID to prevent Vite from trying to resolve the file
-          return `\0wasm-worker-stub-${id}`;
-        }
-        return null;
-      },
-      load(id) {
-        // Provide a stub for worker bundler files
-        if (id.startsWith('\0wasm-worker-stub-')) {
-          // Return a minimal worker that does nothing (workers are optional for wasm-bindgen-rayon)
-          return `// Stub worker module for wasm-bindgen-rayon
-export default function () {
-  // Worker stub - threading may not be available
-}`;
-        }
-        return null;
-      },
-    },
+    wasm(),
+    topLevelAwait(),
   ],
   worker: {
     // wasm-bindgen-rayon expects ESM workers; Vite defaults to "iife" which
     // breaks when workers use code-splitting. Force ES module workers so
     // bundling succeeds in both local and Vercel builds.
     format: 'es',
+    plugins: () => [wasm(), topLevelAwait()],
   },
   server: {
     fs: {
@@ -99,5 +81,8 @@ export default function () {
   optimizeDeps: {
     // Exclude WASM modules from pre-bundling
     exclude: ['@chainsafe/webzjs-wallet', '@chainsafe/webzjs-wallet-single', '@chainsafe/webzjs-keys', 'chat-browser'],
+  },
+  build: {
+    target: 'esnext',
   },
 });

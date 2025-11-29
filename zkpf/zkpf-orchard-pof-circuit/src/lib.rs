@@ -1,25 +1,44 @@
 //! zkpf-orchard-pof-circuit
 //!
-//! This crate is the intended home of the **inner Orchard proof-of-funds Halo2
-//! circuit** over the Pasta (Pallas) field. It is responsible for:
-//! - Reusing Orchard's official Halo2 gadgets for note commitments, Merkle
-//!   paths, and nullifier computation.
-//! - Enforcing Σ v_i ≥ threshold_zats inside the circuit using the committed
-//!   Orchard note values.
-//! - Computing a UFVK / holder binding that is exposed as part of the public
-//!   inputs.
+//! This crate implements the **inner Orchard proof-of-funds Halo2 circuit** over
+//! the Pasta (Pallas) field. It is responsible for:
+//! - Verifying Merkle paths for each note commitment to the Orchard anchor
+//! - Enforcing Σ v_i ≥ threshold_zats inside the circuit
+//! - Computing holder binding that is exposed as part of the public inputs
 //!
-//! At the moment this crate only defines the high-level data structures and a
-//! placeholder prover implementation; the concrete Halo2 circuit wiring will be
-//! added in a follow-up iteration that depends on the exact halo2_proofs /
-//! halo2_gadgets versions used by the upstream `orchard` crate.
+//! The circuit uses the official Orchard Halo2 gadgets from `halo2_gadgets` for
+//! Sinsemilla-based Merkle path verification.
 
+use ff::PrimeField;
 use orchard::{note::Note, tree};
+use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zkpf_orchard_inner::{
     OrchardInnerPublicInputs, OrchardPofError, OrchardPofInput, OrchardPofNoteWitness,
     OrchardPofProver, ORCHARD_POF_MAX_NOTES,
+};
+
+mod circuit;
+mod domains;
+pub mod fixed_bases;
+mod gadgets;
+pub mod merkle_circuit;
+pub mod sinsemilla_hash;
+
+pub use circuit::{OrchardPofCircuit, OrchardPofConfig, MERKLE_DEPTH, MAX_NOTES, warm_cache};
+pub use merkle_circuit::{
+    MerkleVerificationConfig, MerklePathWitness,
+    verify_merkle_path_in_circuit, batch_verify_merkle_paths,
+};
+pub use domains::{PofHashDomains, PofCommitDomains, PofFixedBases as DomainFixedBases};
+pub use fixed_bases::{
+    NullifierK, OrchardFixedBases, OrchardFixedBasesFull, PofFixedBases, PofFixedBasesFull,
+    ValueCommitV, FIXED_BASE_WINDOW_SIZE, H, NUM_WINDOWS, NUM_WINDOWS_SHORT,
+};
+pub use sinsemilla_hash::{
+    compute_merkle_root, verify_merkle_path, merkle_hash_level,
+    bytes_to_field, field_to_bytes, empty_root,
 };
 
 /// Snapshot of a single Orchard note as seen by the wallet / prover.
@@ -75,22 +94,23 @@ pub struct OrchardPofParams {
 
 /// Serialized Halo2 artifacts for the inner Orchard PoF circuit.
 ///
-/// These are treated as opaque here; the concrete Halo2 integration will
-/// deserialize them into `ParamsKZG`, verifying key, and proving key for a
-/// fixed-parameter circuit (with `ORCHARD_POF_MAX_NOTES` notes).
+/// These are the Pasta-field circuit artifacts (using IPA commitment scheme).
 #[derive(Clone, Debug)]
 pub struct OrchardPofCircuitArtifacts {
+    /// Serialized KZG/IPA parameters for the circuit.
     pub params_bytes: Vec<u8>,
+    /// Serialized verifying key.
     pub vk_bytes: Vec<u8>,
+    /// Serialized proving key.
     pub pk_bytes: Vec<u8>,
+    /// Circuit size parameter (k).
+    pub k: u32,
 }
 
 /// Concrete prover handle for the inner Orchard PoF circuit.
 ///
-/// In a full implementation this would own the deserialized Halo2 parameters,
-/// proving key, and verifying key. For now we keep only the serialized
-/// artifacts so key management and caching can be wired without pulling in the
-/// Halo2 dependency surface.
+/// This implementation uses the zcash Halo2 proof system over Pasta curves
+/// with the IPA (inner product argument) polynomial commitment scheme.
 #[derive(Clone, Debug)]
 pub struct OrchardPofCircuitProver {
     pub artifacts: OrchardPofCircuitArtifacts,
@@ -119,14 +139,27 @@ impl OrchardPofCircuitProver {
             )));
         }
 
+        // Compute the sum of note values
+        let sum_zats: u64 = snapshot
+            .notes
+            .iter()
+            .map(|n| n.value_zats.inner())
+            .sum();
+
+        // Compute holder binding from UFVK + holder_id
+        let binding = compute_holder_binding(&params.ufvk_bytes, params.holder_id.as_ref());
+
+        // Compute UFVK commitment
+        let ufvk_commitment = compute_ufvk_commitment(&params.ufvk_bytes);
+
         let public = OrchardInnerPublicInputs {
             anchor_orchard: snapshot.anchor.to_bytes(),
             height: snapshot.height,
-            ufvk_commitment: [0u8; 32], // to be computed by the concrete circuit implementation
+            ufvk_commitment,
             threshold_zats: params.threshold_zats,
-            sum_zats: 0,            // populated by the circuit in the real prover
-            nullifiers: Vec::new(), // populated by the circuit in the real prover
-            binding: None,          // populated by the circuit in the real prover
+            sum_zats,
+            nullifiers: Vec::new(), // Nullifiers are computed in-circuit
+            binding: Some(binding),
         };
 
         let notes: Vec<OrchardPofNoteWitness> = snapshot
@@ -156,15 +189,99 @@ impl OrchardPofCircuitProver {
 impl OrchardPofProver for OrchardPofCircuitProver {
     fn prove_orchard_pof_statement(
         &self,
-        _input: &OrchardPofInput,
+        input: &OrchardPofInput,
     ) -> Result<(Vec<u8>, OrchardInnerPublicInputs), OrchardPofError> {
-        // The real implementation will:
-        // - build an `OrchardPofCircuit` over Pasta Fp,
-        // - run Halo2 KZG keygen / create_proof,
-        // - extract the finalized `OrchardInnerPublicInputs` from the circuit,
-        // - and return `(proof_bytes, public_inputs)`.
-        Err(OrchardPofError::NotImplemented)
+        // Validate the input
+        if input.notes.len() > ORCHARD_POF_MAX_NOTES {
+            return Err(OrchardPofError::InvalidWitness(format!(
+                "too many notes: {} > {}",
+                input.notes.len(),
+                ORCHARD_POF_MAX_NOTES
+            )));
+        }
+
+        // Check that the sum meets the threshold
+        let sum: u64 = input.notes.iter().map(|n| n.value_zats).sum();
+        if sum < input.public.threshold_zats {
+            return Err(OrchardPofError::InvalidWitness(format!(
+                "sum {} < threshold {}",
+                sum, input.public.threshold_zats
+            )));
+        }
+
+        // Build the circuit witness
+        let circuit = OrchardPofCircuit::from_input(input)?;
+
+        // Build public inputs for the circuit
+        let public_inputs = build_public_instances(&input.public);
+
+        // Generate the proof using Halo2 IPA
+        let proof = circuit::generate_proof(&circuit, &public_inputs, &self.artifacts)?;
+
+        // Return the proof and finalized public inputs
+        let mut finalized_public = input.public.clone();
+        finalized_public.sum_zats = sum;
+
+        Ok((proof, finalized_public))
     }
+}
+
+/// Verify an Orchard PoF proof.
+pub fn verify_orchard_pof_proof(
+    proof: &[u8],
+    public_inputs: &OrchardInnerPublicInputs,
+    artifacts: &OrchardPofCircuitArtifacts,
+) -> Result<bool, OrchardPofError> {
+    let instances = build_public_instances(public_inputs);
+    circuit::verify_proof(proof, &instances, artifacts)
+}
+
+/// Build the public instance vector for the circuit.
+fn build_public_instances(public: &OrchardInnerPublicInputs) -> Vec<pallas::Base> {
+    let mut instances = Vec::new();
+
+    // Anchor (as field element)
+    instances.push(pallas::Base::from_repr(public.anchor_orchard).unwrap_or(pallas::Base::zero()));
+
+    // Height (as field element)
+    instances.push(pallas::Base::from(public.height as u64));
+
+    // Threshold (as field element)
+    instances.push(pallas::Base::from(public.threshold_zats));
+
+    // Sum (as field element)
+    instances.push(pallas::Base::from(public.sum_zats));
+
+    // UFVK commitment
+    instances.push(
+        pallas::Base::from_repr(public.ufvk_commitment).unwrap_or(pallas::Base::zero()),
+    );
+
+    // Holder binding (if present)
+    if let Some(binding) = public.binding {
+        instances.push(pallas::Base::from_repr(binding).unwrap_or(pallas::Base::zero()));
+    }
+
+    instances
+}
+
+/// Compute holder binding from UFVK bytes and optional holder ID.
+fn compute_holder_binding(ufvk_bytes: &[u8], holder_id: Option<&[u8; 32]>) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"zkpf_orchard_holder_binding_v1");
+    hasher.update(ufvk_bytes);
+    if let Some(id) = holder_id {
+        hasher.update(id);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Compute UFVK commitment (hash of UFVK bytes).
+fn compute_ufvk_commitment(ufvk_bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"zkpf_orchard_ufvk_commitment_v1");
+    hasher.update(ufvk_bytes);
+    *hasher.finalize().as_bytes()
 }
 
 /// Errors specific to this crate.
@@ -177,4 +294,91 @@ pub enum OrchardPofCircuitError {
     /// Misconfiguration or missing parameters / keys.
     #[error("Orchard PoF circuit configuration error: {0}")]
     Config(String),
+
+    /// Proof generation failed.
+    #[error("proof generation failed: {0}")]
+    ProofGeneration(String),
+
+    /// Proof verification failed.
+    #[error("proof verification failed: {0}")]
+    Verification(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_holder_binding_computation() {
+        let ufvk = b"test_ufvk_bytes";
+        let holder_id = [1u8; 32];
+        
+        let binding = compute_holder_binding(ufvk, Some(&holder_id));
+        assert_ne!(binding, [0u8; 32]);
+        
+        // Different inputs should produce different bindings
+        let binding2 = compute_holder_binding(ufvk, None);
+        assert_ne!(binding, binding2);
+    }
+
+    #[test]
+    fn test_ufvk_commitment() {
+        let ufvk = b"test_ufvk_bytes";
+        let commitment = compute_ufvk_commitment(ufvk);
+        assert_ne!(commitment, [0u8; 32]);
+        
+        // Same input should produce same commitment
+        let commitment2 = compute_ufvk_commitment(ufvk);
+        assert_eq!(commitment, commitment2);
+    }
+    
+    #[test]
+    fn test_warm_cache() {
+        // This test verifies that the cache can be initialized
+        warm_cache();
+        // Second call should be a no-op
+        warm_cache();
+    }
+    
+    #[test]
+    fn test_circuit_prover_creation() {
+        let artifacts = OrchardPofCircuitArtifacts {
+            params_bytes: vec![],
+            vk_bytes: vec![],
+            pk_bytes: vec![],
+            k: 11,
+        };
+        
+        let prover = OrchardPofCircuitProver::new(artifacts);
+        assert_eq!(prover.artifacts.k, 11);
+    }
+    
+    #[test]
+    fn test_public_inputs_construction() {
+        use zkpf_orchard_inner::OrchardInnerPublicInputs;
+        
+        let public = OrchardInnerPublicInputs {
+            anchor_orchard: [1u8; 32],
+            height: 2000000,
+            ufvk_commitment: [2u8; 32],
+            threshold_zats: 1_000_000,
+            sum_zats: 5_000_000,
+            nullifiers: vec![],
+            binding: Some([3u8; 32]),
+        };
+        
+        let instances = build_public_instances(&public);
+        
+        // Should have 6 instances (anchor, height, threshold, sum, ufvk_commitment, binding)
+        assert_eq!(instances.len(), 6);
+        
+        // Height should be 2000000
+        assert_eq!(instances[1], pallas::Base::from(2000000u64));
+        
+        // Threshold should be 1_000_000
+        assert_eq!(instances[2], pallas::Base::from(1_000_000u64));
+        
+        // Sum should be 5_000_000
+        assert_eq!(instances[3], pallas::Base::from(5_000_000u64));
+    }
 }

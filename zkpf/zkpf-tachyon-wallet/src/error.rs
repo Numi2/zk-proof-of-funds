@@ -21,6 +21,9 @@ pub enum TachyonError {
     #[error("rail sync failed: {rail}: {message}")]
     RailSync { rail: String, message: String },
 
+    #[error("sync error: {0}")]
+    Sync(String),
+
     // ═══════════════════════════════════════════════════════════════════════════════
     // PROOF ERRORS
     // ═══════════════════════════════════════════════════════════════════════════════

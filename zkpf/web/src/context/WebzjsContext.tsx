@@ -7,7 +7,6 @@ import {
   loadWalletWasm, 
   createWebWallet, 
   getWasmEnvironmentInfo,
-  isThreadedMode,
 } from '../wasm/wallet-loader';
 
 type WebZjsState = {

@@ -13,6 +13,7 @@ zkpf-starknet-l2 = { path = "../zkpf-starknet-l2" }
 zkpf-axelar-gmp = { path = "../zkpf-axelar-gmp" }
 zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
 zkpf-orchard-pof-circuit = { path = "../zkpf-orchard-pof-circuit" }
+zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }
 zkpf-wallet-state = { path = "../zkpf-wallet-state" }
 
 # Async runtime
@@ -28,6 +29,7 @@ serde_json = "1.0"
 blake3 = "1.5"
 sha3 = "0.10"
 rand = "0.8"
+bincode = "1"
 
 # Error handling
 thiserror = "1.0"

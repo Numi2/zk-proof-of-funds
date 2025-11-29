@@ -43,8 +43,11 @@ pub struct TachyonConfig {
 }
 
 fn default_data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+    // Use home directory or current directory as fallback
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(|home| PathBuf::from(home).join(".local").join("share"))
+        .unwrap_or_else(|_| PathBuf::from("."))
         .join("tachyon-wallet")
 }
 

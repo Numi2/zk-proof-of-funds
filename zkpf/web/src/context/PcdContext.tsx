@@ -97,6 +97,27 @@ async function createMockGenesisPcd(initialNotes: NoteIdentifier[] = []): Promis
   };
 }
 
+/**
+ * Check if an error indicates the backend is unavailable.
+ * Handles browser-specific error messages:
+ * - Chrome/Firefox: "Failed to fetch", "NetworkError"
+ * - Safari: "Load failed"
+ */
+function isBackendUnavailableError(err: unknown): boolean {
+  if (err instanceof ApiError && (err.status === 404 || err.status === 502)) {
+    return true;
+  }
+  if (err instanceof Error) {
+    const msg = err.message;
+    return (
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg.includes('Load failed')
+    );
+  }
+  return false;
+}
+
 // IndexedDB key for persisted PCD state
 const PCD_STORAGE_KEY = 'zkpf-pcd-state';
 
@@ -242,11 +263,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
         console.info('[PCD] Initialized new chain via backend, genesis:', response.pcd_state.s_genesis);
       } catch (err) {
         // Check if it's a 404 or connection error - use client-side mock
-        const isBackendUnavailable = 
-          (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
-          (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')));
-        
-        if (isBackendUnavailable) {
+        if (isBackendUnavailableError(err)) {
           console.warn('[PCD] Backend unavailable, using client-side mock initialization');
           try {
             const mockPcdState = await createMockGenesisPcd(initialNotes);
@@ -349,11 +366,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
         );
       } catch (err) {
         // Check if backend is unavailable - use client-side mock
-        const isBackendUnavailable = 
-          (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
-          (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')));
-        
-        if (isBackendUnavailable && state.pcdState) {
+        if (isBackendUnavailableError(err) && state.pcdState) {
           console.warn('[PCD] Backend unavailable, using client-side mock update');
           try {
             const newPcdState = await applyDelta(state.pcdState);
@@ -406,11 +419,7 @@ export function PcdProvider({ children, apiBaseUrl }: PcdProviderProps) {
       return response.valid;
     } catch (err) {
       // Check if backend is unavailable - perform client-side verification
-      const isBackendUnavailable = 
-        (err instanceof ApiError && (err.status === 404 || err.status === 502)) ||
-        (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')));
-      
-      if (isBackendUnavailable && state.pcdState) {
+      if (isBackendUnavailableError(err) && state.pcdState) {
         console.warn('[PCD] Backend unavailable, using client-side mock verification');
         try {
           // Verify the state commitment matches

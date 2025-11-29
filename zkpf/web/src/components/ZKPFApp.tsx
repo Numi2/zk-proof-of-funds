@@ -11,7 +11,6 @@ import type { PolicyDefinition, ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
 import { RouteErrorBoundary } from './ErrorBoundary';
 import { MobileBottomNav } from './MobileBottomNav';
-import { BrowserCompatBanner } from './BrowserCompatBanner';
 import './mobile.css';
 
 const ProofBuilder = lazy(() =>
@@ -60,10 +59,6 @@ const P2POfferCreate = lazy(() =>
 
 const P2POfferDetail = lazy(() =>
   import('./p2p/P2POfferDetail').then((module) => ({ default: module.P2POfferDetail })),
-);
-
-const TachyonWallet = lazy(() =>
-  import('./tachyon/TachyonWallet').then((module) => ({ default: module.TachyonWallet })),
 );
 
 const DEFAULT_BASE = detectDefaultBase();
@@ -222,13 +217,9 @@ export function ZKPFApp() {
   const isWalletRoute = location.pathname.startsWith('/wallet');
   const isBoundIdentityRoute = location.pathname.startsWith('/bound-identity');
   const isP2PRoute = location.pathname.startsWith('/p2p');
-  const isTachyonRoute = location.pathname.startsWith('/tachyon');
 
   return (
     <div className="app-shell">
-      {/* Browser compatibility banner - shows on unsupported browsers */}
-      <BrowserCompatBanner />
-      
       <div className="wallet-entry">
         <NavLink to="/wallet" className="wallet-button">
           <span>Wallet</span>
@@ -244,29 +235,21 @@ export function ZKPFApp() {
           <span>P2P Trade</span>
         </NavLink>
       </div>
-      <div className="tachyon-entry">
-        <NavLink to="/tachyon" className="tachyon-button">
-          <span>Tachyon</span>
-        </NavLink>
-      </div>
       
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isTachyonRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <header className="hero">
           <div className="header-top">
             <div className="brand">
-              <div className="logo">
-                <img src="/zkpf.png" alt="zkpf - zero-knowledge proof of funds" />
+              <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
+                <span className="status-dot"></span>
+                <span className="status-text">
+                  {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
+                </span>
               </div>
               <div>
                 <p className="eyebrow">ZK Stack</p>
                 <h1>Zero-knowledge proof-of-funds</h1>
               </div>
-            </div>
-            <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
-              <span className="status-dot"></span>
-              <span className="status-text">
-                {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
-              </span>
             </div>
             <div className="hero-subtitle"></div>
           </div>
@@ -304,7 +287,7 @@ export function ZKPFApp() {
         </header>
       )}
 
-      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isTachyonRoute && (
+      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <ProgressChecklist
           steps={checklistSteps}
           onStepClick={(id) => {
@@ -534,29 +517,10 @@ export function ZKPFApp() {
           )}
         />
 
-        {/* Tachyon Multi-Chain Wallet */}
-        <Route
-          path="/tachyon"
-          element={(
-            <RouteErrorBoundary>
-              <Suspense
-                fallback={(
-                  <section className="card">
-                    <p className="eyebrow">Loading Tachyon</p>
-                    <p className="muted small">Preparing multi-chain wallet...</p>
-                  </section>
-                )}
-              >
-                <TachyonWallet />
-              </Suspense>
-            </RouteErrorBoundary>
-          )}
-        />
-
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isTachyonRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
             <div key={item.title} className="hero-highlight">
@@ -569,12 +533,14 @@ export function ZKPFApp() {
 
       <footer>
         <p>
-          Made by Numan Thabit.
+          Github : <a href="https://github.com/Numi2/zk-proof-of-funds" target="_blank" rel="noopener noreferrer">
+            https://github.com/Numi2/zk-proof-of-funds
+          </a>
         </p>
       </footer>
 
-      {/* Mobile bottom navigation - only show on wallet, P2P, and Tachyon routes */}
-      {(isWalletRoute || isP2PRoute || isTachyonRoute) && <MobileBottomNav />}
+      {/* Mobile bottom navigation - only show on wallet and P2P routes */}
+      {(isWalletRoute || isP2PRoute) && <MobileBottomNav />}
 
       <Analytics />
     </div>

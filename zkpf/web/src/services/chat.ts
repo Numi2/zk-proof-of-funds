@@ -8,7 +8,7 @@ type TicketOpts = {
 };
 
 type Message = { id: string; sender: string; content: string; nickname?: string };
-type PeerInfo = { id: string; name: string; status: 'online' | 'away' | 'offline'; lastSeen: Date };
+export type PeerInfo = { id: string; name: string; status: 'online' | 'away' | 'offline'; lastSeen: Date };
 
 type ChannelState = {
 	channel: any;
@@ -17,6 +17,7 @@ type ChannelState = {
 	peerSubscribers: Array<() => void>;
 	neighborsSubscribers: Array<(n: number) => void>;
 	peers: Map<string, PeerInfo>;
+	neighbors: number;
 	nextId: number;
 	onClose: () => void;
 };
@@ -75,6 +76,7 @@ class ChatServiceImpl {
 			peerSubscribers: [],
 			neighborsSubscribers: [],
 			peers: new Map(),
+			neighbors: 0,
 			nextId: 0,
 			onClose: resolveClose,
 		};
@@ -88,6 +90,13 @@ class ChatServiceImpl {
 				if (done) break;
 				const event = value;
 				if (event?.type === 'messageReceived') {
+					const peer: PeerInfo = {
+						id: event.from,
+						name: event.nickname,
+						lastSeen: new Date(event.sentTimestamp / 1000),
+						status: 'online',
+					};
+					state.peers.set(peer.id, peer);
 					const message: Message = { id: String(state.nextId++), sender: event.from, content: event.text, nickname: event.nickname };
 					state.messages.push(message);
 					for (const sub of state.subscribers) sub(message);
@@ -102,11 +111,17 @@ class ChatServiceImpl {
 					state.peers.set(peer.id, peer);
 					for (const sub of state.peerSubscribers) sub();
 				} else if (event?.type === 'joined') {
-					for (const sub of state.neighborsSubscribers) sub(event.neighbors?.length || 0);
+					state.neighbors += event.neighbors?.length || 0;
+					for (const sub of state.neighborsSubscribers) sub(state.neighbors);
+					for (const sub of state.peerSubscribers) sub();
 				} else if (event?.type === 'neighborUp') {
-					for (const sub of state.neighborsSubscribers) sub(1);
+					state.neighbors += 1;
+					for (const sub of state.neighborsSubscribers) sub(state.neighbors);
+					for (const sub of state.peerSubscribers) sub();
 				} else if (event?.type === 'neighborDown') {
-					for (const sub of state.neighborsSubscribers) sub(-1);
+					state.neighbors = Math.max(0, state.neighbors - 1);
+					for (const sub of state.neighborsSubscribers) sub(state.neighbors);
+					for (const sub of state.peerSubscribers) sub();
 				}
 			}
 		};
@@ -171,6 +186,38 @@ class ChatServiceImpl {
 		const message: Message = { id: String(state.nextId++), sender: this.endpointId || 'me', content: text };
 		state.messages.push(message);
 		for (const sub of state.subscribers) sub(message);
+	}
+
+	getPeers(channelId: string): PeerInfo[] {
+		const state = this.channels.get(channelId);
+		if (!state) return [];
+		return Array.from(state.peers.values());
+	}
+
+	getNeighborCount(channelId: string): number {
+		const state = this.channels.get(channelId);
+		if (!state) return 0;
+		return state.neighbors;
+	}
+
+	subscribeToPeers(channelId: string, cb: () => void): () => void {
+		const state = this.channels.get(channelId);
+		if (!state) return () => {};
+		state.peerSubscribers.push(cb);
+		return () => {
+			state.peerSubscribers = state.peerSubscribers.filter((f) => f !== cb);
+		};
+	}
+
+	subscribeToNeighbors(channelId: string, cb: (n: number) => void): () => void {
+		const state = this.channels.get(channelId);
+		if (!state) return () => {};
+		// Immediately call with current value
+		cb(state.neighbors);
+		state.neighborsSubscribers.push(cb);
+		return () => {
+			state.neighborsSubscribers = state.neighborsSubscribers.filter((f) => f !== cb);
+		};
 	}
 }
 

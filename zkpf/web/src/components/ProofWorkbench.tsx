@@ -491,6 +491,29 @@ export function ProofWorkbench({
     setAttestError(null);
     try {
       onVerificationOutcome?.('pending');
+      
+      // If we have a custom policy that matches, register it with the backend first
+      // This ensures the backend knows about ephemeral policies created from wallet balances
+      if (hasMatchingCustomPolicy && customPolicy) {
+        try {
+          await client.composePolicy({
+            category: customPolicy.category ?? 'CUSTOM',
+            rail_id: customPolicy.rail_id ?? 'CUSTODIAL_ATTESTATION',
+            label: customPolicy.label ?? `Custom policy ${customPolicy.policy_id}`,
+            options: customPolicy.options,
+            threshold_raw: customPolicy.threshold_raw,
+            required_currency_code: customPolicy.required_currency_code,
+            verifier_scope_id: customPolicy.verifier_scope_id,
+            // Pass the exact policy_id from the bundle so it matches
+            policy_id: customPolicy.policy_id,
+          });
+        } catch (composeErr) {
+          // If policy already exists or compose fails for other reasons, continue
+          // The verify call will provide a more specific error if needed
+          console.warn('Policy compose warning:', composeErr);
+        }
+      }
+      
       const response =
         mode === 'bundle'
           ? await client.verifyBundle(policyIdForVerify, bundle)

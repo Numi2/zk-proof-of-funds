@@ -14,7 +14,7 @@
 //! ## URI Format
 //!
 //! ```text
-//! https://pay.withzcash.com:65536/v1#amount=1.23&desc=Payment+for+foo&key=...
+//! https://pay.withzcash.com:65535/v1#amount=1.23&desc=Payment+for+foo&key=...
 //! ```
 //!
 //! The key is encoded using Bech32 with HRP "zkey" for mainnet or "zkeytest" for testnet.
@@ -28,17 +28,14 @@ pub use error::{Error, Result};
 pub use key_derivation::{
     EphemeralPaymentKey, PaymentKeyDerivation, GAP_LIMIT, PAYMENT_URI_PURPOSE,
 };
-pub use note::{DerivedPaymentNote, PaymentNoteBuilder};
+pub use note::{verify_note_derivation, DerivedPaymentNote, PaymentNoteBuilder};
 pub use uri::{PaymentUri, PaymentUriBuilder, UriNetwork};
 
 /// Standard transaction fee for fully-shielded transactions (0.00001 ZEC = 1000 zatoshis)
 pub const STANDARD_FEE_ZATS: u64 = 1000;
 
-/// Current version of the URI format
+/// Current version and path component of the URI format
 pub const URI_VERSION: &str = "v1";
-
-/// The URI path component
-pub const URI_PATH: &str = "v1";
 
 /// Default host for mainnet
 pub const MAINNET_HOST: &str = "pay.withzcash.com";
@@ -46,8 +43,12 @@ pub const MAINNET_HOST: &str = "pay.withzcash.com";
 /// Default host for testnet
 pub const TESTNET_HOST: &str = "pay.testzcash.com";
 
-/// The intentionally invalid port number (prevents accidental HTTP requests)
-pub const URI_PORT: u16 = 65536_u16.wrapping_add(0); // Wraps but represents the concept
+/// An unusual high port number (maximum valid TCP port).
+/// This is unlikely to have an HTTP server running, providing some protection
+/// against accidental HTTP requests while still allowing URL parsing.
+/// Note: The primary security comes from the key being in the URL fragment
+/// (never sent to servers) and the domain not resolving.
+pub const URI_PORT: u16 = 65535;
 
 /// Bech32 HRP for mainnet payment keys
 pub const MAINNET_KEY_HRP: &str = "zkey";

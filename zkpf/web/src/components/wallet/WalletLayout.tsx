@@ -7,7 +7,18 @@ export function WalletLayout() {
   const { state } = useWebZjsContext();
   
   const isConnected = state.webWallet !== null;
+  const isLoading = state.loading;
   const isSyncing = state.syncInProgress;
+
+  // Determine connection status: loading > syncing > connected > disconnected
+  const getConnectionStatus = () => {
+    if (isLoading) return { className: 'connecting', text: 'Connecting...' };
+    if (isConnected && isSyncing) return { className: 'connecting', text: 'Syncing...' };
+    if (isConnected) return { className: 'connected', text: 'Connected' };
+    return { className: 'disconnected', text: 'Not Connected' };
+  };
+
+  const connectionStatus = getConnectionStatus();
 
   return (
     <PcdProvider>
@@ -26,10 +37,10 @@ export function WalletLayout() {
                 </div>
               </div>
             </div>
-            <div className={`connection-status ${isConnected ? (isSyncing ? 'connecting' : 'connected') : 'disconnected'}`}>
+            <div className={`connection-status wallet-connection-status ${connectionStatus.className}`}>
               <span className="status-dot"></span>
               <span className="status-text">
-                {isConnected ? (isSyncing ? 'Syncing...' : 'Connected') : 'Not Connected'}
+                {connectionStatus.text}
               </span>
             </div>
           </div>
@@ -58,6 +69,7 @@ export function WalletLayout() {
             >
               Receive
             </NavLink>
+            {/* Hidden navigation links
             <NavLink
               to="/wallet/send"
               className={({ isActive }) => (isActive ? 'wallet-nav-link wallet-nav-link-active' : 'wallet-nav-link')}
@@ -70,6 +82,7 @@ export function WalletLayout() {
             >
               Links
             </NavLink>
+            */}
           </nav>
         </header>
         

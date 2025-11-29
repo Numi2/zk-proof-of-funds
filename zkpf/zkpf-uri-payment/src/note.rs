@@ -54,18 +54,30 @@ impl DerivedPaymentNote {
         &self.rseed
     }
 
-    /// Compute the note commitment
-    pub fn commitment(&self) -> sapling::note::NoteCommitment {
+    /// Compute the note commitment (extracted)
+    /// 
+    /// Returns the extracted note commitment suitable for inclusion in the commitment tree.
+    pub fn extracted_commitment(&self) -> sapling::note::ExtractedNoteCommitment {
         self.note.cmu()
     }
 
-    /// Get the nullifier for this note given the spending key position
+    /// Get the nullifier for this note given the viewing key and position
     pub fn nullifier(
         &self,
         viewing_key: &sapling::keys::FullViewingKey,
         position: u64,
     ) -> sapling::Nullifier {
-        self.note.nf(&viewing_key.nk, position)
+        self.note.nf(&viewing_key.vk.nk, position)
+    }
+
+    /// Get the nullifier for this note using the payment key
+    pub fn nullifier_from_key(
+        &self,
+        key: &EphemeralPaymentKey,
+        position: u64,
+    ) -> sapling::Nullifier {
+        let fvk = key.to_full_viewing_key();
+        self.note.nf(&fvk.vk.nk, position)
     }
 }
 
@@ -123,16 +135,20 @@ impl PaymentNoteBuilder {
     }
 }
 
-/// Verify that a note matches the expected derivation from a payment key
+/// Verify that a note matches the expected derivation from a payment key.
+/// 
+/// This function creates a note from the given key and amount, then compares
+/// its commitment to the expected value. Useful for validating received URIs.
 pub fn verify_note_derivation(
     key: &EphemeralPaymentKey,
     amount_zats: u64,
-    expected_cmu: &sapling::note::NoteCommitment,
+    expected_cmu: &sapling::note::ExtractedNoteCommitment,
 ) -> Result<bool> {
     let builder = PaymentNoteBuilder::new(key.clone());
     let derived_note = builder.build(amount_zats)?;
     
-    Ok(&derived_note.commitment() == expected_cmu)
+    // Compare the extracted note commitments
+    Ok(derived_note.extracted_commitment().to_bytes() == expected_cmu.to_bytes())
 }
 
 #[cfg(test)]
@@ -162,7 +178,10 @@ mod tests {
         let note2 = PaymentNoteBuilder::new(key2).build(100_000).unwrap();
         
         // Same key + same amount = same note commitment
-        assert_eq!(note1.commitment(), note2.commitment());
+        assert_eq!(
+            note1.extracted_commitment().to_bytes(),
+            note2.extracted_commitment().to_bytes()
+        );
     }
 
     #[test]
@@ -175,7 +194,9 @@ mod tests {
         let note1 = PaymentNoteBuilder::new(key1).build(100_000).unwrap();
         let note2 = PaymentNoteBuilder::new(key2).build(200_000).unwrap();
         
-        assert_ne!(note1.commitment(), note2.commitment());
+        assert_ne!(
+            note1.extracted_commitment().to_bytes(),
+            note2.extracted_commitment().to_bytes()
+        );
     }
 }
-
