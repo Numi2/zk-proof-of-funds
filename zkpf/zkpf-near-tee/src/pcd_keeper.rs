@@ -42,7 +42,6 @@
 //! └─────────────────────────────────────────────────────────────────────────────┘
 //! ```
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,6 +49,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio::time::{interval, Instant};
+
+use crate::lightwalletd_client::{LightwalletdClient, LightwalletdConfig, LightwalletdError};
+use crate::mina_rail_client::{MinaRailClient, MinaRailConfig, MinaRailError};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ERRORS
@@ -616,6 +618,10 @@ pub struct PcdKeeper {
     notes: Arc<RwLock<Vec<NoteIdentifier>>>,
     /// Nullifiers cache.
     nullifiers: Arc<RwLock<Vec<NullifierIdentifier>>>,
+    /// Lightwalletd client for chain sync.
+    lightwalletd: Option<LightwalletdClient>,
+    /// Mina Rail client for tachystamp submission.
+    mina_rail: Option<MinaRailClient>,
 }
 
 impl PcdKeeper {
@@ -638,6 +644,42 @@ impl PcdKeeper {
             next_action: None,
         };
 
+        // Initialize lightwalletd client if URL is configured
+        let lightwalletd = config.lightwalletd_url.as_ref().and_then(|url| {
+            let lwd_config = LightwalletdConfig {
+                url: url.clone(),
+                ..Default::default()
+            };
+            match LightwalletdClient::new(lwd_config) {
+                Ok(client) => {
+                    tracing::info!(url = %url, "Lightwalletd client initialized");
+                    Some(client)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to initialize lightwalletd client");
+                    None
+                }
+            }
+        });
+
+        // Initialize Mina Rail client if URL is configured
+        let mina_rail = config.mina_rail_url.as_ref().and_then(|url| {
+            let rail_config = MinaRailConfig {
+                base_url: url.clone(),
+                ..Default::default()
+            };
+            match MinaRailClient::new(rail_config) {
+                Ok(client) => {
+                    tracing::info!(url = %url, "Mina Rail client initialized");
+                    Some(client)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to initialize Mina Rail client");
+                    None
+                }
+            }
+        });
+
         Self {
             config,
             pcd_state: Arc::new(RwLock::new(None)),
@@ -648,6 +690,8 @@ impl PcdKeeper {
             running: Arc::new(RwLock::new(false)),
             notes: Arc::new(RwLock::new(Vec::new())),
             nullifiers: Arc::new(RwLock::new(Vec::new())),
+            lightwalletd,
+            mina_rail,
         }
     }
 
@@ -824,11 +868,28 @@ impl PcdKeeper {
 
     /// Fetch current chain height from lightwalletd.
     async fn fetch_chain_height(&self) -> Result<u64, PcdKeeperError> {
-        // In production, this would call the lightwalletd gRPC API
-        // For now, return a mock value based on time
-        let base_height = 2_500_000u64; // Approximate Zcash height
+        // Try the real lightwalletd client first
+        if let Some(ref client) = self.lightwalletd {
+            match client.get_chain_height().await {
+                Ok(height) => {
+                    tracing::debug!(height = height, "Fetched chain height from lightwalletd");
+                    return Ok(height);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Lightwalletd request failed, using fallback");
+                    // Emit warning event
+                    let _ = self.event_tx.send(KeeperEvent::Warning {
+                        code: "LIGHTWALLETD_FALLBACK".to_string(),
+                        message: format!("Lightwalletd unavailable: {}", e),
+                    });
+                }
+            }
+        }
+
+        // Fallback: estimate height based on time
+        let base_height = 2_500_000u64; // Approximate Zcash mainnet height at deploy time
         let seconds_since_epoch = current_timestamp();
-        let blocks_since_base = (seconds_since_epoch - 1700000000) / 75; // ~75 sec block time
+        let blocks_since_base = (seconds_since_epoch.saturating_sub(1700000000)) / 75; // ~75 sec block time
         Ok(base_height + blocks_since_base)
     }
 
@@ -1007,21 +1068,38 @@ impl PcdKeeper {
         from_height: u64,
         to_height: u64,
     ) -> Result<BlockDelta, PcdKeeperError> {
-        // In production, this would:
-        // 1. Call lightwalletd GetBlockRange
-        // 2. Trial-decrypt outputs with user's IVK
-        // 3. Collect note commitments and nullifiers
-        // 4. Get new anchor from the final block
+        // Try the real lightwalletd client first
+        if let Some(ref client) = self.lightwalletd {
+            match client.fetch_block_delta(from_height, to_height).await {
+                Ok(delta) => {
+                    tracing::debug!(
+                        from = from_height,
+                        to = to_height,
+                        anchor = hex::encode(&delta.anchor_new[..8]),
+                        "Fetched block delta from lightwalletd"
+                    );
+                    return Ok(delta);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to fetch block delta, using fallback");
+                    let _ = self.event_tx.send(KeeperEvent::Warning {
+                        code: "LIGHTWALLETD_DELTA_FAILED".to_string(),
+                        message: format!("Block delta fetch failed: {}", e),
+                    });
+                }
+            }
+        }
 
-        // For now, return a mock delta
+        // Fallback: generate mock delta
+        // Note: This is only for testing. In production, we need real chain data.
         let anchor_input = format!("anchor:{}:{}", to_height, current_timestamp());
         let anchor_new = compute_hash(anchor_input.as_bytes());
 
         Ok(BlockDelta {
             block_height: to_height,
             anchor_new,
-            new_notes: vec![], // Would be populated from trial decryption
-            spent_nullifiers: vec![],
+            new_notes: vec![], // Would be populated from trial decryption in wallet layer
+            spent_nullifiers: vec![], // Would be populated from nullifier scan
         })
     }
 
@@ -1312,21 +1390,52 @@ impl PcdKeeper {
 
     /// Submit a tachystamp to Mina rail.
     async fn submit_tachystamp(&self, tachystamp: &Tachystamp) -> Result<String, PcdKeeperError> {
-        // In production, this would call the Mina rail API
-        // For now, generate a mock ID
+        // Try the real Mina Rail client first
+        if let Some(ref client) = self.mina_rail {
+            match client.submit_tachystamp(tachystamp).await {
+                Ok(response) => {
+                    if response.success {
+                        tracing::info!(
+                            epoch = tachystamp.epoch,
+                            policy_id = tachystamp.policy_id,
+                            id = %response.tachystamp_id,
+                            shard = response.shard_id,
+                            queue_position = response.queue_position,
+                            "Submitted tachystamp to Mina Rail"
+                        );
+                        return Ok(response.tachystamp_id);
+                    } else {
+                        let error = response.error.unwrap_or_else(|| "Unknown error".to_string());
+                        tracing::error!(error = %error, "Mina Rail submission rejected");
+                        return Err(PcdKeeperError::TachystampFailed(error));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Mina Rail submission failed");
+                    let _ = self.event_tx.send(KeeperEvent::Warning {
+                        code: "MINA_RAIL_UNAVAILABLE".to_string(),
+                        message: format!("Mina Rail request failed: {}", e),
+                    });
+                    // Don't return error - fall through to mock for development
+                }
+            }
+        }
+
+        // Fallback: generate mock ID for development/testing
         let id_input = format!(
-            "tachystamp:{}:{}:{}",
+            "tachystamp:{}:{}:{}:{}",
             tachystamp.epoch,
             hex::encode(&tachystamp.nullifier[..8]),
-            tachystamp.policy_id
+            tachystamp.policy_id,
+            current_timestamp()
         );
-        let id = hex::encode(&compute_hash(id_input.as_bytes())[..16]);
+        let id = format!("mock-{}", hex::encode(&compute_hash(id_input.as_bytes())[..16]));
 
         tracing::info!(
             epoch = tachystamp.epoch,
             policy_id = tachystamp.policy_id,
             id = %id,
-            "Submitted tachystamp to Mina rail"
+            "[MOCK] Simulated tachystamp submission to Mina Rail"
         );
 
         Ok(id)

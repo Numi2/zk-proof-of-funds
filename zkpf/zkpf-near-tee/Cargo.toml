@@ -33,17 +33,36 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 
-# HTTP client for NEAR RPC
-reqwest = { version = "0.11", features = ["json"], optional = true }
+# HTTP client for Mina Rail and NEAR RPC
+reqwest = { version = "0.11", features = ["json"] }
+
+# gRPC client for lightwalletd
+tonic = { version = "0.11", optional = true }
+prost = { version = "0.12", optional = true }
+
+# WebSocket for keeper events
+tokio-tungstenite = { version = "0.21", optional = true }
+
+# Base64 encoding for proofs
+base64 = "0.21"
+
+# Hex encoding
+hex = "0.4"
 
 # NEAR SDK (optional, for contract integration)
 near-sdk = { version = "5.0", optional = true }
 near-crypto = { version = "0.20", optional = true }
 
 [features]
-default = ["http"]
-http = ["reqwest"]
+default = ["http-clients"]
+http-clients = []
+grpc-lightwalletd = ["tonic", "prost"]
+websocket = ["tokio-tungstenite"]
 near-contract = ["near-sdk", "near-crypto"]
+full = ["grpc-lightwalletd", "websocket"]
+
+[build-dependencies]
+tonic-build = { version = "0.11", optional = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

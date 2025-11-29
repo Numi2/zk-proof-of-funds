@@ -109,7 +109,10 @@ export class ZkpfClient {
       };
     }
     if (!urls) {
-      throw new Error('Artifact URLs unavailable; unable to load prover artifacts.');
+      throw new Error(
+        'Client-side proof generation is not available on this deployment. ' +
+        'The proving key (pk.bin) is not hosted. Please use the Zashi wallet flow or contact support.'
+      );
     }
     const [paramsBytes, pkBytes] = await Promise.all([
       this.downloadArtifact(urls.params),
@@ -135,6 +138,13 @@ export class ZkpfClient {
         : `${this.base}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
     const response = await fetch(url);
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          `Artifact not available: ${pathOrUrl}. ` +
+          'The proving key may not be hosted on this deployment. ' +
+          'Please use the Zashi wallet flow for proof generation.'
+        );
+      }
       throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
     }
     const buffer = await response.arrayBuffer();

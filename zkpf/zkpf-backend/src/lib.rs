@@ -79,6 +79,7 @@ const CODE_PROVER_DISABLED: &str = "PROVER_DISABLED";
 const CODE_POLICY_COMPOSE_INVALID: &str = "POLICY_COMPOSE_INVALID";
 const CODE_SESSION_NOT_FOUND: &str = "SESSION_NOT_FOUND";
 const CODE_SESSION_STATE: &str = "SESSION_STATE_INVALID";
+const CODE_ARTIFACT_NOT_FOUND: &str = "ARTIFACT_NOT_FOUND";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 const PROVIDER_BALANCE_RAIL_ID: &str = "PROVIDER_BALANCE_V2";
 const STARKNET_L2_RAIL_ID: &str = "STARKNET_L2";
@@ -417,6 +418,10 @@ impl ApiError {
     fn prover_disabled(err: impl Into<String>) -> Self {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, CODE_PROVER_DISABLED, err)
     }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, CODE_ARTIFACT_NOT_FOUND, message)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -522,10 +527,19 @@ async fn get_artifact(
     };
 
     let file = File::open(&path).await.map_err(|err| {
-        ApiError::internal(format!(
-            "failed to open artifact at {}: {err}",
-            path.display()
-        ))
+        // Return 404 for missing files, 500 for other errors
+        if err.kind() == std::io::ErrorKind::NotFound {
+            ApiError::not_found(format!(
+                "artifact '{}' not available on this deployment (file not found at {})",
+                kind,
+                path.display()
+            ))
+        } else {
+            ApiError::internal(format!(
+                "failed to open artifact at {}: {err}",
+                path.display()
+            ))
+        }
     })?;
 
     let stream = ReaderStream::new(file);
@@ -547,6 +561,30 @@ async fn get_params(State(state): State<AppState>) -> Result<Json<ParamsResponse
     // blobs into memory for the params endpoint and instead expose streaming
     // artifact URLs. The frontend hydrates these lazily via /zkpf/artifacts/*.
     if !artifacts.prover_enabled() {
+        // Only include artifact URLs for files that actually exist on this deployment.
+        // The pk.bin (proving key) is ~700MB and may not be bundled in verifier-only
+        // deployments. If it's missing, client-side proving won't be available.
+        let params_path = artifacts.params_path();
+        let vk_path = artifacts.vk_path();
+        let pk_path = artifacts.pk_path();
+
+        let artifact_urls = if params_path.exists() && vk_path.exists() && pk_path.exists() {
+            Some(ArtifactUrls {
+                params: "/zkpf/artifacts/params".to_string(),
+                vk: "/zkpf/artifacts/vk".to_string(),
+                pk: "/zkpf/artifacts/pk".to_string(),
+            })
+        } else {
+            // Log which artifacts are missing for debugging
+            if !pk_path.exists() {
+                eprintln!(
+                    "zkpf-backend: pk.bin not found at {} - client-side proving unavailable",
+                    pk_path.display()
+                );
+            }
+            None
+        };
+
         return Ok(Json(ParamsResponse {
             circuit_version: manifest.circuit_version,
             manifest_version: manifest.manifest_version,
@@ -556,11 +594,7 @@ async fn get_params(State(state): State<AppState>) -> Result<Json<ParamsResponse
             params: None,
             vk: None,
             pk: None,
-            artifact_urls: Some(ArtifactUrls {
-                params: "/zkpf/artifacts/params".to_string(),
-                vk: "/zkpf/artifacts/vk".to_string(),
-                pk: "/zkpf/artifacts/pk".to_string(),
-            }),
+            artifact_urls,
         }));
     }
 

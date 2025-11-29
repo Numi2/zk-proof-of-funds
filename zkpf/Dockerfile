@@ -29,11 +29,11 @@ COPY --from=snap-builder /snap/dist ./snap/dist
 COPY --from=snap-builder /snap/snap.manifest.json ./snap/snap.manifest.json
 COPY --from=snap-builder /snap/images ./snap/images
 
-# Copy policy config and proving artifacts. For now we reuse the deterministic
-# fixtures from zkpf-test-fixtures; these can be swapped to production artifacts
-# later without changing the image layout.
+# Copy policy config and proving artifacts.
+# Using artifacts/starknet which includes the full proving key (pk.bin ~784MB)
+# needed for client-side proof generation via artifact download.
 COPY config ./config
-COPY zkpf-test-fixtures/fixtures ./artifacts
+COPY artifacts/starknet ./artifacts
 
 # Default paths expected by zkpf-backend.
 ENV ZKPF_MANIFEST_PATH=/app/artifacts/manifest.json \

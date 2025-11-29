@@ -53,6 +53,9 @@ pub mod chain_abstraction;
 pub mod crypto;
 pub mod error;
 pub mod inference;
+pub mod keeper_ws;
+pub mod lightwalletd_client;
+pub mod mina_rail_client;
 pub mod pcd_keeper;
 pub mod rpc;
 pub mod shade_agent;
@@ -83,6 +86,19 @@ pub use pcd_keeper::{
     PcdState, BlockDelta, NoteIdentifier, NullifierIdentifier,
     Tachystamp, TachystampProof, PendingTachystamp,
     SyncResult, ScheduledAction, ScheduledActionType,
+};
+pub use lightwalletd_client::{
+    LightwalletdClient, LightwalletdConfig, LightwalletdError,
+    LightdInfo, TreeState, CompactBlock,
+};
+pub use mina_rail_client::{
+    MinaRailClient, MinaRailConfig, MinaRailError,
+    MinaRailStatus, MinaRailEpochState, MinaRailEpochProof,
+    SubmitTachystampResponse,
+};
+pub use keeper_ws::{
+    KeeperWsServer, WsServerConfig, WsServerHandle,
+    WsOutboundMessage, WsInboundMessage, KeeperStatusDto,
 };
 pub use types::*;
 

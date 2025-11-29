@@ -111,14 +111,17 @@ function getSolanaProvider(): PhantomProvider | SolflareProvider | null {
 // NEAR WALLET DETECTION (Legacy - kept for backward compatibility)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+interface NearWalletInterface {
+  isSignedIn(): boolean;
+  getAccountId(): string;
+  signIn(): Promise<void>;
+  signOut(): Promise<void>;
+  signMessage(params: { message: string }): Promise<{ signature: Uint8Array }>;
+}
+
 interface WindowWithNear extends Window {
-  meteorWallet?: {
-    isSignedIn(): boolean;
-    getAccountId(): string;
-    signIn(): Promise<void>;
-    signOut(): Promise<void>;
-    signMessage(params: { message: string }): Promise<{ signature: Uint8Array }>;
-  };
+  meteorWallet?: NearWalletInterface;
+  myNearWallet?: NearWalletInterface;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -230,7 +233,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         connector.on('wallet:signIn', async (event: { accounts: Array<{ accountId: string; publicKey?: string }> }) => {
           const acc = event.accounts[0];
           if (acc) {
-            const walletInfo = NEAR_WALLET_DISPLAY['near-connect'] || { icon: 'Ⓝ', color: '#00C08B' };
             const account: WalletAccount = {
               id: `near-connect:${acc.accountId}`,
               displayName: acc.accountId.length > 16 
@@ -269,14 +271,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
         });
 
-        // Load available wallets
+        // Load available wallets - wait for manifest to be loaded first
         try {
-          const wallets = await connector.getWallets?.() || [];
-          const walletList: NearConnectWallet[] = wallets.map((w: { id: string; name: string; icon?: string; description?: string }) => ({
-            id: w.id,
-            name: w.name,
-            icon: w.icon || NEAR_WALLET_DISPLAY[w.id]?.icon || '💼',
-            description: w.description || 'NEAR wallet',
+          await connector.whenManifestLoaded;
+          const availableWallets = connector.availableWallets || [];
+          const walletList: NearConnectWallet[] = availableWallets.map((w) => ({
+            id: w.manifest.id,
+            name: w.manifest.name,
+            icon: w.manifest.icon || NEAR_WALLET_DISPLAY[w.manifest.id]?.icon || '💼',
+            description: w.manifest.description || 'NEAR wallet',
           }));
 
           if (walletList.length > 0) {
@@ -401,13 +404,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (connector) {
         // Use near-connect for wallet connection
-        if (walletId) {
-          await connector.signIn?.({ walletId });
-        } else {
-          // Opens the wallet selection UI from near-connect
-          await connector.signIn?.({});
+        // connect() opens wallet selection UI if no walletId provided
+        const wallet = await connector.connect(walletId);
+        
+        // After connect, get accounts and sign in with the wallet
+        const accounts = await wallet.signIn();
+        
+        // If accounts returned directly from signIn, update state here
+        // Otherwise the 'wallet:signIn' event handler will handle it
+        if (accounts && accounts.length > 0) {
+          const acc = accounts[0];
+          const account: WalletAccount = {
+            id: `near-connect:${acc.accountId}`,
+            displayName: acc.accountId.length > 16 
+              ? `${acc.accountId.slice(0, 8)}...${acc.accountId.slice(-6)}`
+              : acc.accountId,
+            address: acc.accountId,
+            type: 'near-connect',
+            chainId: 'near:mainnet',
+            publicKey: acc.publicKey ? new TextEncoder().encode(acc.publicKey) : undefined,
+            connectedAt: Date.now(),
+          };
+
+          setState(prev => ({
+            ...prev,
+            status: 'connected',
+            account,
+            accounts: [...prev.accounts.filter(a => a.id !== account.id), account],
+            error: null,
+            isLoginModalOpen: false,
+          }));
         }
-        // Note: The actual account update happens in the 'wallet:signIn' event handler
         return;
       }
 
@@ -775,9 +802,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const result = await wallet.signMessage({
             message: typeof message === 'string' ? message : new TextDecoder().decode(message),
             recipient: account.address,
-            nonce: Buffer.from(nonce),
+            nonce,
           });
-          return result.signature;
+          // Convert base64 signature string to Uint8Array
+          const signatureBytes = base64ToArrayBuffer(result.signature);
+          return new Uint8Array(signatureBytes);
         }
       }
       
