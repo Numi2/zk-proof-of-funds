@@ -44,6 +44,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // Proxy personhood API requests to the Rust backend
+      '/api/personhood': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       // Proxy lightwalletd requests to avoid CORS issues in development
       '/lightwalletd': {
         target: 'https://zcash-mainnet.chainsafe.dev',

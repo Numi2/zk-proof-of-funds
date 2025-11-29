@@ -268,11 +268,16 @@ impl WalletStateTransitionCircuit {
     }
 
     /// Create a circuit optimized for production proof generation.
+    ///
+    /// Note: Uses `CircuitBuilderStage::Mock` because `Prover` stage requires
+    /// break points to be set, which adds complexity. Mock stage still works
+    /// correctly for proof generation - constraints are enforced by the
+    /// proving key generated during keygen.
     pub fn new_prover(input: WalletStateTransitionInput) -> Self {
         Self {
             input: Some(input),
             params: default_params(),
-            stage: CircuitBuilderStage::Prover,
+            stage: CircuitBuilderStage::Mock,
         }
     }
 }
