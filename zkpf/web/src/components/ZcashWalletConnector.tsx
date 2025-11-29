@@ -5,7 +5,6 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
 import * as secp256k1 from '@noble/secp256k1';
-import { generate_seed_phrase, UnifiedSpendingKey } from '@chainsafe/webzjs-keys';
 import type { CircuitInput, PolicyDefinition } from '../types/zkpf';
 import {
   wasmComputeAttestationMessageHash,
@@ -81,8 +80,12 @@ const DEMO_BALANCE_ZATS = 50000000000;
 /**
  * Derive a UFVK from a BIP39 mnemonic seed phrase using PBKDF2.
  * This follows the BIP39 standard for converting mnemonic to seed.
+ * Must be called only after WASM is initialized.
  */
-function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'): string {
+async function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'): Promise<string> {
+  // Dynamic import to avoid loading WASM at module level before initialization
+  const { UnifiedSpendingKey } = await import('@chainsafe/webzjs-keys');
+  
   // BIP39: Convert mnemonic to seed using PBKDF2 with "mnemonic" + passphrase as salt
   // The passphrase is empty for standard use
   const encoder = new TextEncoder();
@@ -284,8 +287,10 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
     }
   }, [triggerRescan, onShowToast, updateStatus]);
 
-  const handleGenerateSeed = useCallback(() => {
+  const handleGenerateSeed = useCallback(async () => {
     try {
+      // Dynamic import to avoid loading WASM at module level before initialization
+      const { generate_seed_phrase } = await import('@chainsafe/webzjs-keys');
       // Use the real BIP-39 seed generator from webzjs-keys
       // This generates a proper 24-word mnemonic with correct checksum
       const newSeed = generate_seed_phrase();
@@ -334,7 +339,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
     setError(null);
     try {
       // Derive UFVK from the seed phrase and auto-populate it
-      const derivedUfvk = deriveUfvkFromSeedPhrase(phrase, zcashNetwork);
+      const derivedUfvk = await deriveUfvkFromSeedPhrase(phrase, zcashNetwork);
       setUfvk(derivedUfvk);
 
       await createAccountFromSeed(phrase, birthday);

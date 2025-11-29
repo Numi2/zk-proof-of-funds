@@ -8,7 +8,6 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { del, set } from 'idb-keyval';
-import { generate_seed_phrase, UnifiedSpendingKey } from '@chainsafe/webzjs-keys';
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { useWebZjsContext } from '../../context/WebzjsContext';
@@ -20,7 +19,14 @@ import { detectBrowser, type BrowserInfo } from '../../utils/browserCompat';
 
 const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
 
-function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'): string {
+/**
+ * Derive UFVK from seed phrase using dynamically imported WASM functions.
+ * Must be called only after WASM is initialized.
+ */
+async function deriveUfvkFromSeedPhrase(seedPhrase: string, network: 'main' | 'test'): Promise<string> {
+  // Dynamic import to avoid loading WASM at module level before initialization
+  const { UnifiedSpendingKey } = await import('@chainsafe/webzjs-keys');
+  
   const encoder = new TextEncoder();
   const mnemonicBytes = encoder.encode(seedPhrase.normalize('NFKD'));
   const saltBytes = encoder.encode('mnemonic');
@@ -162,9 +168,11 @@ export function WalletDashboard() {
   }, [state.summary]);
 
   // Generate a new seed phrase
-  const handleGenerateSeed = useCallback(() => {
+  const handleGenerateSeed = useCallback(async () => {
     setLocalError(null);
     try {
+      // Dynamic import to avoid loading WASM at module level before initialization
+      const { generate_seed_phrase } = await import('@chainsafe/webzjs-keys');
       const newSeed = generate_seed_phrase();
       setSeedPhraseInput(newSeed);
       isNewSeed.current = true;
@@ -228,7 +236,7 @@ export function WalletDashboard() {
     setLocalError(null);
     
     try {
-      const derivedUfvk = deriveUfvkFromSeedPhrase(phrase, 'main');
+      const derivedUfvk = await deriveUfvkFromSeedPhrase(phrase, 'main');
       try {
         localStorage.setItem(UFVK_STORAGE_KEY, derivedUfvk);
       } catch {
