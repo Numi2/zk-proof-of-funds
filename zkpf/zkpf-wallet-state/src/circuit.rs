@@ -22,7 +22,7 @@ use halo2_base::{
     gates::{
         circuit::builder::BaseCircuitBuilder,
         circuit::{BaseCircuitParams, BaseConfig, CircuitBuilderStage},
-        flex_gate::GateChip,
+        flex_gate::{GateChip, MultiPhaseThreadBreakPoints},
         GateInstructions, RangeInstructions,
     },
     poseidon::hasher::{spec::OptimizedPoseidonSpec, PoseidonHasher},
@@ -240,6 +240,8 @@ pub struct WalletStateTransitionCircuit {
     pub input: Option<WalletStateTransitionInput>,
     params: BaseCircuitParams,
     stage: CircuitBuilderStage,
+    /// Break points from keygen, required for Prover stage.
+    break_points: Option<MultiPhaseThreadBreakPoints>,
 }
 
 impl Default for WalletStateTransitionCircuit {
@@ -248,6 +250,7 @@ impl Default for WalletStateTransitionCircuit {
             input: None,
             params: default_params(),
             stage: CircuitBuilderStage::Keygen,
+            break_points: None,
         }
     }
 }
@@ -264,21 +267,53 @@ impl WalletStateTransitionCircuit {
             input,
             params: default_params(),
             stage,
+            break_points: None,
         }
     }
 
-    /// Create a circuit optimized for production proof generation.
+    /// Create a circuit optimized for production proof generation with break points.
     ///
-    /// Note: Uses `CircuitBuilderStage::Mock` because `Prover` stage requires
-    /// break points to be set, which adds complexity. Mock stage still works
-    /// correctly for proof generation - constraints are enforced by the
-    /// proving key generated during keygen.
-    pub fn new_prover(input: WalletStateTransitionInput) -> Self {
+    /// The `break_points` must be obtained from the keygen circuit after key generation.
+    /// This allows the Prover stage to efficiently assign witnesses without recalculating
+    /// the circuit layout.
+    ///
+    /// # Arguments
+    /// * `input` - The circuit input with witness data
+    /// * `break_points` - Break points from keygen (use `extract_break_points_after_keygen`)
+    pub fn new_prover(input: WalletStateTransitionInput, break_points: MultiPhaseThreadBreakPoints) -> Self {
         Self {
             input: Some(input),
             params: default_params(),
-            stage: CircuitBuilderStage::Mock,
+            stage: CircuitBuilderStage::Prover,
+            break_points: Some(break_points),
         }
+    }
+
+    /// Extract break points after keygen for use in prover circuits.
+    ///
+    /// This should be called after `keygen_pk` with a keygen circuit.
+    /// The returned break points should be cached and passed to `new_prover`.
+    ///
+    /// # Returns
+    /// Break points needed for proof generation.
+    pub fn extract_break_points_after_keygen(&self) -> MultiPhaseThreadBreakPoints {
+        // For keygen circuits, we need to run synthesis once to get break points.
+        // We do this by creating a temporary builder and running constraints.
+        let input = self.input.as_ref().unwrap_or(&SAMPLE_INPUT);
+
+        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Mock)
+            .use_params(self.params.clone())
+            .use_instance_columns(self.params.num_instance_columns);
+
+        if let Some(bits) = self.params.lookup_bits {
+            builder = builder.use_lookup_bits(bits);
+        }
+
+        build_constraints(&mut builder, input).expect("constraint building failed");
+
+        // Calculate break points by finalizing the builder
+        builder.calculate_params(Some(20)); // Use default minimum rows
+        builder.break_points()
     }
 }
 
@@ -306,6 +341,7 @@ impl Circuit<Fr> for WalletStateTransitionCircuit {
             input: None,
             params: self.params.clone(),
             stage: CircuitBuilderStage::Keygen,
+            break_points: None,
         }
     }
 
@@ -323,12 +359,27 @@ impl Circuit<Fr> for WalletStateTransitionCircuit {
     fn synthesize(&self, config: Self::Config, layouter: impl Layouter<Fr>) -> Result<(), Error> {
         let input = self.input.as_ref().unwrap_or(&SAMPLE_INPUT);
 
-        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(self.stage)
-            .use_params(self.params.clone())
-            .use_instance_columns(self.params.num_instance_columns);
+        // Create builder based on whether we have break points
+        let mut builder = if let Some(ref bp) = self.break_points {
+            // Prover stage with cached break points
+            BaseCircuitBuilder::<Fr>::prover(self.params.clone(), bp.clone())
+                .use_instance_columns(self.params.num_instance_columns)
+        } else {
+            // Keygen or Mock stage - break points will be calculated
+            let mut b = BaseCircuitBuilder::<Fr>::from_stage(self.stage)
+                .use_params(self.params.clone())
+                .use_instance_columns(self.params.num_instance_columns);
+            if let Some(bits) = self.params.lookup_bits {
+                b = b.use_lookup_bits(bits);
+            }
+            b
+        };
 
-        if let Some(bits) = self.params.lookup_bits {
-            builder = builder.use_lookup_bits(bits);
+        // For Prover stage with break points, we still need lookup bits
+        if self.break_points.is_some() {
+            if let Some(bits) = self.params.lookup_bits {
+                builder = builder.use_lookup_bits(bits);
+            }
         }
 
         build_constraints(&mut builder, input).map_err(|_| Error::Synthesis)?;

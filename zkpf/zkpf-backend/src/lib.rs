@@ -113,10 +113,15 @@ use halo2curves_axiom::bn256::Bn256;
 /// Using deterministic params ensures prove/verify consistency.
 static WALLET_STATE_CACHE: OnceLock<WalletStateCircuitCache> = OnceLock::new();
 
+/// Break points type from zkpf_wallet_state.
+use zkpf_wallet_state::WalletStateBreakPoints;
+
 struct WalletStateCircuitCache {
     params: ParamsKZG<Bn256>,
     vk: VerifyingKey<halo2curves_axiom::bn256::G1Affine>,
     pk: ProvingKey<halo2curves_axiom::bn256::G1Affine>,
+    /// Break points from keygen, required for efficient proving.
+    break_points: WalletStateBreakPoints,
 }
 
 impl WalletStateCircuitCache {
@@ -143,9 +148,14 @@ impl WalletStateCircuitCache {
             let pk = keygen_pk(&params, vk.clone(), &empty_circuit)
                 .expect("wallet state: failed to generate proving key");
             
-            eprintln!("zkpf-backend: Wallet state circuit cache initialized");
+            // Extract break points after keygen for use in proving.
+            // This is essential for halo2-base circuits - the prover needs to know
+            // how the circuit was laid out during keygen.
+            let break_points = empty_circuit.extract_break_points_after_keygen();
             
-            WalletStateCircuitCache { params, vk, pk }
+            eprintln!("zkpf-backend: Wallet state circuit cache initialized (break points: {} phases)", break_points.len());
+            
+            WalletStateCircuitCache { params, vk, pk, break_points }
         })
     }
 }
@@ -2550,11 +2560,12 @@ fn generate_wallet_state_proof(
     use halo2curves_axiom::bn256::{Bn256, G1Affine};
     use rand::rngs::OsRng;
 
-    // Use cached params and keys for consistent prove/verify
+    // Use cached params, keys, and break points for consistent prove/verify
     let cache = WalletStateCircuitCache::get_or_init();
 
-    // Create circuit with witness
-    let circuit = WalletStateTransitionCircuit::new_prover(input.clone());
+    // Create circuit with witness and break points from keygen.
+    // This is essential for halo2-base: the prover needs the same circuit layout as keygen.
+    let circuit = WalletStateTransitionCircuit::new_prover(input.clone(), cache.break_points.clone());
 
     // Get instances
     let instances = wallet_state_instances(&input.public);

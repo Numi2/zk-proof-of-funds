@@ -34,3 +34,6 @@ pub use circuit::{WalletStateTransitionCircuit, WalletStateTransitionInput};
 pub use state::{BlockDelta, WalletState, WalletStateCommitment, WALLET_STATE_VERSION};
 pub use transition::{apply_transition, verify_transition_witness};
 
+/// Re-export break points type for use in prover circuits.
+pub use halo2_base::gates::flex_gate::MultiPhaseThreadBreakPoints as WalletStateBreakPoints;
+
