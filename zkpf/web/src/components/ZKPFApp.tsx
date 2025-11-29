@@ -123,6 +123,17 @@ export function ZKPFApp() {
     setHasBuiltBundle(true);
     setPrefillBundle(JSON.stringify(bundle, null, 2));
     setPrefillCustomPolicy(customPolicy ?? null);
+    
+    // Check if we should return to bound-identity instead of going to workbench
+    const returnToBoundIdentity = sessionStorage.getItem('bound-identity-return-pending');
+    if (returnToBoundIdentity === 'true') {
+      // Store the bundle so BoundIdentityBuilder can pick it up
+      sessionStorage.setItem('bound-identity-returned-bundle', JSON.stringify(bundle));
+      sessionStorage.removeItem('bound-identity-return-pending');
+      navigate('/bound-identity');
+      return;
+    }
+    
     navigate('/workbench');
   };
 

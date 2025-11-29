@@ -5145,27 +5145,49 @@ dd {
   line-height: 1.3;
 }
 
+/* Identity Bond Section */
+.identity-bond-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.1), rgba(129, 140, 248, 0.02));
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  border-radius: 1rem;
+}
+
+.identity-bond-header {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.identity-bond-header h3 {
+  margin: 0 0 0.5rem;
+  color: #a5b4fc;
+  font-size: 1.1rem;
+}
+
+.identity-bond-header p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 /* Identity Bond Card */
 .identity-bond-card {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1.5rem 1rem;
-  border-radius: 1.25rem;
-  border: 2px solid rgba(148, 163, 184, 0.2);
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(129, 140, 248, 0.3);
   background: linear-gradient(
-    180deg,
+    135deg,
     rgba(15, 23, 42, 0.9) 0%,
-    rgba(15, 23, 42, 0.7) 100%
+    rgba(30, 41, 59, 0.9) 100%
   );
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  text-align: center;
   position: relative;
   overflow: hidden;
   text-decoration: none;
-  margin-top: 2rem;
 }
 
 .identity-bond-card::before {
@@ -5175,18 +5197,17 @@ dd {
   left: 0;
   right: 0;
   height: 3px;
-  background: #818cf8;
+  background: linear-gradient(90deg, #818cf8, #a5b4fc);
   opacity: 0;
   transition: opacity 0.25s ease;
 }
 
 .identity-bond-card:hover {
   border-color: #818cf8;
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   box-shadow: 
-    0 12px 28px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(148, 163, 184, 0.1),
-    0 0 40px -10px #818cf8;
+    0 8px 20px rgba(0, 0, 0, 0.3),
+    0 0 30px -10px rgba(129, 140, 248, 0.4);
   text-decoration: none;
 }
 
@@ -5195,26 +5216,67 @@ dd {
 }
 
 .identity-bond-card:active {
-  transform: translateY(-2px) scale(0.98);
+  transform: translateY(0) scale(0.99);
 }
 
 .identity-bond-icon {
   font-size: 2.5rem;
   line-height: 1;
+  flex-shrink: 0;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
+.identity-bond-content {
+  flex: 1;
+  text-align: left;
+}
+
 .identity-bond-title {
+  display: block;
   font-size: 1.1rem;
   font-weight: 700;
   color: #e2e8f0;
   letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
 }
 
 .identity-bond-desc {
+  display: block;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.identity-bond-arrow {
+  font-size: 1.5rem;
+  color: #818cf8;
+  transition: transform 0.2s ease;
+}
+
+.identity-bond-card:hover .identity-bond-arrow {
+  transform: translateX(4px);
+}
+
+/* Identity Bond Features */
+.identity-bond-features {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(129, 140, 248, 0.15);
+}
+
+.bond-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.8rem;
   color: #94a3b8;
-  line-height: 1.3;
+}
+
+.bond-feature-icon {
+  font-size: 1rem;
 }
 
 .dev-mode-toggle {
@@ -5902,18 +5964,36 @@ dd {
     overflow-x: auto;
   }
   
-  /* Identity bond card mobile */
-  .identity-bond-card {
+  /* Identity bond section mobile */
+  .identity-bond-section {
     margin: 1rem 0;
     padding: 1rem;
-    flex-direction: row;
-    gap: 1rem;
-    text-align: left;
-    min-height: 48px;
+  }
+  
+  .identity-bond-card {
+    padding: 1rem;
+    gap: 0.75rem;
   }
   
   .identity-bond-icon {
-    font-size: 1.5rem;
+    font-size: 1.75rem;
+  }
+  
+  .identity-bond-title {
+    font-size: 1rem;
+  }
+  
+  .identity-bond-desc {
+    font-size: 0.8rem;
+  }
+  
+  .identity-bond-features {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  
+  .bond-feature {
+    font-size: 0.75rem;
   }
   
   /* Footer mobile */
@@ -8351,6 +8431,73 @@ dd {
   border-radius: 0.75rem;
 }
 
+.qr-code-wrapper {
+  padding: 1rem;
+  background: white;
+  border-radius: 0.75rem;
+  display: inline-block;
+}
+
+.qr-actions {
+  margin: 1rem 0;
+}
+
+.waiting-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  color: #e2e8f0;
+}
+
+.verification-help {
+  margin-top: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  text-align: left;
+}
+
+.verification-help summary {
+  padding: 0.85rem 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.verification-help summary:hover {
+  background: rgba(56, 189, 248, 0.1);
+  color: #e2e8f0;
+}
+
+.verification-help-content {
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.3);
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  line-height: 1.7;
+}
+
+.verification-help-content p {
+  margin: 0 0 0.75rem;
+}
+
+.verification-help-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.verification-help-content ol li {
+  margin: 0.35rem 0;
+}
+
+.verification-help-content strong {
+  color: #38bdf8;
+}
+
 .verification-error {
   text-align: center;
   padding: 1rem;
@@ -8404,6 +8551,210 @@ dd {
 
 .file-upload-button {
   cursor: pointer;
+}
+
+/* Wallet Help Banner */
+.wallet-help-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.05));
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.wallet-help-icon {
+  font-size: 1.75rem;
+  flex-shrink: 0;
+}
+
+.wallet-help-content {
+  flex: 1;
+}
+
+.wallet-help-content strong {
+  display: block;
+  color: #fbbf24;
+  margin-bottom: 0.35rem;
+}
+
+.wallet-help-content p {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: #fcd34d;
+  line-height: 1.5;
+}
+
+.wallet-help-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wallet-help-button:hover {
+  background: rgba(251, 191, 36, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Disabled funds option */
+.funds-option.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}
+
+/* Option hint */
+.option-hint {
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+  color: #64748b;
+}
+
+.option-hint.success {
+  color: #22c55e;
+}
+
+/* Help section */
+.funds-help-section {
+  margin-top: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.funds-help-section summary {
+  padding: 0.85rem 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.funds-help-section summary:hover {
+  background: rgba(56, 189, 248, 0.1);
+  color: #e2e8f0;
+}
+
+.funds-help-content {
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.3);
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  line-height: 1.7;
+}
+
+.funds-help-content p {
+  margin: 0 0 0.75rem;
+}
+
+.funds-help-content p:last-child {
+  margin-bottom: 0;
+}
+
+.funds-help-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.funds-help-content ol li {
+  margin: 0.35rem 0;
+}
+
+.funds-help-content strong {
+  color: #38bdf8;
+}
+
+/* Primary button variant for funds options */
+.tiny-button.primary {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  border-color: transparent;
+}
+
+.tiny-button.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+}
+
+.tiny-button.primary:disabled {
+  background: rgba(100, 116, 139, 0.3);
+  color: #64748b;
+}
+
+/* Detailed error message */
+.error-message-detailed {
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.error-message-detailed .error-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-message-detailed .error-header strong {
+  color: #f87171;
+}
+
+.error-message-detailed .error-description {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+
+.error-message-detailed .error-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Warning message */
+.warning-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.04));
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.warning-message .warning-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.warning-message .warning-content {
+  flex: 1;
+}
+
+.warning-message .warning-content strong {
+  display: block;
+  color: #fbbf24;
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+}
+
+.warning-message .warning-content p {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #fcd34d;
+  line-height: 1.5;
 }
 
 /* Review cards */
@@ -8666,10 +9017,48 @@ dd {
   margin-top: 2rem;
 }
 
-/* Responsive */
+/* Responsive - Bound Identity Mobile */
 @media (max-width: 640px) {
+  .bound-identity-builder {
+    padding: 1rem;
+  }
+  
+  .bound-identity-builder header {
+    padding: 0;
+  }
+  
   .policy-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .policy-card {
+    padding: 1rem;
+  }
+  
+  .policy-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .intro-features {
+    grid-template-columns: 1fr;
+  }
+  
+  .intro-feature {
+    padding: 1rem;
+  }
+  
+  .intro-hero {
+    padding: 1rem 0;
+  }
+  
+  .intro-icon {
+    font-size: 3rem;
+  }
+  
+  .intro-subtitle {
+    font-size: 1rem;
   }
   
   .review-cards {
@@ -8688,6 +9077,103 @@ dd {
   
   .complete-actions {
     flex-direction: column;
+  }
+  
+  /* Funds options mobile */
+  .funds-option {
+    flex-direction: column;
+    text-align: center;
+    padding: 1.25rem 1rem;
+  }
+  
+  .funds-option .option-content {
+    order: 1;
+    margin-bottom: 0.75rem;
+  }
+  
+  .funds-option .option-icon {
+    order: 0;
+    margin-bottom: 0.5rem;
+  }
+  
+  .funds-option .tiny-button,
+  .funds-option .file-upload-button {
+    order: 2;
+    width: 100%;
+  }
+  
+  /* Wallet help banner mobile */
+  .wallet-help-banner {
+    flex-direction: column;
+    text-align: center;
+    padding: 1rem;
+  }
+  
+  .wallet-help-button {
+    width: 100%;
+  }
+  
+  /* Step header mobile */
+  .step-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.75rem;
+  }
+  
+  .step-number {
+    margin: 0 auto;
+  }
+  
+  /* Step actions mobile */
+  .step-actions {
+    flex-direction: column;
+  }
+  
+  .step-actions button {
+    width: 100%;
+  }
+  
+  /* Build progress mobile */
+  .build-progress {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .progress-line {
+    width: 2px;
+    height: 20px;
+    margin: 0 auto;
+  }
+  
+  /* Error/warning messages mobile */
+  .error-message-detailed,
+  .warning-message {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .error-message-detailed .error-actions,
+  .warning-message .warning-content button {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  /* Complete step mobile */
+  .complete-step {
+    text-align: center;
+  }
+  
+  .bond-result {
+    text-align: left;
+  }
+  
+  .share-url-container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .share-url-input {
+    width: 100%;
   }
 }
 

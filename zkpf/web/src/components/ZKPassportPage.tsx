@@ -345,12 +345,39 @@ export function ZKPassportPage() {
         </>
       )}
 
-      {/* Identity Bond Card Button */}
-      <Link to="/bound-identity" className="identity-bond-card">
-        <span className="identity-bond-icon">🔗</span>
-        <span className="identity-bond-title">Identity Bond</span>
-        <span className="identity-bond-desc">Create a bound identity proof</span>
-      </Link>
+      {/* Identity Bond Card - Enhanced CTA */}
+      <div className="identity-bond-section">
+        <div className="identity-bond-header">
+          <h3>Next Step: Bound Identity</h3>
+          <p className="muted">
+            Combine your identity proof with a proof of funds to create a powerful privacy-preserving credential.
+          </p>
+        </div>
+        <Link to="/bound-identity" className="identity-bond-card">
+          <span className="identity-bond-icon">🔗</span>
+          <div className="identity-bond-content">
+            <span className="identity-bond-title">Create Identity Bond</span>
+            <span className="identity-bond-desc">Prove identity + funds together for DeFi, KYC, or accredited investor verification</span>
+          </div>
+          <span className="identity-bond-arrow">→</span>
+        </Link>
+        
+        {/* Quick info cards */}
+        <div className="identity-bond-features">
+          <div className="bond-feature">
+            <span className="bond-feature-icon">🛡️</span>
+            <span>Privacy-preserving KYC</span>
+          </div>
+          <div className="bond-feature">
+            <span className="bond-feature-icon">💰</span>
+            <span>Proof of funds</span>
+          </div>
+          <div className="bond-feature">
+            <span className="bond-feature-icon">🔐</span>
+            <span>Cryptographic binding</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

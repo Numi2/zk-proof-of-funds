@@ -9,6 +9,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZKPassport } from '@zkpassport/sdk';
 import type { ProofResult, QueryResult } from '@zkpassport/sdk';
+import QRCode from 'react-qr-code';
 import type { ProofBundle } from '../types/zkpf';
 import type { 
   BoundIdentityProof, 
@@ -173,6 +174,7 @@ export function BoundIdentityBuilder({
   const [isCreating, setIsCreating] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showWalletHelp, setShowWalletHelp] = useState(false);
   
   // ZKPassport state
   const [zkPassport] = useState(() => new ZKPassport('zkpf.dev'));
@@ -190,16 +192,63 @@ export function BoundIdentityBuilder({
     }
   }, []);
   
-  // Auto-advance if we have pre-loaded proofs
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RESTORE STATE FROM SESSION STORAGE
+  // This is critical for the user flow: when they navigate to /build to create
+  // a proof and then return, we need to restore their progress!
+  // ═══════════════════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (initialZkpassportProof && initialZkpfBundle) {
-      setStep('review');
-    } else if (initialZkpassportProof) {
-      setStep('funds');
-    } else if (initialZkpfBundle) {
-      setStep('identity');
+    try {
+      // Check if we have a bundle that was returned from the proof builder
+      const returnedBundleJson = sessionStorage.getItem('bound-identity-returned-bundle');
+      if (returnedBundleJson) {
+        const returnedBundle = JSON.parse(returnedBundleJson) as ProofBundle;
+        setZkpfBundle(returnedBundle);
+        sessionStorage.removeItem('bound-identity-returned-bundle');
+      }
+      
+      // Restore saved policy if we don't already have one
+      if (!selectedPolicy) {
+        const savedPolicyJson = sessionStorage.getItem('bound-identity-policy');
+        if (savedPolicyJson) {
+          const savedPolicy = JSON.parse(savedPolicyJson) as BoundIdentityPolicy;
+          setSelectedPolicy(savedPolicy);
+        }
+      }
+      
+      // Restore saved zkpassport proof if we don't already have one
+      if (!zkpassportProof) {
+        const savedZkpassportJson = sessionStorage.getItem('bound-identity-zkpassport');
+        if (savedZkpassportJson && savedZkpassportJson !== 'null') {
+          const savedZkpassport = JSON.parse(savedZkpassportJson) as ShareableProofBundle;
+          setZkpassportProof(savedZkpassport);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to restore bound identity state:', err);
     }
-  }, [initialZkpassportProof, initialZkpfBundle]);
+  }, []);
+  
+  // Auto-advance to the right step based on what proofs we have
+  useEffect(() => {
+    // Only auto-advance if we have data and are still at intro
+    const hasIdentity = zkpassportProof || initialZkpassportProof;
+    const hasFunds = zkpfBundle || initialZkpfBundle;
+    
+    if (hasIdentity && hasFunds && step === 'intro') {
+      setStep('review');
+    } else if (hasIdentity && !hasFunds && step === 'intro') {
+      setStep('funds');
+    } else if (!hasIdentity && hasFunds && step === 'intro') {
+      setStep('identity');
+    } else if (selectedPolicy && !hasIdentity && step === 'intro') {
+      // User returned from proof builder but still needs identity
+      setStep('identity');
+    } else if (selectedPolicy && hasIdentity && !hasFunds) {
+      // User has policy and identity, needs funds
+      setStep('funds');
+    }
+  }, [initialZkpassportProof, initialZkpfBundle, zkpassportProof, zkpfBundle, selectedPolicy, step]);
   
   // Start ZKPassport verification
   const startIdentityVerification = useCallback(async () => {
@@ -348,7 +397,18 @@ export function BoundIdentityBuilder({
     // Store current state so we can return
     sessionStorage.setItem('bound-identity-policy', JSON.stringify(selectedPolicy));
     sessionStorage.setItem('bound-identity-zkpassport', JSON.stringify(zkpassportProof));
-    navigate('/build', { state: { returnTo: '/bound-identity' } });
+    // Set a flag so the proof builder knows to return here
+    sessionStorage.setItem('bound-identity-return-pending', 'true');
+    navigate('/build', { state: { returnTo: '/bound-identity', fromBoundIdentity: true } });
+  }, [selectedPolicy, zkpassportProof, navigate]);
+  
+  // Navigate to wallet to connect
+  const navigateToWallet = useCallback(() => {
+    // Store current state
+    sessionStorage.setItem('bound-identity-policy', JSON.stringify(selectedPolicy));
+    sessionStorage.setItem('bound-identity-zkpassport', JSON.stringify(zkpassportProof));
+    sessionStorage.setItem('bound-identity-return-pending', 'true');
+    navigate('/wallet');
   }, [selectedPolicy, zkpassportProof, navigate]);
   
   // Create the bound proof
@@ -598,21 +658,53 @@ export function BoundIdentityBuilder({
                 {(identityState.status === 'requesting' || identityState.status === 'request-received') && (
                   <div className="verification-waiting">
                     {identityState.url && (
-                      <div className="qr-container">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(identityState.url)}`}
-                          alt="ZKPassport QR Code"
-                          className="qr-code"
-                        />
-                      </div>
+                      <>
+                        <div className="qr-container">
+                          <div className="qr-code-wrapper">
+                            <QRCode value={identityState.url} size={200} level="M" />
+                          </div>
+                        </div>
+                        <div className="qr-actions">
+                          <a 
+                            href={identityState.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="tiny-button"
+                          >
+                            Open in ZKPassport App →
+                          </a>
+                        </div>
+                      </>
                     )}
-                    <p>
+                    <div className="waiting-status">
                       <span className="spinner small"></span>
-                      Waiting for ZKPassport verification...
-                    </p>
+                      <span>Waiting for ZKPassport verification...</span>
+                    </div>
                     <p className="muted small">
-                      Open the ZKPassport app and scan this QR code
+                      Scan the QR code with your ZKPassport-enabled device, or tap the button above if you have the app installed.
                     </p>
+                    
+                    {/* Help text for users who don't have the app */}
+                    <details className="verification-help">
+                      <summary>Don't have ZKPassport?</summary>
+                      <div className="verification-help-content">
+                        <p>
+                          ZKPassport is a mobile app that lets you prove facts about your identity 
+                          (like your age or nationality) without revealing your passport details.
+                        </p>
+                        <p>
+                          <strong>To get started:</strong>
+                        </p>
+                        <ol>
+                          <li>Download the ZKPassport app from your app store</li>
+                          <li>Scan your passport's NFC chip</li>
+                          <li>Return here and scan this QR code</li>
+                        </ol>
+                        <p className="muted small">
+                          Your passport data stays on your device and is never shared.
+                        </p>
+                      </div>
+                    </details>
                   </div>
                 )}
                 
@@ -693,19 +785,40 @@ export function BoundIdentityBuilder({
               </div>
             ) : (
               <div className="funds-options">
-                <div className="funds-option">
+                {/* Show wallet help banner if no wallet connected */}
+                {!hasWalletViewingKey && (
+                  <div className="wallet-help-banner">
+                    <div className="wallet-help-icon">💡</div>
+                    <div className="wallet-help-content">
+                      <strong>No wallet connected</strong>
+                      <p>To build a proof, you first need to connect your Zcash wallet.</p>
+                      <button
+                        type="button"
+                        className="wallet-help-button"
+                        onClick={navigateToWallet}
+                      >
+                        Connect Wallet →
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className={`funds-option ${!hasWalletViewingKey ? 'disabled' : ''}`}>
                   <div className="option-icon">🏗️</div>
                   <div className="option-content">
                     <strong>Build New Proof</strong>
                     <p>Generate a fresh proof from your connected wallet</p>
+                    {hasWalletViewingKey && (
+                      <p className="option-hint success">✓ Wallet connected</p>
+                    )}
                   </div>
                   <button
                     type="button"
-                    className="tiny-button"
+                    className="tiny-button primary"
                     onClick={navigateToBuildProof}
                     disabled={!hasWalletViewingKey}
                   >
-                    {hasWalletViewingKey ? 'Build Proof' : 'Connect Wallet First'}
+                    Build Proof
                   </button>
                 </div>
                 
@@ -716,6 +829,7 @@ export function BoundIdentityBuilder({
                   <div className="option-content">
                     <strong>Upload Existing Proof</strong>
                     <p>Use a proof bundle JSON file you already have</p>
+                    <p className="option-hint">Accepts .json proof bundle files</p>
                   </div>
                   <label className="tiny-button file-upload-button">
                     <input
@@ -727,6 +841,27 @@ export function BoundIdentityBuilder({
                     Choose File
                   </label>
                 </div>
+                
+                {/* Quick help section */}
+                <details className="funds-help-section">
+                  <summary>Need help? What is a proof bundle?</summary>
+                  <div className="funds-help-content">
+                    <p>
+                      A <strong>proof bundle</strong> is a cryptographic certificate that proves you control 
+                      funds meeting a certain threshold—without revealing your actual balance or wallet address.
+                    </p>
+                    <p>You can generate one by:</p>
+                    <ol>
+                      <li>Connecting your Zcash wallet (seed phrase or MetaMask Snap)</li>
+                      <li>Syncing your wallet to see your balance</li>
+                      <li>Clicking "Build Proof" to generate the cryptographic proof</li>
+                    </ol>
+                    <p className="muted small">
+                      The proof is generated locally in your browser using zero-knowledge cryptography. 
+                      Your private keys never leave your device.
+                    </p>
+                  </div>
+                </details>
               </div>
             )}
             
@@ -844,9 +979,65 @@ export function BoundIdentityBuilder({
             )}
             
             {error && (
-              <div className="error-message">
-                <span className="error-icon">⚠️</span>
-                <span>{error}</span>
+              <div className="error-message-detailed">
+                <div className="error-header">
+                  <span className="error-icon">⚠️</span>
+                  <strong>Something went wrong</strong>
+                </div>
+                <p className="error-description">{error}</p>
+                <div className="error-actions">
+                  <button
+                    type="button"
+                    className="tiny-button ghost"
+                    onClick={() => setError(null)}
+                  >
+                    Dismiss
+                  </button>
+                  {error.includes('proof') && (
+                    <button
+                      type="button"
+                      className="tiny-button"
+                      onClick={() => setStep('funds')}
+                    >
+                      Re-upload proof
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Missing data warnings */}
+            {!zkpassportProof && (
+              <div className="warning-message">
+                <span className="warning-icon">💡</span>
+                <div className="warning-content">
+                  <strong>Identity proof missing</strong>
+                  <p>Go back to Step 1 to verify your identity with ZKPassport.</p>
+                  <button
+                    type="button"
+                    className="tiny-button"
+                    onClick={() => setStep('identity')}
+                  >
+                    Verify Identity
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {!zkpfBundle && (
+              <div className="warning-message">
+                <span className="warning-icon">💡</span>
+                <div className="warning-content">
+                  <strong>Funds proof missing</strong>
+                  <p>Go back to Step 2 to build or upload a proof of funds.</p>
+                  <button
+                    type="button"
+                    className="tiny-button"
+                    onClick={() => setStep('funds')}
+                  >
+                    Add Funds Proof
+                  </button>
+                </div>
               </div>
             )}
             

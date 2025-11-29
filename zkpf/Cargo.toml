@@ -43,6 +43,8 @@ members = [
     "zkpf-near-tee",
     # PCZT library for transparent-to-shielded transactions
     "zkpf-pczt-transparent",
+    # x402 Payment Required protocol for ZEC
+    "zkpf-x402",
 ]
 
 [patch.crates-io]
