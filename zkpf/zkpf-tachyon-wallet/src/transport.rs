@@ -1,13 +1,13 @@
-//! Cross-chain transport layer via Axelar GMP.
+//! Cross-chain transport layer via Axelar GMP and Omni Bridge.
 //!
 //! This module handles the relay of attestations and proofs across chains
-//! using Axelar's General Message Passing protocol.
+//! using Axelar's General Message Passing protocol and the Omni Bridge SDK.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::attestation::UnifiedAttestation;
-use crate::config::AxelarConfig;
+use crate::config::{AxelarConfig, OmniBridgeConfig};
 use crate::error::TachyonError;
 use crate::types::ChainId;
 
@@ -335,5 +335,338 @@ pub struct AttestationQueryResult {
     pub expires_at: Option<u64>,
     /// Last update timestamp.
     pub last_updated: Option<u64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OMNI BRIDGE TRANSPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Omni Bridge transport for cross-chain asset transfers and attestations.
+pub struct OmniBridgeTransport {
+    config: OmniBridgeConfig,
+    /// Active transfers tracking.
+    active_transfers: HashMap<[u8; 32], OmniBridgeTransferStatus>,
+}
+
+impl OmniBridgeTransport {
+    /// Create a new Omni Bridge transport.
+    pub fn new(config: OmniBridgeConfig) -> Self {
+        Self {
+            config,
+            active_transfers: HashMap::new(),
+        }
+    }
+
+    /// Check if transport is enabled and configured.
+    pub fn is_available(&self) -> bool {
+        self.config.enabled && self.config.near_rpc_url.is_some()
+    }
+
+    /// Get supported chains.
+    pub fn supported_chains(&self) -> Vec<&str> {
+        self.config
+            .chains
+            .iter()
+            .filter(|c| c.enabled)
+            .map(|c| c.chain_id.as_str())
+            .collect()
+    }
+
+    /// Initiate a token bridge transfer.
+    pub async fn initiate_bridge_transfer(
+        &mut self,
+        source_chain: &str,
+        destination_chain: &str,
+        token: &str,
+        amount: u128,
+        recipient: &str,
+    ) -> Result<OmniBridgeTransferResult, TachyonError> {
+        if !self.is_available() {
+            return Err(TachyonError::Transport(
+                "Omni Bridge transport not configured".into(),
+            ));
+        }
+
+        // Validate chains are supported
+        let supported = self.supported_chains();
+        if !supported.contains(&source_chain) {
+            return Err(TachyonError::Transport(format!(
+                "Source chain {} not supported",
+                source_chain
+            )));
+        }
+        if !supported.contains(&destination_chain) {
+            return Err(TachyonError::Transport(format!(
+                "Destination chain {} not supported",
+                destination_chain
+            )));
+        }
+
+        // Generate transfer ID
+        let transfer_id = Self::compute_transfer_id(
+            source_chain,
+            destination_chain,
+            token,
+            amount,
+            recipient,
+        );
+
+        // In production, this would call the Omni Bridge SDK
+        let status = OmniBridgeTransferStatus {
+            transfer_id,
+            source_chain: source_chain.to_string(),
+            destination_chain: destination_chain.to_string(),
+            token: token.to_string(),
+            amount,
+            recipient: recipient.to_string(),
+            status: "pending".to_string(),
+            source_tx_hash: None,
+            destination_tx_hash: None,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        };
+
+        self.active_transfers.insert(transfer_id, status.clone());
+
+        Ok(OmniBridgeTransferResult {
+            transfer_id,
+            status,
+            estimated_completion_secs: self.estimate_bridge_time(source_chain, destination_chain),
+        })
+    }
+
+    /// Query the status of a bridge transfer.
+    pub async fn query_transfer(
+        &self,
+        transfer_id: &[u8; 32],
+    ) -> Result<OmniBridgeTransferStatus, TachyonError> {
+        self.active_transfers
+            .get(transfer_id)
+            .cloned()
+            .ok_or_else(|| TachyonError::Transport("Transfer not found".into()))
+    }
+
+    /// Broadcast an attestation via Omni Bridge.
+    pub async fn broadcast_attestation(
+        &self,
+        attestation: &UnifiedAttestation,
+        target_chains: &[&str],
+    ) -> Result<OmniBridgeBroadcastResult, TachyonError> {
+        if !self.is_available() {
+            return Err(TachyonError::Transport(
+                "Omni Bridge transport not configured".into(),
+            ));
+        }
+
+        let supported = self.supported_chains();
+        let mut broadcast_results = Vec::new();
+
+        for chain in target_chains {
+            if !supported.contains(chain) {
+                broadcast_results.push(OmniBridgeChainResult {
+                    chain: chain.to_string(),
+                    success: false,
+                    error: Some(format!("Chain {} not supported", chain)),
+                    tx_hash: None,
+                });
+                continue;
+            }
+
+            // In production, this would submit the attestation to each chain
+            broadcast_results.push(OmniBridgeChainResult {
+                chain: chain.to_string(),
+                success: true,
+                error: None,
+                tx_hash: None, // Would be populated after submission
+            });
+        }
+
+        Ok(OmniBridgeBroadcastResult {
+            attestation_id: attestation.attestation_id,
+            chains: broadcast_results,
+        })
+    }
+
+    /// Estimate bridge completion time.
+    fn estimate_bridge_time(&self, source: &str, destination: &str) -> u64 {
+        // Estimates based on chain finality
+        let source_time = match source {
+            "near" | "near-testnet" => 2,
+            "solana" | "solana-devnet" => 30,
+            "arbitrum" | "arbitrum-sepolia" => 60,
+            "base" | "base-sepolia" => 60,
+            "ethereum" | "ethereum-sepolia" => 900,
+            _ => 300,
+        };
+
+        let dest_time = match destination {
+            "near" | "near-testnet" => 2,
+            "solana" | "solana-devnet" => 30,
+            "arbitrum" | "arbitrum-sepolia" => 60,
+            "base" | "base-sepolia" => 60,
+            "ethereum" | "ethereum-sepolia" => 900,
+            _ => 300,
+        };
+
+        source_time + dest_time + 60 // Add buffer
+    }
+
+    /// Compute a transfer ID.
+    fn compute_transfer_id(
+        source: &str,
+        destination: &str,
+        token: &str,
+        amount: u128,
+        recipient: &str,
+    ) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"omni_transfer_v1");
+        hasher.update(source.as_bytes());
+        hasher.update(destination.as_bytes());
+        hasher.update(token.as_bytes());
+        hasher.update(&amount.to_be_bytes());
+        hasher.update(recipient.as_bytes());
+        
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        hasher.update(&now.to_be_bytes());
+
+        let result = hasher.finalize();
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&result);
+        id
+    }
+}
+
+/// Status of an Omni Bridge transfer.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeTransferStatus {
+    /// Unique transfer ID.
+    pub transfer_id: [u8; 32],
+    /// Source chain.
+    pub source_chain: String,
+    /// Destination chain.
+    pub destination_chain: String,
+    /// Token being transferred.
+    pub token: String,
+    /// Amount being transferred.
+    pub amount: u128,
+    /// Recipient address.
+    pub recipient: String,
+    /// Current status (pending, confirmed, completed, failed).
+    pub status: String,
+    /// Source transaction hash.
+    pub source_tx_hash: Option<String>,
+    /// Destination transaction hash.
+    pub destination_tx_hash: Option<String>,
+    /// Creation timestamp.
+    pub created_at: u64,
+}
+
+/// Result of initiating a bridge transfer.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeTransferResult {
+    /// Transfer ID.
+    pub transfer_id: [u8; 32],
+    /// Current status.
+    pub status: OmniBridgeTransferStatus,
+    /// Estimated time to completion in seconds.
+    pub estimated_completion_secs: u64,
+}
+
+/// Result of broadcasting via Omni Bridge.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeBroadcastResult {
+    /// Attestation ID that was broadcast.
+    pub attestation_id: [u8; 32],
+    /// Per-chain results.
+    pub chains: Vec<OmniBridgeChainResult>,
+}
+
+/// Result for a single chain in Omni Bridge broadcast.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeChainResult {
+    /// Target chain.
+    pub chain: String,
+    /// Whether broadcast succeeded.
+    pub success: bool,
+    /// Error message if failed.
+    pub error: Option<String>,
+    /// Transaction hash.
+    pub tx_hash: Option<String>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UNIFIED TRANSPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Unified transport that can use either Axelar GMP or Omni Bridge.
+pub struct UnifiedTransport {
+    /// Axelar transport.
+    pub axelar: Option<AxelarTransport>,
+    /// Omni Bridge transport.
+    pub omni_bridge: Option<OmniBridgeTransport>,
+}
+
+impl UnifiedTransport {
+    /// Create a new unified transport.
+    pub fn new(axelar_config: AxelarConfig, omni_config: OmniBridgeConfig) -> Self {
+        Self {
+            axelar: if axelar_config.enabled {
+                Some(AxelarTransport::new(axelar_config))
+            } else {
+                None
+            },
+            omni_bridge: if omni_config.enabled {
+                Some(OmniBridgeTransport::new(omni_config))
+            } else {
+                None
+            },
+        }
+    }
+
+    /// Check if any transport is available.
+    pub fn is_available(&self) -> bool {
+        self.axelar.as_ref().map(|a| a.is_available()).unwrap_or(false)
+            || self.omni_bridge.as_ref().map(|o| o.is_available()).unwrap_or(false)
+    }
+
+    /// Get all supported chains across transports.
+    pub fn supported_chains(&self) -> Vec<String> {
+        let mut chains = Vec::new();
+
+        if let Some(ref omni) = self.omni_bridge {
+            chains.extend(omni.supported_chains().into_iter().map(String::from));
+        }
+
+        chains.sort();
+        chains.dedup();
+        chains
+    }
+
+    /// Broadcast attestation using the best available transport.
+    pub async fn broadcast_attestation(
+        &self,
+        attestation: &UnifiedAttestation,
+        target_chains: &[ChainId],
+    ) -> Result<BroadcastResult, TachyonError> {
+        // Try Axelar first for EVM chains
+        if let Some(ref axelar) = self.axelar {
+            if axelar.is_available() {
+                return axelar.broadcast_attestation(attestation, target_chains).await;
+            }
+        }
+
+        // Fall back to creating a placeholder result
+        Err(TachyonError::Transport(
+            "No transport available for broadcast".into(),
+        ))
+    }
 }
 

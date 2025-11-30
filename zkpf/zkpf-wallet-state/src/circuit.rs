@@ -297,23 +297,12 @@ impl WalletStateTransitionCircuit {
     /// # Returns
     /// Break points needed for proof generation.
     pub fn extract_break_points_after_keygen(&self) -> MultiPhaseThreadBreakPoints {
-        // For keygen circuits, we need to run synthesis once to get break points.
-        // We do this by creating a temporary builder and running constraints.
+        // For keygen circuits, we need to compute break points from a synthesis run.
+        // We do this by running MockProver which triggers full synthesis.
         let input = self.input.as_ref().unwrap_or(&SAMPLE_INPUT);
-
-        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Mock)
-            .use_params(self.params.clone())
-            .use_instance_columns(self.params.num_instance_columns);
-
-        if let Some(bits) = self.params.lookup_bits {
-            builder = builder.use_lookup_bits(bits);
-        }
-
-        build_constraints(&mut builder, input).expect("constraint building failed");
-
-        // Calculate break points by finalizing the builder
-        builder.calculate_params(Some(20)); // Use default minimum rows
-        builder.break_points()
+        
+        // Compute break points by building constraints and analyzing thread layout
+        extract_break_points_from_synthesis(input, &self.params)
     }
 }
 
@@ -401,6 +390,95 @@ static SAMPLE_INPUT: Lazy<WalletStateTransitionInput> = Lazy::new(|| {
         Fr::zero(),
     )
 });
+
+/// Extract break points by running synthesis on a fresh builder.
+/// 
+/// This creates a Mock-stage builder, runs constraints, and computes break points
+/// based on the thread layout. Break points indicate row offsets where the circuit
+/// should wrap to the next advice column.
+/// 
+/// This mirrors the logic in halo2-base's `assign_with_constraints` function,
+/// which computes break points during actual circuit synthesis.
+fn extract_break_points_from_synthesis(
+    input: &WalletStateTransitionInput,
+    params: &BaseCircuitParams,
+) -> MultiPhaseThreadBreakPoints {
+    let mut builder = BaseCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Mock)
+        .use_params(params.clone())
+        .use_instance_columns(params.num_instance_columns);
+
+    if let Some(bits) = params.lookup_bits {
+        builder = builder.use_lookup_bits(bits);
+    }
+
+    build_constraints(&mut builder, input).expect("constraint building failed");
+
+    // Calculate optimal params which gives us the number of advice columns needed
+    let calculated_params = builder.calculate_params(Some(20));
+    let k = calculated_params.k;
+    let minimum_rows = 20;
+    let max_rows = (1 << k) - minimum_rows;
+    
+    // ROTATIONS constant from halo2-base for BasicGateConfig (4 rows per gate)
+    const ROTATIONS: usize = 4;
+    
+    // Compute break points from thread data.
+    // Break points indicate row offsets at which we switch to the next advice column.
+    // This matches the logic in halo2-base's assign_with_constraints.
+    let mut break_points_per_phase: MultiPhaseThreadBreakPoints = vec![];
+    
+    for phase_manager in builder.core().phase_manager.iter() {
+        let phase = phase_manager.phase();
+        let num_advice = calculated_params.num_advice_per_phase
+            .get(phase)
+            .copied()
+            .unwrap_or(1)
+            .max(1);
+        
+        let mut phase_break_points: Vec<usize> = vec![];
+        let mut gate_index = 0;
+        let mut row_offset = 0;
+        
+        for ctx in &phase_manager.threads {
+            if ctx.advice.is_empty() {
+                continue;
+            }
+            
+            // Iterate through cells and selectors together
+            // The selector vec should match advice vec length
+            let selectors = &ctx.selector;
+            for (i, _advice) in ctx.advice.iter().enumerate() {
+                let q = selectors.get(i).copied().unwrap_or(false);
+                
+                // Check if we need to break to the next column BEFORE assigning this cell
+                // This matches the logic in assign_with_constraints:
+                // if (q && row_offset + ROTATIONS > max_rows) || row_offset >= max_rows - 1
+                //
+                // When we hit this condition, we record the break point (current row_offset)
+                // and reset to start the next column.
+                if (q && row_offset + ROTATIONS > max_rows) || row_offset >= max_rows - 1 {
+                    phase_break_points.push(row_offset);
+                    row_offset = 0;
+                    gate_index += 1;
+                    
+                    // Safety: if we've used all columns, we'd panic in real assignment
+                    // For break point extraction, we just stop adding more
+                    if gate_index >= num_advice {
+                        break;
+                    }
+                }
+                
+                row_offset += 1;
+            }
+        }
+        
+        // The break_points vector should have one entry for each column switch
+        // For a single-column circuit, it's empty
+        break_points_per_phase.push(phase_break_points);
+    }
+    
+    break_points_per_phase
+}
 
 /// Build the circuit constraints.
 fn build_constraints(

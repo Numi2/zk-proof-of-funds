@@ -782,19 +782,133 @@ pub fn verify_starknet_proof_detailed(
 // Placeholder proofs are a security vulnerability and have been removed.
 // All proofs must be generated using real cryptographic circuits.
 
-// === WASM support ==============================================================================
+// === WASM / In-memory artifacts support ========================================================
 
-/// In-browser Starknet proving artifacts as raw byte blobs.
-#[cfg(target_arch = "wasm32")]
+/// In-memory Starknet proving artifacts as raw byte blobs.
+/// 
+/// This struct is designed for environments where artifacts cannot be loaded
+/// from the filesystem, such as:
+/// - WebAssembly (WASM) browser environments
+/// - Serverless functions with read-only filesystems
+/// - Embedded systems
+/// - Unit tests with mock artifacts
 #[derive(Clone, Debug)]
 pub struct StarknetWasmArtifacts {
+    /// Serialized KZG parameters.
     pub params_bytes: Vec<u8>,
+    /// Serialized verifying key.
     pub vk_bytes: Vec<u8>,
+    /// Serialized proving key.
     pub pk_bytes: Vec<u8>,
 }
 
-/// Create a Starknet proof using in-memory artifacts, suitable for WASM.
-#[cfg(target_arch = "wasm32")]
+impl StarknetWasmArtifacts {
+    /// Create artifacts from raw byte slices.
+    pub fn from_bytes(params: &[u8], vk: &[u8], pk: &[u8]) -> Self {
+        Self {
+            params_bytes: params.to_vec(),
+            vk_bytes: vk.to_vec(),
+            pk_bytes: pk.to_vec(),
+        }
+    }
+    
+    /// Load artifacts from a prover artifacts struct.
+    pub fn from_prover_artifacts(artifacts: &StarknetProverArtifacts) -> Result<Self, StarknetRailError> {
+        // Serialize the params from memory
+        let params_bytes = zkpf_common::serialize_params(&artifacts.params)
+            .map_err(|e| StarknetRailError::Artifact(format!("failed to serialize params: {}", e)))?;
+        
+        let vk_bytes = serialize_starknet_verifying_key(&artifacts.vk)
+            .map_err(|e| StarknetRailError::Artifact(format!("failed to serialize vk: {}", e)))?;
+        
+        let pk = artifacts.proving_key()?;
+        let pk_bytes = serialize_starknet_proving_key(pk)
+            .map_err(|e| StarknetRailError::Artifact(format!("failed to serialize pk: {}", e)))?;
+        
+        Ok(Self {
+            params_bytes,
+            vk_bytes,
+            pk_bytes,
+        })
+    }
+    
+    /// Get the total size in bytes of all artifacts.
+    pub fn total_size(&self) -> usize {
+        self.params_bytes.len() + self.vk_bytes.len() + self.pk_bytes.len()
+    }
+    
+    /// Validate artifact hashes against expected values.
+    pub fn validate_hashes(
+        &self,
+        expected_params_hash: &str,
+        expected_vk_hash: &str,
+        expected_pk_hash: &str,
+    ) -> Result<(), StarknetRailError> {
+        let params_hash = zkpf_common::hash_bytes_hex(&self.params_bytes);
+        let vk_hash = zkpf_common::hash_bytes_hex(&self.vk_bytes);
+        let pk_hash = zkpf_common::hash_bytes_hex(&self.pk_bytes);
+        
+        if params_hash != expected_params_hash {
+            return Err(StarknetRailError::Artifact(format!(
+                "params hash mismatch: expected {}, got {}",
+                expected_params_hash, params_hash
+            )));
+        }
+        if vk_hash != expected_vk_hash {
+            return Err(StarknetRailError::Artifact(format!(
+                "vk hash mismatch: expected {}, got {}",
+                expected_vk_hash, vk_hash
+            )));
+        }
+        if pk_hash != expected_pk_hash {
+            return Err(StarknetRailError::Artifact(format!(
+                "pk hash mismatch: expected {}, got {}",
+                expected_pk_hash, pk_hash
+            )));
+        }
+        
+        Ok(())
+    }
+}
+
+/// In-memory verifier artifacts (params and vk only, no pk).
+#[derive(Clone, Debug)]
+pub struct StarknetWasmVerifierArtifacts {
+    /// Serialized KZG parameters.
+    pub params_bytes: Vec<u8>,
+    /// Serialized verifying key.
+    pub vk_bytes: Vec<u8>,
+}
+
+impl StarknetWasmVerifierArtifacts {
+    /// Create verifier artifacts from raw byte slices.
+    pub fn from_bytes(params: &[u8], vk: &[u8]) -> Self {
+        Self {
+            params_bytes: params.to_vec(),
+            vk_bytes: vk.to_vec(),
+        }
+    }
+    
+    /// Create from full prover artifacts (drops pk).
+    pub fn from_prover_artifacts(artifacts: &StarknetWasmArtifacts) -> Self {
+        Self {
+            params_bytes: artifacts.params_bytes.clone(),
+            vk_bytes: artifacts.vk_bytes.clone(),
+        }
+    }
+    
+    /// Get the total size in bytes.
+    pub fn total_size(&self) -> usize {
+        self.params_bytes.len() + self.vk_bytes.len()
+    }
+}
+
+/// Create a Starknet proof using in-memory artifacts.
+/// 
+/// This function works in any environment (native or WASM) and is useful for:
+/// - Browser-based proof generation
+/// - Serverless functions
+/// - Testing with mock artifacts
 pub fn create_starknet_proof_from_bytes(
     artifacts: &StarknetWasmArtifacts,
     input: &StarknetPofCircuitInput,
@@ -830,6 +944,204 @@ pub fn create_starknet_proof_from_bytes(
     .map_err(|e| StarknetRailError::InvalidInput(format!("proof generation failed: {}", e)))?;
 
     Ok(transcript.finalize())
+}
+
+/// Verify a Starknet proof using in-memory artifacts.
+/// 
+/// This function works in any environment (native or WASM) and is useful for:
+/// - Browser-based proof verification
+/// - Serverless functions
+/// - Testing
+pub fn verify_starknet_proof_from_bytes(
+    artifacts: &StarknetWasmVerifierArtifacts,
+    proof_bytes: &[u8],
+    public_inputs: &VerifierPublicInputs,
+) -> Result<bool, StarknetRailError> {
+    // SECURITY: Always reject placeholder proofs
+    if proof_bytes.starts_with(b"STARKNET_POF_V1") {
+        return Err(StarknetRailError::Proof(
+            "Placeholder proofs (STARKNET_POF_V1) are not accepted.".into(),
+        ));
+    }
+    
+    let params = deserialize_params(&artifacts.params_bytes)
+        .map_err(|e| StarknetRailError::InvalidInput(e.to_string()))?;
+    let vk = deserialize_starknet_verifying_key(&artifacts.vk_bytes)
+        .map_err(|e| StarknetRailError::InvalidInput(e.to_string()))?;
+    
+    verify_starknet_proof(&params, &vk, proof_bytes, public_inputs)
+}
+
+/// Helper struct for building circuit inputs with proper validation.
+pub struct StarknetCircuitInputBuilder {
+    threshold: Option<u64>,
+    currency_code: Option<u32>,
+    epoch: Option<u64>,
+    scope_id: Option<u64>,
+    policy_id: Option<u64>,
+    block_number: Option<u64>,
+    account_values: Vec<u128>,
+    account_commitment: Option<[u8; 32]>,
+    holder_binding: Option<[u8; 32]>,
+    nullifier: Option<[u8; 32]>,
+}
+
+impl StarknetCircuitInputBuilder {
+    /// Create a new builder.
+    pub fn new() -> Self {
+        Self {
+            threshold: None,
+            currency_code: None,
+            epoch: None,
+            scope_id: None,
+            policy_id: None,
+            block_number: None,
+            account_values: vec![],
+            account_commitment: None,
+            holder_binding: None,
+            nullifier: None,
+        }
+    }
+    
+    /// Set the threshold.
+    pub fn threshold(mut self, value: u64) -> Self {
+        self.threshold = Some(value);
+        self
+    }
+    
+    /// Set the currency code.
+    pub fn currency_code(mut self, value: u32) -> Self {
+        self.currency_code = Some(value);
+        self
+    }
+    
+    /// Set the current epoch.
+    pub fn epoch(mut self, value: u64) -> Self {
+        self.epoch = Some(value);
+        self
+    }
+    
+    /// Set the verifier scope ID.
+    pub fn scope_id(mut self, value: u64) -> Self {
+        self.scope_id = Some(value);
+        self
+    }
+    
+    /// Set the policy ID.
+    pub fn policy_id(mut self, value: u64) -> Self {
+        self.policy_id = Some(value);
+        self
+    }
+    
+    /// Set the block number.
+    pub fn block_number(mut self, value: u64) -> Self {
+        self.block_number = Some(value);
+        self
+    }
+    
+    /// Add an account value.
+    pub fn add_account_value(mut self, value: u128) -> Self {
+        self.account_values.push(value);
+        self
+    }
+    
+    /// Set all account values at once.
+    pub fn account_values(mut self, values: Vec<u128>) -> Self {
+        self.account_values = values;
+        self
+    }
+    
+    /// Set the account commitment.
+    pub fn account_commitment(mut self, commitment: [u8; 32]) -> Self {
+        self.account_commitment = Some(commitment);
+        self
+    }
+    
+    /// Set the holder binding.
+    pub fn holder_binding(mut self, binding: [u8; 32]) -> Self {
+        self.holder_binding = Some(binding);
+        self
+    }
+    
+    /// Set the nullifier.
+    pub fn nullifier(mut self, nullifier: [u8; 32]) -> Self {
+        self.nullifier = Some(nullifier);
+        self
+    }
+    
+    /// Build the circuit input with validation.
+    pub fn build(self) -> Result<StarknetPofCircuitInput, StarknetRailError> {
+        // Validate required fields
+        let threshold = self.threshold.ok_or_else(|| {
+            StarknetRailError::InvalidInput("threshold is required".into())
+        })?;
+        let currency_code = self.currency_code.ok_or_else(|| {
+            StarknetRailError::InvalidInput("currency_code is required".into())
+        })?;
+        let epoch = self.epoch.ok_or_else(|| {
+            StarknetRailError::InvalidInput("epoch is required".into())
+        })?;
+        let scope_id = self.scope_id.ok_or_else(|| {
+            StarknetRailError::InvalidInput("scope_id is required".into())
+        })?;
+        let policy_id = self.policy_id.ok_or_else(|| {
+            StarknetRailError::InvalidInput("policy_id is required".into())
+        })?;
+        let block_number = self.block_number.ok_or_else(|| {
+            StarknetRailError::InvalidInput("block_number is required".into())
+        })?;
+        
+        if self.account_values.is_empty() {
+            return Err(StarknetRailError::InvalidInput(
+                "at least one account value is required".into()
+            ));
+        }
+        
+        if self.account_values.len() > STARKNET_MAX_ACCOUNTS {
+            return Err(StarknetRailError::InvalidInput(format!(
+                "too many accounts: {} > {}",
+                self.account_values.len(),
+                STARKNET_MAX_ACCOUNTS
+            )));
+        }
+        
+        // Compute sum and validate against threshold
+        let total: u128 = self.account_values.iter().sum();
+        if total < threshold as u128 {
+            return Err(StarknetRailError::InvalidInput(format!(
+                "insufficient funds: {} < {}",
+                total, threshold
+            )));
+        }
+        
+        // Use provided or default values for optional fields
+        let account_commitment = self.account_commitment.unwrap_or([0u8; 32]);
+        let holder_binding = self.holder_binding.unwrap_or([0u8; 32]);
+        let nullifier = self.nullifier.unwrap_or([0u8; 32]);
+        
+        Ok(StarknetPofCircuitInput {
+            public_inputs: VerifierPublicInputs {
+                threshold_raw: threshold,
+                required_currency_code: currency_code,
+                current_epoch: epoch,
+                verifier_scope_id: scope_id,
+                policy_id,
+                nullifier,
+                custodian_pubkey_hash: [0u8; 32],
+                snapshot_block_height: Some(block_number),
+                snapshot_anchor_orchard: Some(account_commitment),
+                holder_binding: Some(holder_binding),
+                proven_sum: Some(total),
+            },
+            account_values: self.account_values,
+        })
+    }
+}
+
+impl Default for StarknetCircuitInputBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // === Tests =====================================================================================

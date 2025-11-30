@@ -1,0 +1,401 @@
+/* Omni Bridge Component Styles */
+.omni-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: linear-gradient(135deg, #0a0f1a 0%, #1a1f2e 100%);
+  border-radius: 20px;
+  border: 1px solid rgba(88, 166, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.omni-bridge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.omni-bridge-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.omni-bridge-title svg {
+  color: #58a6ff;
+}
+
+.omni-bridge-subtitle {
+  color: #8b949e;
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0;
+}
+
+.chain-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chain-selector-label {
+  font-size: 0.875rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+.chain-dropdown {
+  position: relative;
+}
+
+.chain-select {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(22, 27, 34, 0.8);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b949e' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  transition: all 0.2s ease;
+}
+
+.chain-select:hover {
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
+.chain-select:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+.chain-select option {
+  background: #161b22;
+  padding: 0.75rem;
+}
+
+.swap-direction-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: center;
+  margin: -0.5rem 0;
+}
+
+.swap-direction-button:hover {
+  background: rgba(88, 166, 255, 0.2);
+  transform: rotate(180deg);
+}
+
+.swap-direction-button svg {
+  color: #58a6ff;
+  width: 20px;
+  height: 20px;
+}
+
+.token-amount-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.token-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.token-select {
+  flex: 0 0 120px;
+  padding: 1rem;
+  background: rgba(22, 27, 34, 0.8);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  appearance: none;
+}
+
+.amount-input {
+  flex: 1;
+  padding: 1rem;
+  background: rgba(22, 27, 34, 0.8);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.amount-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.amount-input::placeholder {
+  color: #484f58;
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: #8b949e;
+}
+
+.max-button {
+  color: #58a6ff;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0;
+}
+
+.max-button:hover {
+  text-decoration: underline;
+}
+
+.recipient-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.recipient-label {
+  font-size: 0.875rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+.recipient-input {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(22, 27, 34, 0.8);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+.recipient-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.fee-summary {
+  background: rgba(22, 27, 34, 0.6);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+.fee-label {
+  color: #8b949e;
+}
+
+.fee-value {
+  color: #fff;
+  font-weight: 500;
+}
+
+.fee-value.highlight {
+  color: #3fb950;
+}
+
+.bridge-button {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.bridge-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
+}
+
+.bridge-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bridge-button.loading {
+  background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
+}
+
+/* Transfer Status */
+.transfer-status {
+  background: rgba(22, 27, 34, 0.8);
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid rgba(88, 166, 255, 0.2);
+}
+
+.transfer-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.transfer-status-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.transfer-status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.transfer-status-badge.pending {
+  background: rgba(136, 87, 44, 0.2);
+  color: #d29922;
+}
+
+.transfer-status-badge.completed {
+  background: rgba(35, 134, 54, 0.2);
+  color: #3fb950;
+}
+
+.transfer-status-badge.failed {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.transfer-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.progress-step {
+  flex: 1;
+  height: 4px;
+  background: rgba(88, 166, 255, 0.2);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-step.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  background: #58a6ff;
+  animation: progress-pulse 1.5s ease-in-out infinite;
+}
+
+.progress-step.completed {
+  background: #3fb950;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.transfer-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.transfer-detail-row {
+  display: flex;
+  justify-content: space-between;
+  color: #8b949e;
+}
+
+.transfer-detail-row span:last-child {
+  color: #fff;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+/* Chain Icons */
+.chain-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.chain-icon.near { background: linear-gradient(135deg, #00ec97, #00c4a5); color: #000; }
+.chain-icon.ethereum { background: linear-gradient(135deg, #627eea, #8c9eff); color: #fff; }
+.chain-icon.arbitrum { background: linear-gradient(135deg, #28a0f0, #12aaff); color: #fff; }
+.chain-icon.base { background: linear-gradient(135deg, #0052ff, #1969ff); color: #fff; }
+.chain-icon.solana { background: linear-gradient(135deg, #9945ff, #14f195); color: #fff; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .omni-bridge {
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
+
+  .omni-bridge-title {
+    font-size: 1.25rem;
+  }
+
+  .token-row {
+    flex-direction: column;
+  }
+
+  .token-select {
+    flex: 1;
+  }
+}
+

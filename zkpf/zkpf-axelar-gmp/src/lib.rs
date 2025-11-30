@@ -8,8 +8,22 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 use thiserror::Error;
 
+pub mod bridge;
 pub mod chains;
 pub mod encoding;
+pub mod zcash;
+
+// Re-export zcash types
+pub use zcash::{
+    CreditLineConfig, RevocationReason, ZcashBridgeMessage, ZecCredential, ZecTier,
+    ZCASH_CHAIN_ID, ZCASH_MAINNET_ID, ZEC_DECIMALS, ZEC_IN_ZATOSHIS,
+};
+
+// Re-export bridge types
+pub use bridge::{
+    BroadcastStatus, BridgeState, BridgeStats, CredentialBuilder, PendingBroadcast,
+    ZcashBridge, ZcashBridgeConfig,
+};
 
 /// Rail identifier for Axelar GMP
 pub const RAIL_ID_AXELAR_GMP: &str = "AXELAR_GMP";

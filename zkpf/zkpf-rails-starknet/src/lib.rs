@@ -29,6 +29,9 @@ use zkpf_starknet_l2::{
     StarknetRailError, StarknetSnapshot, RAIL_ID_STARKNET_L2,
     StarknetChainConfig, StarknetRpcClient,
     known_tokens,
+    // DeFi position queries and price oracle
+    AggregatedDefiQuery, PragmaOracle, PositionValueCalculator,
+    DefiPosition, PositionType,
     // Mina bridge integration
     mina_bridge::{
         MinaPublicInputs, SourceRails, source_rail_mask,
@@ -130,6 +133,9 @@ pub fn app_router() -> Router {
         .route("/rails/starknet/verify-batch", post(verify_batch))
         .route("/rails/starknet/build-snapshot", post(build_snapshot))
         .route("/rails/starknet/get-balance", post(get_balance))
+        // DeFi and price oracle endpoints
+        .route("/rails/starknet/defi/positions", post(get_defi_positions))
+        .route("/rails/starknet/defi/prices", post(get_asset_prices))
         // Mina Bridge integration endpoints
         .route("/rails/starknet/mina-bridge/prepare-submission", post(prepare_mina_submission))
         .route("/rails/starknet/mina-bridge/verify-binding", post(verify_mina_binding))
@@ -824,6 +830,223 @@ fn parse_hex_32(hex_str: &str) -> Result<[u8; 32], String> {
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
     Ok(arr)
+}
+
+// ============================================================================
+// DeFi Position Endpoints
+// ============================================================================
+
+/// Request for fetching DeFi positions.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetDefiPositionsRequest {
+    /// Account address to query.
+    pub account_address: String,
+    /// Include USD values (requires oracle calls).
+    #[serde(default)]
+    pub include_usd_values: bool,
+    /// Specific protocols to query (empty for all).
+    #[serde(default)]
+    pub protocols: Vec<String>,
+}
+
+/// Response with DeFi positions.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetDefiPositionsResponse {
+    pub success: bool,
+    pub positions: Vec<DefiPositionResponse>,
+    pub total_value: Option<u64>,
+    pub error: Option<String>,
+}
+
+/// A single DeFi position in response format.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DefiPositionResponse {
+    pub protocol: String,
+    pub position_type: String,
+    pub contract_address: String,
+    pub value: String,
+    pub usd_value: Option<u64>,
+}
+
+impl From<&DefiPosition> for DefiPositionResponse {
+    fn from(pos: &DefiPosition) -> Self {
+        let position_type = match pos.position_type {
+            PositionType::LiquidityPool => "liquidity_pool",
+            PositionType::Lending => "lending",
+            PositionType::Staking => "staking",
+            PositionType::Vault => "vault",
+            PositionType::Other => "other",
+        }.to_string();
+        
+        Self {
+            protocol: pos.protocol.clone(),
+            position_type,
+            contract_address: pos.contract_address.clone(),
+            value: pos.value.to_string(),
+            usd_value: pos.usd_value,
+        }
+    }
+}
+
+/// Get DeFi positions for an account.
+async fn get_defi_positions(
+    State(state): State<AppState>,
+    Json(req): Json<GetDefiPositionsRequest>,
+) -> Result<Json<GetDefiPositionsResponse>, ApiError> {
+    let client = state.get_rpc_client().await?;
+    
+    let defi_query = match state.chain_id.as_str() {
+        "SN_MAIN" => AggregatedDefiQuery::mainnet(),
+        _ => AggregatedDefiQuery::sepolia(),
+    };
+    
+    let positions = if req.include_usd_values {
+        let mut value_calculator = match state.chain_id.as_str() {
+            "SN_MAIN" => PositionValueCalculator::mainnet(),
+            _ => PositionValueCalculator::sepolia(),
+        };
+        
+        match defi_query.get_all_positions_with_usd(
+            client.provider().clone(),
+            &req.account_address,
+            &mut value_calculator,
+        ).await {
+            Ok(positions) => positions,
+            Err(e) => {
+                return Ok(Json(GetDefiPositionsResponse {
+                    success: false,
+                    positions: vec![],
+                    total_value: None,
+                    error: Some(e.to_string()),
+                }));
+            }
+        }
+    } else {
+        match defi_query.get_all_positions(
+            client.provider().clone(),
+            &req.account_address,
+        ).await {
+            Ok(positions) => positions,
+            Err(e) => {
+                return Ok(Json(GetDefiPositionsResponse {
+                    success: false,
+                    positions: vec![],
+                    total_value: None,
+                    error: Some(e.to_string()),
+                }));
+            }
+        }
+    };
+    
+    // Filter by protocol if specified
+    let positions: Vec<DefiPosition> = if req.protocols.is_empty() {
+        positions
+    } else {
+        positions.into_iter()
+            .filter(|p| req.protocols.iter().any(|proto| 
+                proto.eq_ignore_ascii_case(&p.protocol)
+            ))
+            .collect()
+    };
+    
+    // Calculate total USD value if available
+    let total_value = positions.iter()
+        .filter_map(|p| p.usd_value)
+        .sum::<u64>();
+    
+    let response_positions: Vec<DefiPositionResponse> = positions.iter()
+        .map(DefiPositionResponse::from)
+        .collect();
+    
+    Ok(Json(GetDefiPositionsResponse {
+        success: true,
+        positions: response_positions,
+        total_value: if total_value > 0 { Some(total_value) } else { None },
+        error: None,
+    }))
+}
+
+/// Request for fetching asset prices.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetAssetPricesRequest {
+    /// Assets to get prices for (e.g., ["ETH", "STRK", "BTC"]).
+    pub assets: Vec<String>,
+}
+
+/// Response with asset prices.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetAssetPricesResponse {
+    pub success: bool,
+    pub prices: Vec<AssetPriceResponse>,
+    pub error: Option<String>,
+}
+
+/// A single asset price in response format.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetPriceResponse {
+    pub symbol: String,
+    /// Price in USD (raw value from oracle).
+    pub price_raw: String,
+    /// Price decimals.
+    pub decimals: u8,
+    /// Human-readable price (e.g., "2500.00" for ETH at $2500).
+    pub price_usd: String,
+    /// Timestamp of last update.
+    pub last_updated: u64,
+    /// Number of oracle sources.
+    pub num_sources: u32,
+}
+
+/// Get asset prices from Pragma oracle.
+async fn get_asset_prices(
+    State(state): State<AppState>,
+    Json(req): Json<GetAssetPricesRequest>,
+) -> Result<Json<GetAssetPricesResponse>, ApiError> {
+    let client = state.get_rpc_client().await?;
+    
+    let oracle = match state.chain_id.as_str() {
+        "SN_MAIN" => PragmaOracle::mainnet(),
+        _ => PragmaOracle::sepolia(),
+    };
+    
+    let mut prices = vec![];
+    
+    for asset in &req.assets {
+        match oracle.get_price(client.provider().clone(), asset).await {
+            Ok(Some(price_data)) => {
+                // Convert raw price to human-readable format
+                let divisor = 10u128.pow(price_data.decimals as u32);
+                let whole = price_data.price / divisor;
+                let frac = price_data.price % divisor;
+                let price_usd = format!("{}.{:0>width$}", whole, frac, width = price_data.decimals as usize);
+                
+                prices.push(AssetPriceResponse {
+                    symbol: price_data.symbol,
+                    price_raw: price_data.price.to_string(),
+                    decimals: price_data.decimals,
+                    price_usd,
+                    last_updated: price_data.last_updated,
+                    num_sources: price_data.num_sources,
+                });
+            }
+            Ok(None) => {
+                // Asset not found in oracle, skip
+            }
+            Err(e) => {
+                return Ok(Json(GetAssetPricesResponse {
+                    success: false,
+                    prices: vec![],
+                    error: Some(format!("failed to fetch price for {}: {}", asset, e)),
+                }));
+            }
+        }
+    }
+    
+    Ok(Json(GetAssetPricesResponse {
+        success: true,
+        prices,
+        error: None,
+    }))
 }
 
 /// API error type.

@@ -49,6 +49,8 @@
     { "source": "/lightwalletd/:path*", "destination": "/api/lightwalletd" },
     { "source": "/api/p2p/offers", "destination": "/api/p2p/offers" },
     { "source": "/api/personhood/:path*", "destination": "https://zkpf-backend.fly.dev/api/personhood/:path*" },
+    { "source": "/api/rails/omni/:path*", "destination": "https://zkpf-backend.fly.dev/rails/omni/:path*" },
+    { "source": "/rails/omni/:path*", "destination": "https://zkpf-backend.fly.dev/rails/omni/:path*" },
     {
       "source": "/(.*)",
       "destination": "/index.html"

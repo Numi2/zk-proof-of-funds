@@ -1,0 +1,60 @@
+[package]
+name = "zkpf-omni-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Omni Bridge SDK integration for zkpf cross-chain asset transfers"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Core zkpf crates
+zkpf-common = { path = "../zkpf-common" }
+
+# Omni Bridge SDK from Near-One
+omni-connector = { git = "https://github.com/Near-One/bridge-sdk-rs", package = "omni-connector" }
+near-bridge-client = { git = "https://github.com/Near-One/bridge-sdk-rs", package = "near-bridge-client" }
+evm-bridge-client = { git = "https://github.com/Near-One/bridge-sdk-rs", package = "evm-bridge-client" }
+solana-bridge-client = { git = "https://github.com/Near-One/bridge-sdk-rs", package = "solana-bridge-client" }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Cryptography
+sha2 = "0.10"
+hex = "0.4"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# HTTP client for RPC
+reqwest = { version = "0.11", features = ["json"] }
+
+# NEAR SDK types (optional for contract interactions)
+near-primitives = { version = "0.20", optional = true }
+near-crypto = { version = "0.20", optional = true }
+
+# Ethereum types (optional for EVM interactions)
+ethers = { version = "2.0", optional = true }
+
+# Solana types (optional for Solana interactions)
+solana-sdk = { version = "1.17", optional = true }
+
+[features]
+default = []
+near = ["near-primitives", "near-crypto"]
+evm = ["ethers"]
+solana = ["solana-sdk"]
+full = ["near", "evm", "solana"]
+
+[dev-dependencies]
+tokio-test = "0.4"
+

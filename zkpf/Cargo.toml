@@ -24,6 +24,10 @@ members = [
     # Axelar GMP rail (interchain PoF receipts)
     "zkpf-axelar-gmp",
     "zkpf-rails-axelar",
+    # Omni Bridge rail (NEAR, ETH, ARB, Base, Solana bridging)
+    # NOTE: These packages have a Solana dependency version conflict that needs resolution
+    # "zkpf-omni-bridge",
+    # "zkpf-rails-omni",
     # Mina recursive proof hub rail
     "zkpf-mina",
     "zkpf-rails-mina",

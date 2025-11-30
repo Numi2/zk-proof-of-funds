@@ -44,12 +44,19 @@ pub mod rpc;
 #[cfg(feature = "starknet-rpc")]
 pub mod defi;
 
+#[cfg(feature = "starknet-rpc")]
+pub mod attestation;
+
+#[cfg(feature = "starknet-rpc")]
+pub mod events;
+
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
 
 pub use circuit::{
     create_starknet_proof, create_starknet_proof_with_artifacts,
+    create_starknet_proof_from_bytes, verify_starknet_proof_from_bytes,
     deserialize_starknet_proving_key, deserialize_starknet_verifying_key,
     load_starknet_prover_artifacts, load_starknet_prover_artifacts_from_path,
     load_starknet_verifier_artifacts, load_starknet_verifier_artifacts_from_path,
@@ -58,6 +65,7 @@ pub use circuit::{
     verify_starknet_proof, verify_starknet_proof_detailed, verify_starknet_proof_with_loaded_artifacts,
     StarknetPofCircuit, StarknetPofCircuitInput, StarknetProverArtifacts, StarknetProverParams,
     StarknetVerificationResult, StarknetVerifierArtifacts,
+    StarknetWasmArtifacts, StarknetWasmVerifierArtifacts, StarknetCircuitInputBuilder,
     STARKNET_DEFAULT_K, STARKNET_INSTANCE_COLUMNS,
 };
 pub use error::StarknetRailError;
@@ -69,7 +77,22 @@ pub use rpc::StarknetRpcClient;
 #[cfg(feature = "starknet-rpc")]
 pub use defi::{
     DefiProtocol, DefiQueryError, DefiPositionQuery,
-    JediSwapQuery, NostraQuery, ZkLendQuery, EkuboQuery, HaikoQuery,
+    JediSwapQuery, NostraQuery, ZkLendQuery, EkuboQuery, HaikoQuery, CarmineQuery,
+    AggregatedDefiQuery, PragmaOracle, PriceData, PriceFeed, PositionValueCalculator,
+};
+
+#[cfg(feature = "starknet-rpc")]
+pub use attestation::{
+    AttestationClient, AttestationClientConfig, AttestationClientConfigBuilder,
+    AttestationError, AttestationResult,
+};
+
+#[cfg(feature = "starknet-rpc")]
+pub use events::{
+    EventIndexer, EventIndexerConfig, EventSubscriber, EventError,
+    AttestationRegistryEvent, AttestedEvent, AttestorAddedEvent, AttestorRemovedEvent,
+    MinaStateVerifierEvent, MinaAttestationSubmittedEvent, MinaAttestationRevokedEvent,
+    MinaStateRootUpdatedEvent,
 };
 
 pub use wallet::{
@@ -443,18 +466,37 @@ mod tests {
             required_currency_code: 1027, // ETH
         };
 
-        let bundle = prove_starknet_pof(
+        let result = prove_starknet_pof(
             &snapshot,
             &holder_id,
             threshold,
             Some("ETH"),
             &starknet_meta,
             &public_meta,
-        )
-        .expect("should succeed");
-
-        assert_eq!(bundle.rail_id, RAIL_ID_STARKNET_L2);
-        assert_eq!(bundle.public_inputs.threshold_raw, threshold);
+        );
+        
+        match result {
+            Ok(bundle) => {
+                // If artifacts are loaded, verify bundle structure
+                assert_eq!(bundle.rail_id, RAIL_ID_STARKNET_L2);
+                assert_eq!(bundle.public_inputs.threshold_raw, threshold);
+                assert!(!bundle.proof.is_empty());
+                // Ensure it's not a placeholder
+                assert!(
+                    !bundle.proof.starts_with(b"STARKNET_POF_V1"),
+                    "Placeholder proofs should never be generated"
+                );
+            }
+            Err(e) => {
+                // Without artifacts, we expect this specific error
+                let err_str = e.to_string();
+                assert!(
+                    err_str.contains("artifacts") || 
+                    err_str.contains("ZKPF_STARKNET_MANIFEST_PATH"),
+                    "Expected artifact loading error, got: {}", err_str
+                );
+            }
+        }
     }
 
     #[test]

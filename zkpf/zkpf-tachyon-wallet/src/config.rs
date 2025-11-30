@@ -29,6 +29,10 @@ pub struct TachyonConfig {
     #[serde(default)]
     pub axelar: AxelarConfig,
     
+    /// Omni Bridge configuration.
+    #[serde(default)]
+    pub omni_bridge: OmniBridgeConfig,
+    
     /// NEAR agent configuration (optional).
     #[serde(default)]
     pub near_agent: Option<NearAgentConfig>,
@@ -58,6 +62,7 @@ impl Default for TachyonConfig {
             network: NetworkEnvironment::default(),
             rails: default_rails(),
             axelar: AxelarConfig::default(),
+            omni_bridge: OmniBridgeConfig::default(),
             near_agent: None,
             privacy: PrivacyConfig::default(),
             performance: PerformanceConfig::default(),
@@ -111,6 +116,21 @@ fn default_rails() -> HashMap<String, RailConfig> {
         ],
         priority: 3,
         max_notes: Some(32),
+        artifact_path: None,
+    });
+    
+    rails.insert("OMNI_BRIDGE".to_string(), RailConfig {
+        rail_id: "OMNI_BRIDGE".to_string(),
+        enabled: true,
+        endpoint: ChainEndpoint::NearRpc {
+            url: "https://rpc.mainnet.near.org".to_string(),
+        },
+        capabilities: vec![
+            RailCapability::CrossChainBridge,
+            RailCapability::TokenTransfer,
+        ],
+        priority: 4,
+        max_notes: None,
         artifact_path: None,
     });
     
@@ -204,6 +224,10 @@ pub enum RailCapability {
     CrossChainBridge,
     /// TEE-backed computation.
     TeeCompute,
+    /// Can transfer tokens across chains.
+    TokenTransfer,
+    /// Can prove bridged assets.
+    BridgedAssetProof,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -242,6 +266,109 @@ impl Default for AxelarConfig {
             default_gas_limit: default_gas_limit(),
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OMNI BRIDGE CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Omni Bridge configuration for cross-chain asset transfers.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeConfig {
+    /// Whether Omni Bridge is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Use testnet instead of mainnet.
+    #[serde(default)]
+    pub use_testnet: bool,
+    /// NEAR RPC endpoint.
+    pub near_rpc_url: Option<String>,
+    /// Supported chains configuration.
+    #[serde(default)]
+    pub chains: Vec<OmniBridgeChainConfig>,
+    /// Transfer timeout in seconds.
+    #[serde(default = "default_transfer_timeout")]
+    pub transfer_timeout_secs: u64,
+    /// Maximum concurrent transfers.
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent_transfers: usize,
+}
+
+fn default_transfer_timeout() -> u64 {
+    600
+}
+
+fn default_max_concurrent() -> usize {
+    10
+}
+
+impl Default for OmniBridgeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            use_testnet: false,
+            near_rpc_url: Some("https://rpc.mainnet.near.org".to_string()),
+            chains: default_omni_bridge_chains(),
+            transfer_timeout_secs: default_transfer_timeout(),
+            max_concurrent_transfers: default_max_concurrent(),
+        }
+    }
+}
+
+/// Configuration for a supported Omni Bridge chain.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OmniBridgeChainConfig {
+    /// Chain identifier.
+    pub chain_id: String,
+    /// Chain display name.
+    pub name: String,
+    /// RPC endpoint URL.
+    pub rpc_url: String,
+    /// Whether this chain is enabled.
+    #[serde(default = "bool_true")]
+    pub enabled: bool,
+    /// Bridge contract address (if applicable).
+    pub bridge_contract: Option<String>,
+}
+
+fn default_omni_bridge_chains() -> Vec<OmniBridgeChainConfig> {
+    vec![
+        OmniBridgeChainConfig {
+            chain_id: "near".to_string(),
+            name: "NEAR Protocol".to_string(),
+            rpc_url: "https://rpc.mainnet.near.org".to_string(),
+            enabled: true,
+            bridge_contract: Some("omni-locker.near".to_string()),
+        },
+        OmniBridgeChainConfig {
+            chain_id: "ethereum".to_string(),
+            name: "Ethereum".to_string(),
+            rpc_url: "https://eth.llamarpc.com".to_string(),
+            enabled: true,
+            bridge_contract: None,
+        },
+        OmniBridgeChainConfig {
+            chain_id: "arbitrum".to_string(),
+            name: "Arbitrum One".to_string(),
+            rpc_url: "https://arb1.arbitrum.io/rpc".to_string(),
+            enabled: true,
+            bridge_contract: None,
+        },
+        OmniBridgeChainConfig {
+            chain_id: "base".to_string(),
+            name: "Base".to_string(),
+            rpc_url: "https://mainnet.base.org".to_string(),
+            enabled: true,
+            bridge_contract: None,
+        },
+        OmniBridgeChainConfig {
+            chain_id: "solana".to_string(),
+            name: "Solana".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            enabled: true,
+            bridge_contract: None,
+        },
+    ]
 }
 
 /// Destination chain for Axelar GMP.

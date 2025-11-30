@@ -1,0 +1,130 @@
+.chain-selector-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chain-selector-label {
+  font-size: 0.875rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+.chain-selector-dropdown {
+  position: relative;
+}
+
+.chain-selector-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: rgba(22, 27, 34, 0.8);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chain-selector-button:hover:not(.disabled) {
+  border-color: rgba(88, 166, 255, 0.4);
+  background: rgba(22, 27, 34, 0.9);
+}
+
+.chain-selector-button.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chain-selector-button svg {
+  margin-left: auto;
+  color: #8b949e;
+}
+
+.chain-native-select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.chain-native-select:disabled {
+  cursor: not-allowed;
+}
+
+.chain-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #000;
+  flex-shrink: 0;
+}
+
+.chain-name {
+  font-weight: 500;
+}
+
+.chain-placeholder {
+  color: #6e7681;
+}
+
+.testnet-badge {
+  padding: 0.125rem 0.5rem;
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.chain-balance {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.balance-label {
+  color: #6e7681;
+}
+
+.balance-value {
+  color: #8b949e;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Size variants */
+.chain-selector-container.size-sm .chain-selector-button {
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+}
+
+.chain-selector-container.size-sm .chain-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+}
+
+.chain-selector-container.size-lg .chain-selector-button {
+  padding: 1rem 1.25rem;
+  font-size: 1.125rem;
+}
+
+.chain-selector-container.size-lg .chain-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 1rem;
+}
+

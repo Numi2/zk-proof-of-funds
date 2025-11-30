@@ -373,7 +373,7 @@ export function PersonhoodSettings() {
 
         <p className="explanation">
           Prove you're a real, unique person without revealing any personal details. 
-          This helps protect against bots and fake accounts.
+
         </p>
 
         {status === 'verified' && personhoodId && (

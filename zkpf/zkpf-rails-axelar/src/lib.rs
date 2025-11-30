@@ -20,8 +20,10 @@ use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
 use zkpf_axelar_gmp::{
+    bridge::{BroadcastStatus, CredentialBuilder, ZcashBridge, ZcashBridgeConfig},
     chains, AxelarGmpError, ChainSubscription, ChainType, GmpMessage, PoFReceipt, PoFRevocation,
-    StoredReceipt, TrustedSource, DEFAULT_VALIDITY_WINDOW_SECS, RAIL_ID_AXELAR_GMP,
+    RevocationReason, StoredReceipt, TrustedSource, ZecCredential, ZecTier,
+    DEFAULT_VALIDITY_WINDOW_SECS, RAIL_ID_AXELAR_GMP,
 };
 use zkpf_common::ProofBundle;
 
@@ -58,10 +60,19 @@ pub struct AppState {
     pub origin_chain_name: String,
     /// Default validity window
     pub validity_window: u64,
+    /// Zcash bridge for credential broadcasting
+    pub zcash_bridge: Arc<RwLock<ZcashBridge>>,
+    /// Stored ZEC credentials
+    pub credentials: Arc<RwLock<HashMap<String, ZecCredential>>>,
+    /// Revoked credential IDs
+    pub revoked_credentials: Arc<RwLock<HashMap<String, RevocationReason>>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        let bridge_config = ZcashBridgeConfig::with_evm_chains();
+        let zcash_bridge = ZcashBridge::new(bridge_config);
+
         Self {
             subscriptions: Arc::new(RwLock::new(Vec::new())),
             trusted_sources: Arc::new(RwLock::new(HashMap::new())),
@@ -78,6 +89,9 @@ impl Default for AppState {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_VALIDITY_WINDOW_SECS),
+            zcash_bridge: Arc::new(RwLock::new(zcash_bridge)),
+            credentials: Arc::new(RwLock::new(HashMap::new())),
+            revoked_credentials: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -115,6 +129,23 @@ pub fn app_router() -> Router {
         .route("/rails/axelar/receipt/:holder_id/:policy_id", get(get_receipt))
         // Gas estimation
         .route("/rails/axelar/estimate-gas", post(estimate_gas))
+        // === ZEC CREDENTIAL ROUTES ===
+        // Issue a new ZEC credential
+        .route("/rails/axelar/zec/issue", post(issue_zec_credential))
+        // Broadcast ZEC credential to chains
+        .route("/rails/axelar/zec/broadcast", post(broadcast_zec_credential))
+        .route("/rails/axelar/zec/broadcast/:chain", post(broadcast_zec_to_chain))
+        // Revoke a credential
+        .route("/rails/axelar/zec/revoke", post(revoke_credential))
+        // Query credentials
+        .route("/rails/axelar/zec/credential/:credential_id", get(get_credential))
+        .route("/rails/axelar/zec/credentials/:account_tag", get(get_account_credentials))
+        .route("/rails/axelar/zec/check", post(check_zec_credential))
+        // Tier information
+        .route("/rails/axelar/zec/tiers", get(list_tiers))
+        // Bridge stats
+        .route("/rails/axelar/zec/bridge/stats", get(get_bridge_stats))
+        .route("/rails/axelar/zec/bridge/pending", get(get_pending_broadcasts))
         .layer(cors)
         .with_state(state)
 }
@@ -608,6 +639,423 @@ async fn estimate_gas(
     }
 
     Ok(Json(EstimateGasResponse { estimates, total }))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HANDLERS - ZEC CREDENTIALS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Deserialize)]
+pub struct IssueCredentialRequest {
+    /// Account tag (hex-encoded 32 bytes)
+    pub account_tag: String,
+    /// Balance tier (0-5)
+    pub tier: u8,
+    /// State root (hex-encoded 32 bytes)
+    pub state_root: String,
+    /// Block height
+    pub block_height: u64,
+    /// Proof commitment/nullifier (hex-encoded 32 bytes)
+    pub proof_commitment: String,
+    /// Attestation hash (hex-encoded 32 bytes)
+    pub attestation_hash: String,
+    /// Optional validity window override (seconds)
+    pub validity_window: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IssueCredentialResponse {
+    pub success: bool,
+    pub credential_id: Option<String>,
+    pub tier: Option<String>,
+    pub expires_at: Option<u64>,
+    pub error: Option<String>,
+}
+
+async fn issue_zec_credential(
+    State(state): State<AppState>,
+    Json(req): Json<IssueCredentialRequest>,
+) -> Result<Json<IssueCredentialResponse>, ApiError> {
+    // Parse tier
+    let tier = ZecTier::try_from(req.tier).map_err(|_| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid tier: {}", req.tier),
+        code: "INVALID_TIER".into(),
+    })?;
+
+    // Parse hex values
+    let account_tag = parse_hex32(&req.account_tag)?;
+    let state_root = parse_hex32(&req.state_root)?;
+    let proof_commitment = parse_hex32(&req.proof_commitment)?;
+    let attestation_hash = parse_hex32(&req.attestation_hash)?;
+
+    let validity_window = req.validity_window.unwrap_or(state.validity_window);
+
+    // Build credential
+    let credential = CredentialBuilder::new()
+        .account_tag(account_tag)
+        .tier(tier)
+        .state_root(state_root)
+        .block_height(req.block_height)
+        .proof_commitment(proof_commitment)
+        .attestation_hash(attestation_hash)
+        .validity_window(validity_window)
+        .build()
+        .map_err(|e| ApiError::from_gmp_error(e))?;
+
+    let credential_id = hex::encode(credential.credential_id());
+    let expires_at = credential.expires_at;
+
+    // Store credential
+    state.credentials.write().await.insert(credential_id.clone(), credential);
+
+    Ok(Json(IssueCredentialResponse {
+        success: true,
+        credential_id: Some(credential_id),
+        tier: Some(tier.name().to_string()),
+        expires_at: Some(expires_at),
+        error: None,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BroadcastCredentialRequest {
+    /// Credential ID (hex-encoded)
+    pub credential_id: String,
+    /// Optional: specific chains to broadcast to
+    pub target_chains: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BroadcastCredentialResponse {
+    pub success: bool,
+    pub broadcast_id: Option<String>,
+    pub chains_broadcast: Vec<String>,
+    pub error: Option<String>,
+}
+
+async fn broadcast_zec_credential(
+    State(state): State<AppState>,
+    Json(req): Json<BroadcastCredentialRequest>,
+) -> Result<Json<BroadcastCredentialResponse>, ApiError> {
+    // Get credential
+    let credentials = state.credentials.read().await;
+    let credential = credentials.get(&req.credential_id).cloned().ok_or_else(|| ApiError {
+        status: StatusCode::NOT_FOUND,
+        message: "Credential not found".into(),
+        code: "CREDENTIAL_NOT_FOUND".into(),
+    })?;
+    drop(credentials);
+
+    // Check not revoked
+    if state.revoked_credentials.read().await.contains_key(&req.credential_id) {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            message: "Credential has been revoked".into(),
+            code: "CREDENTIAL_REVOKED".into(),
+        });
+    }
+
+    // Prepare broadcast
+    let mut bridge = state.zcash_bridge.write().await;
+    let pending = bridge
+        .prepare_broadcast(credential, req.target_chains)
+        .map_err(|e| ApiError::from_gmp_error(e))?;
+
+    let broadcast_id = hex::encode(pending.broadcast_id);
+    let chains_broadcast = pending.target_chains.clone();
+
+    // In production, this would call the Axelar Gateway
+    // For now, mark as sent
+    for chain in &chains_broadcast {
+        bridge.update_broadcast_status(&pending.broadcast_id, chain, BroadcastStatus::Sent);
+    }
+
+    Ok(Json(BroadcastCredentialResponse {
+        success: true,
+        broadcast_id: Some(broadcast_id),
+        chains_broadcast,
+        error: None,
+    }))
+}
+
+async fn broadcast_zec_to_chain(
+    State(state): State<AppState>,
+    Path(chain): Path<String>,
+    Json(req): Json<BroadcastCredentialRequest>,
+) -> Result<Json<BroadcastCredentialResponse>, ApiError> {
+    // Get credential
+    let credentials = state.credentials.read().await;
+    let credential = credentials.get(&req.credential_id).cloned().ok_or_else(|| ApiError {
+        status: StatusCode::NOT_FOUND,
+        message: "Credential not found".into(),
+        code: "CREDENTIAL_NOT_FOUND".into(),
+    })?;
+    drop(credentials);
+
+    // Prepare broadcast to specific chain
+    let mut bridge = state.zcash_bridge.write().await;
+    let pending = bridge
+        .prepare_broadcast(credential.clone(), Some(vec![chain.clone()]))
+        .map_err(|e| ApiError::from_gmp_error(e))?;
+
+    let broadcast_id = hex::encode(pending.broadcast_id);
+
+    // Encode for the specific chain
+    let _payload = bridge.encode_for_chain(&credential, &chain)
+        .map_err(|e| ApiError::from_gmp_error(e))?;
+
+    // Mark as sent
+    bridge.update_broadcast_status(&pending.broadcast_id, &chain, BroadcastStatus::Sent);
+
+    Ok(Json(BroadcastCredentialResponse {
+        success: true,
+        broadcast_id: Some(broadcast_id),
+        chains_broadcast: vec![chain],
+        error: None,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RevokeCredentialRequest {
+    /// Credential ID to revoke
+    pub credential_id: String,
+    /// Revocation reason (0-4)
+    pub reason: u8,
+    /// Optional: broadcast revocation to chains
+    pub broadcast: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RevokeCredentialResponse {
+    pub success: bool,
+    pub chains_notified: Vec<String>,
+    pub error: Option<String>,
+}
+
+async fn revoke_credential(
+    State(state): State<AppState>,
+    Json(req): Json<RevokeCredentialRequest>,
+) -> Result<Json<RevokeCredentialResponse>, ApiError> {
+    let reason = match req.reason {
+        0 => RevocationReason::UserRequested,
+        1 => RevocationReason::BalanceDropped,
+        2 => RevocationReason::FraudAttempt,
+        3 => RevocationReason::Expired,
+        4 => RevocationReason::PolicyUpdate,
+        _ => return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: format!("Invalid revocation reason: {}", req.reason),
+            code: "INVALID_REASON".into(),
+        }),
+    };
+
+    // Mark as revoked
+    state.revoked_credentials.write().await.insert(req.credential_id.clone(), reason);
+
+    let mut chains_notified = Vec::new();
+
+    // Broadcast revocation if requested
+    if req.broadcast.unwrap_or(true) {
+        let bridge = state.zcash_bridge.read().await;
+        let subs = bridge.config.active_subscriptions();
+
+        // Parse credential ID
+        if let Ok(cred_id_bytes) = parse_hex32(&req.credential_id) {
+            for sub in subs {
+                if let Ok(_payload) = bridge.encode_revocation(cred_id_bytes, reason, &sub.chain_name) {
+                    chains_notified.push(sub.chain_name.clone());
+                }
+            }
+        }
+    }
+
+    Ok(Json(RevokeCredentialResponse {
+        success: true,
+        chains_notified,
+        error: None,
+    }))
+}
+
+async fn get_credential(
+    State(state): State<AppState>,
+    Path(credential_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let credentials = state.credentials.read().await;
+    let credential = credentials.get(&credential_id).cloned().ok_or_else(|| ApiError {
+        status: StatusCode::NOT_FOUND,
+        message: "Credential not found".into(),
+        code: "CREDENTIAL_NOT_FOUND".into(),
+    })?;
+    drop(credentials);
+
+    let revoked = state.revoked_credentials.read().await.contains_key(&credential_id);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    Ok(Json(serde_json::json!({
+        "credential_id": credential_id,
+        "account_tag": hex::encode(credential.account_tag),
+        "tier": credential.tier.name(),
+        "tier_value": credential.tier.as_u8(),
+        "policy_id": credential.policy_id,
+        "state_root": hex::encode(credential.state_root),
+        "block_height": credential.block_height,
+        "issued_at": credential.issued_at,
+        "expires_at": credential.expires_at,
+        "proof_commitment": hex::encode(credential.proof_commitment),
+        "attestation_hash": hex::encode(credential.attestation_hash),
+        "revoked": revoked,
+        "is_valid": !revoked && now < credential.expires_at
+    })))
+}
+
+async fn get_account_credentials(
+    State(state): State<AppState>,
+    Path(account_tag): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let account_tag_bytes = parse_hex32(&account_tag)?;
+    let credentials = state.credentials.read().await;
+    let revoked = state.revoked_credentials.read().await;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let account_creds: Vec<serde_json::Value> = credentials
+        .iter()
+        .filter(|(_, c)| c.account_tag == account_tag_bytes)
+        .map(|(id, c)| {
+            let is_revoked = revoked.contains_key(id);
+            serde_json::json!({
+                "credential_id": id,
+                "tier": c.tier.name(),
+                "tier_value": c.tier.as_u8(),
+                "issued_at": c.issued_at,
+                "expires_at": c.expires_at,
+                "revoked": is_revoked,
+                "is_valid": !is_revoked && now < c.expires_at
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "account_tag": account_tag,
+        "credentials": account_creds,
+        "count": account_creds.len()
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CheckCredentialRequest {
+    /// Account tag (hex-encoded 32 bytes)
+    pub account_tag: String,
+    /// Minimum tier required (0-5)
+    pub min_tier: u8,
+}
+
+async fn check_zec_credential(
+    State(state): State<AppState>,
+    Json(req): Json<CheckCredentialRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let account_tag_bytes = parse_hex32(&req.account_tag)?;
+    let min_tier = ZecTier::try_from(req.min_tier).map_err(|_| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        message: format!("Invalid tier: {}", req.min_tier),
+        code: "INVALID_TIER".into(),
+    })?;
+
+    let credentials = state.credentials.read().await;
+    let revoked = state.revoked_credentials.read().await;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Find best valid credential meeting tier requirement
+    let best_cred = credentials
+        .iter()
+        .filter(|(id, c)| {
+            c.account_tag == account_tag_bytes
+                && c.tier >= min_tier
+                && now < c.expires_at
+                && !revoked.contains_key(*id)
+        })
+        .max_by_key(|(_, c)| c.tier);
+
+    match best_cred {
+        Some((id, c)) => Ok(Json(serde_json::json!({
+            "has_credential": true,
+            "credential_id": id,
+            "tier": c.tier.name(),
+            "tier_value": c.tier.as_u8(),
+            "expires_at": c.expires_at,
+            "time_remaining": c.expires_at - now
+        }))),
+        None => Ok(Json(serde_json::json!({
+            "has_credential": false,
+            "credential_id": null,
+            "reason": "No valid credential meeting tier requirement"
+        }))),
+    }
+}
+
+async fn list_tiers() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "tiers": [
+            {"value": 0, "name": "0.1+ ZEC", "threshold_zec": 0.1, "threshold_zatoshis": 10_000_000u64},
+            {"value": 1, "name": "1+ ZEC", "threshold_zec": 1.0, "threshold_zatoshis": 100_000_000u64},
+            {"value": 2, "name": "10+ ZEC", "threshold_zec": 10.0, "threshold_zatoshis": 1_000_000_000u64},
+            {"value": 3, "name": "100+ ZEC", "threshold_zec": 100.0, "threshold_zatoshis": 10_000_000_000u64},
+            {"value": 4, "name": "1000+ ZEC", "threshold_zec": 1000.0, "threshold_zatoshis": 100_000_000_000u64},
+            {"value": 5, "name": "10000+ ZEC", "threshold_zec": 10000.0, "threshold_zatoshis": 1_000_000_000_000u64}
+        ]
+    }))
+}
+
+async fn get_bridge_stats(State(state): State<AppState>) -> impl IntoResponse {
+    let bridge = state.zcash_bridge.read().await;
+    let stats = bridge.stats();
+
+    Json(serde_json::json!({
+        "total_broadcast": stats.total_broadcast,
+        "successful": stats.successful,
+        "failed": stats.failed,
+        "total_gas_spent": stats.total_gas_spent,
+        "chain_stats": stats.chain_stats
+    }))
+}
+
+async fn get_pending_broadcasts(State(state): State<AppState>) -> impl IntoResponse {
+    let bridge = state.zcash_bridge.read().await;
+    let pending = bridge.pending_broadcasts();
+
+    let pending_json: Vec<serde_json::Value> = pending
+        .iter()
+        .map(|p| serde_json::json!({
+            "broadcast_id": hex::encode(p.broadcast_id),
+            "account_tag": hex::encode(p.credential.account_tag),
+            "tier": p.credential.tier.name(),
+            "target_chains": p.target_chains,
+            "queued_at": p.queued_at,
+            "chain_status": p.chain_status.iter().map(|(c, s)| {
+                serde_json::json!({
+                    "chain": c,
+                    "status": format!("{:?}", s)
+                })
+            }).collect::<Vec<_>>()
+        }))
+        .collect();
+
+    Json(serde_json::json!({
+        "count": pending_json.len(),
+        "pending": pending_json
+    }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

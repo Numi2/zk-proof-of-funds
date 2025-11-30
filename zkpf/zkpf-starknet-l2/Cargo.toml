@@ -46,11 +46,12 @@ once_cell = "1.19"
 rand = "0.8"
 url = { version = "2.5", optional = true }
 tracing = "0.1"
+lazy_static = { version = "1.4", optional = true }
 
 [features]
 default = []
-# Enable full Starknet RPC client
-starknet-rpc = ["starknet", "starknet-core", "starknet-providers", "starknet-signers", "starknet-accounts", "tokio", "url"]
+# Enable full Starknet RPC client with DeFi, attestation, and event support
+starknet-rpc = ["starknet", "starknet-core", "starknet-providers", "starknet-signers", "starknet-accounts", "tokio", "url", "lazy_static"]
 # Enable WASM target support
 wasm = []
 

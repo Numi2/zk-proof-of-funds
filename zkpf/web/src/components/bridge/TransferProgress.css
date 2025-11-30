@@ -1,0 +1,361 @@
+.transfer-progress {
+  background: rgba(22, 27, 34, 0.95);
+  border-radius: 16px;
+  padding: 1.5rem;
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.transfer-progress.complete {
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.transfer-progress.failed {
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+/* Header */
+.transfer-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.transfer-progress-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: #6e7681;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* Amount */
+.transfer-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.amount-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.amount-token {
+  font-size: 1rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+/* Route */
+.transfer-route {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.route-chain {
+  font-size: 0.875rem;
+  color: #8b949e;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.transfer-route svg {
+  color: #58a6ff;
+}
+
+/* Progress Steps */
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.progress-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  position: relative;
+}
+
+.progress-step::before {
+  content: '';
+  position: absolute;
+  left: -1.5rem;
+  top: 1.5rem;
+  width: 2px;
+  height: calc(100% - 0.5rem);
+  background: rgba(88, 166, 255, 0.2);
+}
+
+.progress-step:last-child::before {
+  display: none;
+}
+
+.progress-step.completed::before {
+  background: #3fb950;
+}
+
+.progress-step.current::before {
+  background: linear-gradient(to bottom, #58a6ff, rgba(88, 166, 255, 0.2));
+}
+
+.step-indicator {
+  position: absolute;
+  left: -1.5rem;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #161b22;
+  border: 2px solid rgba(88, 166, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.progress-step.completed .step-indicator {
+  background: #3fb950;
+  border-color: #3fb950;
+}
+
+.progress-step.completed .step-indicator svg {
+  color: #fff;
+}
+
+.progress-step.current .step-indicator {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.2);
+}
+
+.progress-step.pending .step-indicator {
+  opacity: 0.5;
+}
+
+.step-number {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #6e7681;
+}
+
+.step-loading {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #58a6ff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.step-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #8b949e;
+}
+
+.progress-step.completed .step-label {
+  color: #3fb950;
+}
+
+.progress-step.current .step-label {
+  color: #fff;
+}
+
+.step-description {
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+/* ETA */
+.transfer-eta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #58a6ff;
+  padding: 0.5rem;
+  background: rgba(88, 166, 255, 0.1);
+  border-radius: 8px;
+}
+
+/* Error */
+.transfer-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  background: rgba(248, 81, 73, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.error-label {
+  font-size: 0.75rem;
+  color: #f85149;
+  font-weight: 500;
+}
+
+.error-message {
+  font-size: 0.875rem;
+  color: #fff;
+}
+
+/* Links */
+.transfer-links {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.tx-link {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: #58a6ff;
+  text-decoration: none;
+  padding: 0.375rem 0.75rem;
+  background: rgba(88, 166, 255, 0.1);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.tx-link:hover {
+  background: rgba(88, 166, 255, 0.2);
+}
+
+/* Transfer ID */
+.transfer-id {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+.id-label {
+  color: #484f58;
+}
+
+.id-value {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.copy-button {
+  background: none;
+  border: none;
+  color: #6e7681;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.copy-button:hover {
+  color: #58a6ff;
+}
+
+/* Actions */
+.transfer-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.action-button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.action-button.retry {
+  background: linear-gradient(135deg, #1f6feb, #388bfd);
+  color: #fff;
+}
+
+.action-button.retry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.3);
+}
+
+.action-button.cancel {
+  background: rgba(248, 81, 73, 0.1);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.action-button.cancel:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+.action-button.done {
+  background: linear-gradient(135deg, #238636, #2ea043);
+  color: #fff;
+}
+
+.action-button.done:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
