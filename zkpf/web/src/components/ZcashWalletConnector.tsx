@@ -77,6 +77,17 @@ const DEMO_UFVK_MAINNET =
 const DEMO_SNAPSHOT_HEIGHT = 2700000;
 const DEMO_BALANCE_ZATS = 50000000000;
 
+// Fallback demo policy used when backend policies fail to load
+const DEMO_POLICY: PolicyDefinition = {
+  policy_id: 999001,
+  threshold_raw: 0,
+  required_currency_code: 999001, // ZEC zatoshi code
+  verifier_scope_id: 1,
+  category: 'ZCASH_ORCHARD',
+  rail_id: 'ZCASH_ORCHARD',
+  label: 'Demo Zcash Shielded Proof',
+};
+
 /**
  * Derive a UFVK from a BIP39 mnemonic seed phrase using PBKDF2.
  * This follows the BIP39 standard for converting mnemonic to seed.
@@ -210,6 +221,13 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
     if (!walletState.summary) return null;
     return walletState.summary.fully_scanned_height ?? walletState.summary.chain_tip_height;
   }, [walletState.summary]);
+
+  // Effective policy: use provided policy, or fall back to demo policy if none available
+  // This ensures the attestation can always be generated, even if backend is down
+  const effectivePolicy = useMemo(() => {
+    if (policy) return policy;
+    return DEMO_POLICY;
+  }, [policy]);
 
   // Check if WebWallet is available (SharedArrayBuffer support)
   const isWebWalletAvailable = walletState.webWallet !== null;
@@ -451,10 +469,9 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
   }, [onShowToast, updateStatus, setUfvk]);
 
   const buildAttestation = useCallback(async () => {
-    if (!policy) {
-      // Policy is being auto-selected, wait for it
-      return;
-    }
+    // Use effectivePolicy which falls back to demo policy if none provided
+    const policyToUse = effectivePolicy;
+    
     if (!ufvk.trim()) {
       setError('Paste a UFVK before building an attestation.');
       updateStatus('error', 'UFVK is required.');
@@ -497,17 +514,17 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       const accountBytes = bigIntToLittleEndianBytes(accountField);
       const accountHex = bytesToHex(accountBytes);
 
-      const scopeBigInt = BigInt(policy.verifier_scope_id);
-      const policyBigInt = BigInt(policy.policy_id);
+      const scopeBigInt = BigInt(policyToUse.verifier_scope_id);
+      const policyBigInt = BigInt(policyToUse.policy_id);
       const epochBigInt = BigInt(nowEpoch);
 
       // Use policy's required_custodian_id, defaulting to 0 for non-custodial rails
-      const custodianId = policy.required_custodian_id ?? 0;
+      const custodianId = policyToUse.required_custodian_id ?? 0;
 
       const circuitInput: CircuitInput = {
         attestation: {
           balance_raw: Math.floor(effectiveBalance),
-          currency_code_int: policy.required_currency_code,
+          currency_code_int: policyToUse.required_currency_code,
           custodian_id: custodianId,
           attestation_id: attestationId,
           issued_at: issuedAtEpoch,
@@ -521,12 +538,12 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
           message_hash: new Array<number>(32).fill(0),
         },
         public: {
-          threshold_raw: policy.threshold_raw,
-          required_currency_code: policy.required_currency_code,
+          threshold_raw: policyToUse.threshold_raw,
+          required_currency_code: policyToUse.required_currency_code,
           required_custodian_id: custodianId,
           current_epoch: nowEpoch,
-          verifier_scope_id: policy.verifier_scope_id,
-          policy_id: policy.policy_id,
+          verifier_scope_id: policyToUse.verifier_scope_id,
+          policy_id: policyToUse.policy_id,
           nullifier: ''.padEnd(64, '0'),
           custodian_pubkey_hash: ''.padEnd(64, '0'),
         },
@@ -740,7 +757,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
     issuedAt,
     onAttestationReady,
     onShowToast,
-    policy,
+    effectivePolicy,
     snapshotHeight,
     updateStatus,
     validHours,
@@ -1015,7 +1032,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
 
           <div className="wallet-row">
             <strong>Policy</strong>
-            <span>{policy ? policyShortSummary(policy) : 'Loading…'}</span>
+            <span>{policy ? policyShortSummary(policy) : effectivePolicy ? policyShortSummary(effectivePolicy) + ' (demo)' : 'Loading…'}</span>
           </div>
         </div>
       </div>
@@ -1026,7 +1043,6 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
           onClick={buildAttestation}
           disabled={
             isBuilding ||
-            !policy ||
             !ufvk.trim() ||
             (zcashBalanceZats === null &&
               snapshotHeight === null &&

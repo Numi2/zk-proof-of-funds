@@ -420,38 +420,6 @@ export function ZKPFApp() {
                 </div>
               </section>
 
-              {/* Privacy Guarantees */}
-              <section className="privacy-guarantees">
-                <header className="privacy-guarantees-header">
-                  <p className="eyebrow">Privacy Guarantees</p>
-                  <h2>What we never see, store, or transmit</h2>
-                </header>
-                <div className="privacy-grid">
-                  <div className="privacy-item privacy-item-never">
-                    <div className="privacy-icon">🚫</div>
-                    <h4>Never Stored</h4>
-                    <ul>
-                      <li>Passport names or numbers</li>
-                      <li>Wallet addresses or keys</li>
-                      <li>Exact balances or positions</li>
-                      <li>Transaction history</li>
-                      <li>Biometric data</li>
-                    </ul>
-                  </div>
-                  <div className="privacy-item privacy-item-only">
-                    <div className="privacy-icon">✓</div>
-                    <h4>Only Stored</h4>
-                    <ul>
-                      <li>Opaque personhood identifiers</li>
-                      <li>Hashed wallet binding IDs</li>
-                      <li>Proof validity timestamps</li>
-                      <li>Policy compliance flags</li>
-                      <li>Anonymous nullifiers</li>
-                    </ul>
-                  </div>
-                </div>
-              </section>
-
               <section className="card concepts">
                 <header>
                   <p className="eyebrow">Core concepts</p>

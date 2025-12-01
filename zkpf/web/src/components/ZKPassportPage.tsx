@@ -345,6 +345,38 @@ export function ZKPassportPage() {
         </>
       )}
 
+      {/* Privacy Guarantees */}
+      <section className="privacy-guarantees">
+        <header className="privacy-guarantees-header">
+          <p className="eyebrow">Privacy Guarantees</p>
+          <h2>What we never see, store, or transmit</h2>
+        </header>
+        <div className="privacy-grid">
+          <div className="privacy-item privacy-item-never">
+            <div className="privacy-icon">🚫</div>
+            <h4>Never Stored</h4>
+            <ul>
+              <li>Passport names or numbers</li>
+              <li>Wallet addresses or keys</li>
+              <li>Exact balances or positions</li>
+              <li>Transaction history</li>
+              <li>Biometric data</li>
+            </ul>
+          </div>
+          <div className="privacy-item privacy-item-only">
+            <div className="privacy-icon">✓</div>
+            <h4>Only Stored</h4>
+            <ul>
+              <li>Opaque personhood identifiers</li>
+              <li>Hashed wallet binding IDs</li>
+              <li>Proof validity timestamps</li>
+              <li>Policy compliance flags</li>
+              <li>Anonymous nullifiers</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* Identity Bond Card - Enhanced CTA */}
       <div className="identity-bond-section">
         <div className="identity-bond-header">
@@ -378,6 +410,70 @@ export function ZKPassportPage() {
           </div>
         </div>
       </div>
+
+      {/* Related Products */}
+      <section className="product-suite">
+        <header className="product-suite-header">
+          <p className="eyebrow">Explore More</p>
+          <h2>Related privacy tools</h2>
+        </header>
+        <div className="product-grid">
+          <Link 
+            to="/credentials" 
+            className="product-card"
+            style={{ '--card-gradient': 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' } as React.CSSProperties}
+          >
+            <div className="product-card-icon">🔐</div>
+            <div className="product-card-content">
+              <h3 className="product-card-title">Cross-chain Credentials Hub</h3>
+              <p className="product-card-subtitle">Zcash • Mina • Starknet • NEAR</p>
+              <p className="product-card-description">Generate, manage, and share proof-of-funds credentials across multiple chains. Prove your funds exist without moving assets or revealing balances.</p>
+              <ul className="product-card-features">
+                <li>Multi-chain proofs</li>
+                <li>One-click verification</li>
+                <li>Shareable credentials</li>
+              </ul>
+            </div>
+            <div className="product-card-arrow">→</div>
+          </Link>
+          <Link 
+            to="/bound-identity" 
+            className="product-card"
+            style={{ '--card-gradient': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' } as React.CSSProperties}
+          >
+            <div className="product-card-icon">🔗</div>
+            <div className="product-card-content">
+              <h3 className="product-card-title">Personhood-Wallet Binding</h3>
+              <p className="product-card-subtitle">Bond funds to verified identity</p>
+              <p className="product-card-description">Cryptographically bind your wallet to your verified personhood. Prove you control funds as a verified individual without revealing wallet addresses or balances.</p>
+              <ul className="product-card-features">
+                <li>Ed25519 signatures</li>
+                <li>Challenge-response auth</li>
+                <li>Multi-wallet support</li>
+              </ul>
+            </div>
+            <div className="product-card-arrow">→</div>
+          </Link>
+          <Link 
+            to="/p2p" 
+            className="product-card"
+            style={{ '--card-gradient': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' } as React.CSSProperties}
+          >
+            <div className="product-card-icon">🤝</div>
+            <div className="product-card-content">
+              <h3 className="product-card-title">P2P Marketplace</h3>
+              <p className="product-card-subtitle">Trade with verified counterparties</p>
+              <p className="product-card-description">Peer-to-peer trading with proof-of-funds escrow. Both parties can verify each other's balances before committing, without revealing exact amounts.</p>
+              <ul className="product-card-features">
+                <li>ZK-verified escrow</li>
+                <li>Reputation system</li>
+                <li>Multi-asset support</li>
+              </ul>
+            </div>
+            <div className="product-card-arrow">→</div>
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
