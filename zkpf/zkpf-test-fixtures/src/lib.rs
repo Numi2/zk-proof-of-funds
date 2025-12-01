@@ -19,7 +19,8 @@ use zkpf_circuit::{
 use zkpf_common::{
     custodian_pubkey_hash, serialize_params, serialize_proving_key,
     serialize_verifier_public_inputs, serialize_verifying_key, ArtifactFile, ArtifactManifest,
-    ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
+    ProofBundle, ProverArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, DEFAULT_RAIL_ID,
+    MANIFEST_VERSION,
     // Poseidon parameters from canonical source (zkpf-circuit)
     POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE,
     POSEIDON_T as POSEIDON_WIDTH, // alias for compatibility
@@ -147,7 +148,8 @@ fn build_fixtures() -> Result<TestFixtures> {
         vk_bytes,
         pk_bytes,
         proof: proof.clone(),
-        bundle: ProofBundle::new(proof, verifier_inputs.clone()),
+        // Use explicit rail_id for test fixtures to match production behavior
+        bundle: ProofBundle::new(proof, verifier_inputs.clone()).with_rail_id(DEFAULT_RAIL_ID),
         public_inputs: verifier_inputs,
         public_inputs_bytes,
         public_inputs_json,

@@ -70,7 +70,6 @@ pub mod graphql;
 
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use tracing;
 use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
 
 pub use circuit::{

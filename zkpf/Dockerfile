@@ -4,8 +4,8 @@ WORKDIR /app
 # Copy the full workspace so we can build zkpf-backend with its dependencies.
 COPY . .
 
-# Build the backend binary with mina-rail feature in release mode.
-RUN cargo build --release -p zkpf-backend --features mina-rail
+# Build the backend binary in release mode.
+RUN cargo build --release -p zkpf-backend
 
 # Build the MetaMask Snap
 FROM node:24-slim as snap-builder
@@ -36,10 +36,11 @@ COPY --from=snap-builder /snap/snap.manifest.json ./snap/snap.manifest.json
 COPY --from=snap-builder /snap/images ./snap/images
 
 # Copy policy config and proving artifacts.
-# Using artifacts/starknet which includes the full proving key (pk.bin ~784MB)
-# needed for client-side proof generation via artifact download.
+# IMPORTANT: Use artifacts/default for the main zkpf circuit that zkpf-wasm expects.
+# The artifacts/starknet folder contains Starknet rail artifacts (different circuit).
+# Generate default artifacts with: cargo xtask ci-artifacts --release --output-dir artifacts/default
 COPY config ./config
-COPY artifacts/starknet ./artifacts
+COPY artifacts/default ./artifacts
 
 # Default paths expected by zkpf-backend.
 ENV ZKPF_MANIFEST_PATH=/app/artifacts/manifest.json \

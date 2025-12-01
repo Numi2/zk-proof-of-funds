@@ -6,7 +6,7 @@ import { ApiError, ZkpfClient } from '../api/zkpf';
 import type { AttestResponse, PolicyCategory, PolicyDefinition, ProofBundle, VerifyResponse } from '../types/zkpf';
 import { publicInputsToBytes } from '../utils/bytes';
 import { parseProofBundle } from '../utils/parse';
-import { formatPolicyThreshold, getCurrencyMeta, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
+import { formatPolicyThreshold, getCurrencyMeta, policyDisplayName, policyRailLabel } from '../utils/policy';
 import { BundleSummary } from './BundleSummary';
 import type { AssetRail } from '../types/ui';
 
@@ -66,16 +66,6 @@ const assetRailCopy: Record<
     ],
     endpointDetail: 'Proof sourced from digital asset custody accounts.',
   },
-  fiat: {
-    label: 'Fiat / bank balances',
-    description:
-      'Represent fiat settlement accounts (banks, trust companies, money market funds) as attestations inside the bundle.',
-    checklist: [
-      'Convert bank statements into the structured data the prover expects before exporting the bundle.',
-      'Use ISO currency codes and custodian IDs that line up with your policies.',
-    ],
-    endpointDetail: 'Proof sourced from fiat banking rails.',
-  },
   orchard: {
     label: 'Zcash Orchard (shielded)',
     description:
@@ -91,7 +81,6 @@ const assetRailCopy: Record<
 
 const assetRailToCategory: Record<AssetRail, PolicyCategory> = {
   onchain: 'ONCHAIN',
-  fiat: 'FIAT',
   orchard: 'ZCASH_ORCHARD',
 };
 
@@ -100,18 +89,47 @@ function inferAssetRail(railId?: string | null): AssetRail {
   if (normalized?.includes('ORCHARD')) {
     return 'orchard';
   }
-  if (normalized?.includes('ONCHAIN')) {
-    return 'onchain';
+  // Default to onchain for other rail types
+  return 'onchain';
+}
+
+/**
+ * Returns a human-readable label for the rail.
+ * Use this instead of showing the raw rail_id to users.
+ */
+function railDisplayLabel(railId?: string | null): string {
+  if (!railId || railId.trim() === '') {
+    return 'Custodial attestation';
   }
-  return 'fiat';
+  const normalized = railId.toUpperCase();
+  if (normalized.includes('ORCHARD') || normalized.includes('ZCASH')) {
+    return 'Zcash Orchard';
+  }
+  if (normalized === 'CUSTODIAL_ATTESTATION') {
+    return 'Custodial attestation';
+  }
+  if (normalized.includes('STARKNET')) {
+    return 'Starknet L2';
+  }
+  if (normalized.includes('MINA')) {
+    return 'Mina recursive';
+  }
+  if (normalized.includes('OMNI') || normalized.includes('BRIDGE')) {
+    return 'Omni bridge';
+  }
+  if (normalized.includes('AXELAR')) {
+    return 'Axelar GMP';
+  }
+  // Fallback: humanize the rail ID
+  return railId.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function normalizePolicyCategory(policy: PolicyDefinition): PolicyCategory {
   const raw = policy.category?.toUpperCase() as PolicyCategory | undefined;
-  if (raw === 'FIAT' || raw === 'ONCHAIN' || raw === 'ZCASH_ORCHARD') {
+  if (raw === 'ONCHAIN' || raw === 'ZCASH_ORCHARD') {
     return raw;
   }
-  return 'FIAT';
+  return 'ZCASH_ORCHARD';
 }
 
 export function ProofWorkbench({
@@ -136,6 +154,7 @@ export function ProofWorkbench({
   const [assetRail, setAssetRail] = useState<AssetRail>('onchain');
   const [holderId, setHolderId] = useState('');
   const [snapshotId, setSnapshotId] = useState('');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [attestLoading, setAttestLoading] = useState(false);
   const [attestError, setAttestError] = useState<string | null>(null);
   const [attestResult, setAttestResult] = useState<AttestResponse | null>(null);
@@ -197,7 +216,7 @@ export function ProofWorkbench({
       try {
         const parsed = parseProofBundle(value);
         setBundle(parsed);
-        // Auto-select Orchard rail context when the bundle declares it explicitly.
+        // Auto-select rail context based on bundle properties.
         if (parsed.rail_id === 'ZCASH_ORCHARD') {
           setAssetRail('orchard');
         }
@@ -229,7 +248,6 @@ export function ProofWorkbench({
             // Infer category and rail from currency code and rail_id
             category: parsed.rail_id === 'ZCASH_ORCHARD' ? 'ZCASH_ORCHARD' 
               : parsed.public_inputs.required_currency_code === 5915971 ? 'ZASHI'
-              : parsed.public_inputs.required_currency_code === 840 ? 'FIAT'
               : 'ONCHAIN',
             rail_id: parsed.rail_id || 'CUSTODIAL_ATTESTATION',
             label: `Prove ${thresholdLabel} (from bundle)`,
@@ -335,8 +353,6 @@ export function ProofWorkbench({
     }
     return railFiltered;
   }, [policiesForRail, policies, customPolicy]);
-
-  const showingFallbackPolicies = policies.length > 0 && !policiesForRail.length;
   
   // Check if we're in streamlined mode (bundle + custom policy from wallet)
   const isStreamlinedMode = Boolean(customPolicy && bundle);
@@ -393,9 +409,7 @@ export function ProofWorkbench({
       const samplePath =
         assetRail === 'orchard'
           ? '/sample-bundle-orchard.json'
-          : assetRail === 'onchain'
-            ? '/sample-bundle-onchain.json'
-            : '/sample-bundle-fiat.json';
+          : '/sample-bundle-onchain.json';
       const response = await fetch(samplePath);
       if (!response.ok) {
         throw new Error(`Sample bundle request failed (${response.status})`);
@@ -405,9 +419,7 @@ export function ProofWorkbench({
       showToast(
         assetRail === 'orchard'
           ? 'Loaded Zcash Orchard sample bundle'
-          : assetRail === 'onchain'
-            ? 'Loaded on-chain sample bundle'
-            : 'Loaded fiat sample bundle',
+          : 'Loaded on-chain sample bundle',
         'success',
       );
     } catch (err) {
@@ -465,23 +477,6 @@ export function ProofWorkbench({
   const handleVerify = async () => {
     if (!bundle) return;
     
-    // Skip policy mismatch check for custom policies that match the bundle
-    const hasMatchingCustomPolicy = customPolicy && 
-      bundle.public_inputs.policy_id === customPolicy.policy_id &&
-      bundle.public_inputs.threshold_raw === customPolicy.threshold_raw &&
-      bundle.public_inputs.required_currency_code === customPolicy.required_currency_code &&
-      bundle.public_inputs.verifier_scope_id === customPolicy.verifier_scope_id;
-    
-    if (policyMismatchWarning && !hasMatchingCustomPolicy) {
-      setVerifyError(
-        `${policyMismatchWarning} Regenerate the proof bundle against the current policy configuration, then retry verification.`,
-      );
-      setVerifyResponse(null);
-      setAttestResult(null);
-      onVerificationOutcome?.('error');
-      return;
-    }
-    
     // Use the bundle's policy_id for verification (this is what the proof was generated against)
     const policyIdForVerify = bundle.public_inputs.policy_id;
     setIsVerifying(true);
@@ -492,27 +487,60 @@ export function ProofWorkbench({
     try {
       onVerificationOutcome?.('pending');
       
-      // If we have a custom policy that matches, register it with the backend first
-      // This ensures the backend knows about ephemeral policies created from wallet balances
-      if (hasMatchingCustomPolicy && customPolicy) {
-        try {
-          await client.composePolicy({
-            category: normalizePolicyCategory(customPolicy),
-            rail_id: customPolicy.rail_id ?? 'CUSTODIAL_ATTESTATION',
-            label: customPolicy.label ?? `Custom policy ${customPolicy.policy_id}`,
-            options: customPolicy.options,
-            threshold_raw: customPolicy.threshold_raw,
-            required_currency_code: customPolicy.required_currency_code,
-            verifier_scope_id: customPolicy.verifier_scope_id,
-            // Pass the exact policy_id from the bundle so it matches
-            policy_id: customPolicy.policy_id,
-          });
-        } catch (composeErr) {
-          // If policy already exists or compose fails for other reasons, continue
-          // The verify call will provide a more specific error if needed
-          console.warn('Policy compose warning:', composeErr);
-        }
+      // ALWAYS auto-compose the policy from the bundle's public inputs before verification.
+      // This ensures the backend knows about the policy, regardless of whether it's a
+      // custom policy, a wallet-generated policy, or a manually loaded bundle.
+      // The compose endpoint is idempotent - it will return the existing policy if one
+      // already exists with matching parameters.
+      const currencyMeta = getCurrencyMeta(bundle.public_inputs.required_currency_code);
+      const thresholdRaw = bundle.public_inputs.threshold_raw;
+      const divisor = currencyMeta.decimals > 0 ? 10 ** currencyMeta.decimals : 1;
+      const thresholdValue = thresholdRaw / divisor;
+      const thresholdLabel = thresholdRaw === 0
+        ? `exactly 0 ${currencyMeta.code}`
+        : `≥ ${thresholdValue.toLocaleString()} ${currencyMeta.code}`;
+      
+      // Infer category from rail_id or currency code
+      const category = bundle.rail_id === 'ZCASH_ORCHARD' ? 'ZCASH_ORCHARD'
+        : bundle.public_inputs.required_currency_code === 999001 ? 'ZCASH_ORCHARD'
+        : 'ONCHAIN';
+      
+      try {
+        await client.composePolicy({
+          category,
+          rail_id: bundle.rail_id || 'CUSTODIAL_ATTESTATION',
+          label: customPolicy?.label ?? `Prove ${thresholdLabel} (from bundle)`,
+          options: customPolicy?.options ?? {},
+          threshold_raw: bundle.public_inputs.threshold_raw,
+          required_currency_code: bundle.public_inputs.required_currency_code,
+          verifier_scope_id: bundle.public_inputs.verifier_scope_id,
+          // Pass the exact policy_id from the bundle so verification matches
+          policy_id: policyIdForVerify,
+        });
+        console.log('[ZKPF] Policy auto-composed for bundle verification');
+      } catch (composeErr) {
+        // If policy already exists or compose fails for other reasons, continue
+        // The verify call will provide a more specific error if needed
+        console.warn('Policy compose warning (may be expected if policy exists):', composeErr);
       }
+      
+      // Debug logging for verification
+      console.log('[ZKPF Debug] Sending verification request:', {
+        mode,
+        policyId: policyIdForVerify,
+        circuitVersion: bundle.circuit_version,
+        railId: bundle.rail_id,
+        proofLength: bundle.proof.length,
+        publicInputs: {
+          threshold_raw: bundle.public_inputs.threshold_raw,
+          required_currency_code: bundle.public_inputs.required_currency_code,
+          current_epoch: bundle.public_inputs.current_epoch,
+          verifier_scope_id: bundle.public_inputs.verifier_scope_id,
+          policy_id: bundle.public_inputs.policy_id,
+          nullifier_first8: bundle.public_inputs.nullifier.slice(0, 8),
+          custodian_pubkey_hash_first8: bundle.public_inputs.custodian_pubkey_hash.slice(0, 8),
+        },
+      });
       
       const response =
         mode === 'bundle'
@@ -697,6 +725,21 @@ export function ProofWorkbench({
     }
   };
 
+  // Quick start: Load sample bundle for instant demo
+  // Must be defined before any early returns to satisfy React hooks rules
+  const handleQuickDemo = useCallback(async () => {
+    try {
+      const response = await fetch('/sample-bundle-orchard.json');
+      if (!response.ok) throw new Error(`Failed to load sample (${response.status})`);
+      const text = await response.text();
+      handleRawInput(text);
+      showToast('Sample proof loaded', 'success');
+    } catch (err) {
+      const message = (err as Error).message ?? 'Failed to load sample';
+      showToast(message, 'error');
+    }
+  }, [handleRawInput]);
+
   // Streamlined mode: simplified UI when coming from wallet with custom policy
   if (isStreamlinedMode && customPolicy) {
     return (
@@ -793,7 +836,6 @@ export function ProofWorkbench({
           <VerificationBanner
             response={verifyResponse}
             endpoint={mode}
-            assetRail={assetRail}
             railId={bundle?.rail_id}
           />
         )}
@@ -864,22 +906,37 @@ export function ProofWorkbench({
   return (
     <section className="proof-workbench card">
       <header>
-        <p className="eyebrow">Verify console</p>
-        <h2>Submit and record a proof-of-funds run</h2>
+        <p className="eyebrow">Verification</p>
+        <h2>Verify your proof</h2>
       </header>
       <p className="muted">
-        Paste the JSON produced by the prover CLI or your custody pipeline. The console validates the bundle in your
-        browser before it is sent to the verifier.
+        Upload or paste your proof bundle to verify it. We'll automatically detect all the settings for you.
       </p>
-      <p className="muted small">
-        This page lines up with the <strong>"Verify proof"</strong> and <strong>"Share &amp; record"</strong> steps in
-        the checklist. Follow the flow below from bundle preparation through optional on-chain attestation.
-      </p>
-      <p className="muted small">
-        The built-in sample bundles use mock proof bytes for shape and policy/epoch wiring only. The verifier will
-        ultimately reject them at the cryptographic check, so use real prover output for end-to-end success.
-      </p>
-      <FlowVisualizer steps={flowSteps} />
+      
+      {/* Quick Start Banner - for first-time visitors */}
+      {!bundle && !rawInput.trim() && !customPolicy && (
+        <div className="quick-start-banner">
+          <div className="quick-start-content">
+            <div className="quick-start-icon">⚡</div>
+            <div className="quick-start-text">
+              <h3>See verification in action</h3>
+              <p>Load a sample proof bundle and verify it instantly.</p>
+            </div>
+            <button 
+              type="button" 
+              className="quick-start-button"
+              onClick={handleQuickDemo}
+            >
+              Load sample →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Only show technical flow steps when no bundle loaded - keep it simple */}
+      {!bundle && connectionState !== 'connected' && (
+        <FlowVisualizer steps={flowSteps.slice(0, 2)} />
+      )}
 
       {/* Custom Policy Banner - shown when using a custom policy from wallet (but no bundle yet) */}
       {customPolicy && !bundle && (
@@ -911,16 +968,38 @@ export function ProofWorkbench({
         </div>
       )}
 
-      <div className="input-grid">
-        <label className="field" htmlFor={textareaId}>
-          <span>Bundle JSON</span>
+      {!bundle && (
+        <div 
+          className={`upload-zone ${isDragging ? 'dragging' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <div className="upload-zone-content">
+            <div className="upload-zone-icon">📄</div>
+            <h3>Drop your proof file here</h3>
+            <p className="muted">or click to browse</p>
+            <label className="file-input-label">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => handleFileUpload(event.target.files)}
+                className="file-input"
+              />
+              <span className="file-input-button">Choose proof file</span>
+            </label>
+          </div>
+          <div className="upload-zone-divider">
+            <span>or paste JSON</span>
+          </div>
           <textarea
             id={textareaId}
-            placeholder='{"circuit_version":3,"proof":[...],"public_inputs":{...}}'
+            placeholder="Paste your proof bundle JSON here…"
             value={rawInput}
             onChange={(event) => handleRawInput(event.target.value)}
             spellCheck={false}
-            className={parseError ? 'error-input' : ''}
+            className={`upload-zone-textarea ${parseError ? 'error-input' : ''}`}
           />
           {parseError && (
             <div className="error-message">
@@ -928,227 +1007,209 @@ export function ProofWorkbench({
               <span>{parseError}</span>
             </div>
           )}
-        </label>
-        <div 
-          className={`upload-panel ${isDragging ? 'dragging' : ''}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <div className="upload-icon">📁</div>
-          <p><strong>Drag & drop a JSON file here</strong></p>
-          <p className="muted small">or</p>
-          <label className="file-input-label">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              onChange={(event) => handleFileUpload(event.target.files)}
-              className="file-input"
-            />
-            <span className="file-input-button">Choose file</span>
-          </label>
-          {rawInput && (
-            <div className="actions">
-              <button type="button" className="ghost" onClick={handleClear}>
-                Clear input
-              </button>
-            </div>
-          )}
         </div>
-      </div>
+      )}
+
+      {bundle && (
+        <div className="bundle-loaded-bar">
+          <div className="bundle-loaded-info">
+            <span className="bundle-loaded-icon">✓</span>
+            <span>Proof bundle loaded successfully</span>
+          </div>
+          <button type="button" className="ghost tiny-button" onClick={handleClear}>
+            Load different proof
+          </button>
+        </div>
+      )}
       {bundle && !parseError && (
         <>
-          <div className="mode-switch">
-            <label>
-              <input
-                type="radio"
-                name="verification-mode"
-                value="bundle"
-                checked={mode === 'bundle'}
-                onChange={() => setMode('bundle')}
-              />
-              <span>POST /zkpf/verify-bundle</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="verification-mode"
-                value="raw"
-                checked={mode === 'raw'}
-                onChange={() => setMode('raw')}
-              />
-              <span>POST /zkpf/verify</span>
-            </label>
-          </div>
-          <div className="asset-rail-panel">
-            <div className="asset-rail-switch">
-              <label>
-                <input
-                  type="radio"
-                  name="asset-rail"
-                  value="onchain"
-                  checked={assetRail === 'onchain'}
-                  onChange={() => setAssetRail('onchain')}
-                />
-                <span>On-chain proof</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="asset-rail"
-                  value="fiat"
-                  checked={assetRail === 'fiat'}
-                  onChange={() => setAssetRail('fiat')}
-                />
-                <span>Fiat proof</span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="asset-rail"
-                  value="orchard"
-                  checked={assetRail === 'orchard'}
-                  onChange={() => setAssetRail('orchard')}
-                />
-                <span>Zcash Orchard PoF</span>
-              </label>
+          {/* Auto-detected summary - simplified for users */}
+          <div className="auto-detected-summary">
+            <div className="auto-detected-header">
+              <div className="auto-detected-icon">✓</div>
+              <div className="auto-detected-text">
+                <h3>Proof bundle detected</h3>
+                <p>All settings have been configured automatically from your proof.</p>
+              </div>
             </div>
-            <div className="asset-rail-body">
-              <p className="asset-rail-label">{selectedRail.label}</p>
-              <p className="asset-rail-description">{selectedRail.description}</p>
-              <ul className="asset-rail-checklist">
-                {selectedRail.checklist.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="policy-panel">
-            <label className="field">
-              <span>Select Policy</span>
-              {policiesQuery.isLoading ? (
-                <div className="policy-loading">
-                  <span className="spinner small"></span>
-                  <span>Loading policies…</span>
+            
+            <div className="auto-detected-details">
+              <div className="auto-detected-item">
+                <span className="auto-detected-label">Proof Type</span>
+                <span className="auto-detected-value">
+                  <span className="auto-detected-badge">
+                    {assetRail === 'orchard' ? '🔒 Zcash Shielded' : '⛓️ On-chain'}
+                  </span>
+                </span>
+              </div>
+              <div className="auto-detected-item">
+                <span className="auto-detected-label">Circuit</span>
+                <span className="auto-detected-value mono">v{bundle.circuit_version}</span>
+              </div>
+              {selectedPolicy && (
+                <div className="auto-detected-item">
+                  <span className="auto-detected-label">Policy</span>
+                  <span className="auto-detected-value">{formatPolicyThreshold(selectedPolicy).formatted}</span>
                 </div>
-              ) : (
-                <select
-                  value={selectedPolicyId ?? ''}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSelectedPolicyId(value ? Number(value) : null);
-                  }}
-                  disabled={!displayedPolicies.length}
-                >
-                  {!displayedPolicies.length ? (
-                    <option value="">No policies available</option>
-                  ) : (
-                    displayedPolicies.map((policy) => {
-                      const isCustom = customPolicy && policy.policy_id === customPolicy.policy_id;
-                      const label = policyDisplayName(policy);
-                      const threshold = formatPolicyThreshold(policy).formatted;
-                      return (
-                        <option key={policy.policy_id} value={policy.policy_id}>
-                          {isCustom ? '✨ ' : ''}{label} • {threshold} • Scope {policy.verifier_scope_id}
-                        </option>
-                      );
-                    })
-                  )}
-                </select>
               )}
-            </label>
-            {showingFallbackPolicies && (
-              <p className="muted small">
-                No policies are tagged for {selectedRail.label} yet. Showing all policies instead.
-              </p>
-            )}
-            {selectedPolicy && (
-              <>
-                <div className="policy-details-header">
-                  <h4>Policy Details</h4>
+              {bundle.public_inputs.current_epoch && (
+                <div className="auto-detected-item">
+                  <span className="auto-detected-label">Epoch</span>
+                  <span className="auto-detected-value mono">{bundle.public_inputs.current_epoch}</span>
                 </div>
-                <dl className="policy-details">
-                  <div>
-                    <dt>Label</dt>
-                    <dd>{policyDisplayName(selectedPolicy)}</dd>
-                  </div>
-                  <div>
-                    <dt>Category</dt>
-                    <dd>{policyCategoryLabel(selectedPolicy)}</dd>
-                  </div>
-                  <div>
-                    <dt>Rail</dt>
-                    <dd>{policyRailLabel(selectedPolicy)}</dd>
-                  </div>
-                  <div>
-                    <dt>Threshold</dt>
-                    <dd>{formatPolicyThreshold(selectedPolicy).formatted}</dd>
-                  </div>
-                  <div>
-                    <dt>Scope</dt>
-                    <dd>{selectedPolicy.verifier_scope_id}</dd>
-                  </div>
-                </dl>
-                {bundle && policyMismatchWarning && (
-                  <div className="error-message">
-                    <span className="error-icon">⚠️</span>
-                    <span>{policyMismatchWarning}</span>
-                  </div>
-                )}
-              </>
-            )}
-            {policiesError && (
-              <div className="error-message">
-                <span className="error-icon">⚠️</span>
-                <span>{policiesError}</span>
-              </div>
-            )}
-            {!policies.length && !policiesQuery.isLoading && !policiesError && (
-              <div className="warning">
-                <strong>No policies available.</strong> Configure the verifier first by updating the policies configuration.
-              </div>
-            )}
-            <div className="policy-panel-footer">
-              <p className="muted small">
-                Need a new policy ID? Compose it in the dedicated console and it will appear here automatically.
-              </p>
-              <Link to="/policies" className="tiny-button">
-                Open policy composer
-              </Link>
+              )}
             </div>
+
+            {policyMismatchWarning && (
+              <div className="error-message" style={{ marginTop: '1rem' }}>
+                <span className="error-icon">⚠️</span>
+                <span>{policyMismatchWarning}</span>
+              </div>
+            )}
           </div>
-          <div className="actions">
+
+          {/* Collapsible advanced options for power users */}
+          <button
+            type="button"
+            className="advanced-toggle"
+            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+          >
+            <span className={`advanced-toggle-arrow ${showAdvancedOptions ? 'open' : ''}`}>›</span>
+            <span>Advanced options</span>
+          </button>
+
+          {showAdvancedOptions && (
+            <div className="advanced-options-panel">
+              <div className="advanced-option-group">
+                <span className="advanced-option-label">Verification endpoint</span>
+                <div className="mode-switch">
+                  <label>
+                    <input
+                      type="radio"
+                      name="verification-mode"
+                      value="bundle"
+                      checked={mode === 'bundle'}
+                      onChange={() => setMode('bundle')}
+                    />
+                    <span>/verify-bundle</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="verification-mode"
+                      value="raw"
+                      checked={mode === 'raw'}
+                      onChange={() => setMode('raw')}
+                    />
+                    <span>/verify</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="advanced-option-group">
+                <span className="advanced-option-label">Asset rail context</span>
+                <div className="asset-rail-switch">
+                  <label>
+                    <input
+                      type="radio"
+                      name="asset-rail"
+                      value="onchain"
+                      checked={assetRail === 'onchain'}
+                      onChange={() => setAssetRail('onchain')}
+                    />
+                    <span>On-chain</span>
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="asset-rail"
+                      value="orchard"
+                      checked={assetRail === 'orchard'}
+                      onChange={() => setAssetRail('orchard')}
+                    />
+                    <span>Zcash Orchard</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="advanced-option-group">
+                <span className="advanced-option-label">Policy selection</span>
+                {policiesQuery.isLoading ? (
+                  <div className="policy-loading">
+                    <span className="spinner small"></span>
+                    <span>Loading policies…</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedPolicyId ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSelectedPolicyId(value ? Number(value) : null);
+                    }}
+                    disabled={!displayedPolicies.length}
+                    className="advanced-select"
+                  >
+                    {!displayedPolicies.length ? (
+                      <option value="">No policies available</option>
+                    ) : (
+                      displayedPolicies.map((policy) => {
+                        const isCustom = customPolicy && policy.policy_id === customPolicy.policy_id;
+                        const label = policyDisplayName(policy);
+                        const threshold = formatPolicyThreshold(policy).formatted;
+                        return (
+                          <option key={policy.policy_id} value={policy.policy_id}>
+                            {isCustom ? '✨ ' : ''}{label} • {threshold} • Scope {policy.verifier_scope_id}
+                          </option>
+                        );
+                      })
+                    )}
+                  </select>
+                )}
+              </div>
+
+              {policiesError && (
+                <div className="error-message">
+                  <span className="error-icon">⚠️</span>
+                  <span>{policiesError}</span>
+                </div>
+              )}
+              
+              <div className="advanced-option-footer">
+                <Link to="/policies" className="tiny-button ghost">
+                  Open policy composer
+                </Link>
+              </div>
+            </div>
+          )}
+          <div className="verify-action-panel">
             <button
               type="button"
               onClick={handleVerify}
               disabled={isVerifying || policiesQuery.isLoading || !bundle}
-              className="verify-button"
+              className="verify-button primary-cta"
             >
               {isVerifying ? (
                 <>
                   <span className="spinner"></span>
-                  <span>Verifying…</span>
+                  <span>Verifying your proof…</span>
                 </>
               ) : (
                 <>
-                  <span>✓</span>
-                  <span>Send to verifier</span>
+                  <span className="verify-icon">✓</span>
+                  <span>Verify Proof</span>
                 </>
               )}
             </button>
-          </div>
-          {!bundle && !parseError && !isVerifying && (
-            <p className="muted small">
-              Paste or upload a bundle JSON above to enable verification. The checklist will advance once the verifier
-              has accepted a proof.
+            <p className="verify-reassurance">
+              {isVerifying 
+                ? 'This typically takes just a few seconds…'
+                : 'Your proof data stays secure. Only the verification result is stored.'}
             </p>
-          )}
+          </div>
           {verifyResponse && (
             <VerificationBanner
               response={verifyResponse}
               endpoint={mode}
-              assetRail={assetRail}
               railId={bundle?.rail_id}
             />
           )}
@@ -1256,21 +1317,15 @@ function FlowVisualizer({ steps }: { steps: FlowStep[] }) {
 function VerificationBanner({
   response,
   endpoint,
-  assetRail,
   railId,
 }: {
   response: VerifyResponse;
   endpoint: VerificationMode;
-  assetRail: AssetRail;
   railId?: string;
 }) {
   const intent = response.valid ? 'success' : 'error';
-  const railLabel =
-    assetRail === 'orchard'
-      ? 'Zcash Orchard rail'
-      : assetRail === 'onchain'
-        ? 'On-chain rail'
-        : 'Fiat rail';
+  // Use the rail_id-based label for consistency
+  const railLabel = railDisplayLabel(railId) + ' rail';
   return (
     <div className={`verification-banner ${intent}`}>
       <div className="verification-content">

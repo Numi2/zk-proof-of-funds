@@ -12,7 +12,8 @@ use rustc_hash::FxHashSet;
 pub use verifier::VerifierSHPLONK;
 
 // Direct rayon imports for trait methods (map, collect, etc.)
-// These are needed unconditionally because into_par_iter() returns rayon types
+// These are only needed when multicore feature is enabled
+#[cfg(feature = "multicore")]
 use rayon::iter::ParallelIterator;
 
 #[derive(Clone, Copy, Debug)]

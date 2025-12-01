@@ -72,7 +72,7 @@ dev-graph = [
     "tabbycat",
 ]
 gadget-traces = ["backtrace"]
-multicore = ["maybe-rayon/threads"]
+multicore = ["maybe-rayon/threads", "dep:rayon"]
 profile = ["dep:ark-std"]
 sanity-checks = []
 test-dev-graph = [
@@ -184,6 +184,7 @@ default-features = false
 
 [dependencies.rayon]
 version = "1.10"
+optional = true
 
 [dependencies.rustc-hash]
 version = "1.1"

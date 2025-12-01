@@ -3,7 +3,13 @@ import { useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { blake3 } from '@noble/hashes/blake3.js';
 import * as secp256k1 from '@noble/secp256k1';
-import type { CircuitInput, ProofBundle, PolicyDefinition } from '../types/zkpf';
+import type {
+  CircuitInput,
+  ProofBundle,
+  PolicyDefinition,
+  PolicyCategory,
+  PolicyComposeRequest,
+} from '../types/zkpf';
 import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
@@ -86,6 +92,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [customPolicy, setCustomPolicy] = useState<PolicyDefinition | null>(
     navigationState?.customPolicy ?? null
   );
+  const [walletPolicySynced, setWalletPolicySynced] = useState(false);
   
   // Check if we came from wallet with custom policy - this enables streamlined mode
   const isCustomPolicyFromWallet = Boolean(customPolicy && navigationState?.fromWallet);
@@ -141,6 +148,84 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       setSelectedPolicyId(customPolicy.policy_id);
     }
   }, [navigationState?.customPolicy, customPolicy]);
+
+  // When arriving from a wallet/credentials flow with a customPolicy template,
+  // materialize a real backend policy via /zkpf/policies/compose so that:
+  // - the prover embeds the canonical policy_id + verifier_scope_id into the bundle
+  // - the backend already knows about this wallet-specific policy when verifying
+  useEffect(() => {
+    if (!navigationState?.customPolicy || walletPolicySynced) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncWalletPolicy = async () => {
+      try {
+        const base = navigationState.customPolicy as PolicyDefinition;
+
+        const category: PolicyCategory =
+          (base.category?.toUpperCase() as PolicyCategory | undefined) ??
+          (base.rail_id === 'ZCASH_ORCHARD' || base.required_currency_code === 999001
+            ? 'ZCASH_ORCHARD'
+            : 'ONCHAIN');
+
+        const railId =
+          base.rail_id ??
+          (category === 'ZCASH_ORCHARD'
+            ? 'ZCASH_ORCHARD'
+            : 'ONCHAIN_WALLET');
+
+        const payload: PolicyComposeRequest = {
+          category,
+          rail_id: railId,
+          label:
+            base.label ??
+            `Prove ${formatPolicyThreshold(base).formatted}`,
+          options: {
+            ...(base.options ?? {}),
+            source: 'wallet',
+            auto: true,
+          },
+          threshold_raw: base.threshold_raw,
+          required_currency_code: base.required_currency_code,
+          verifier_scope_id: base.verifier_scope_id,
+          // Let the backend assign policy_id to avoid collisions with existing config.
+        };
+
+        const response = await client.composePolicy(payload);
+        if (cancelled) {
+          return;
+        }
+
+        const composed = response.policy as PolicyDefinition;
+        setCustomPolicy(composed);
+        setSelectedPolicyId(composed.policy_id);
+      } catch (err) {
+        // If compose fails (e.g., backend unreachable), fall back to the
+        // local template so the builder still works, but verification may
+        // remain misaligned with the backend until connectivity is fixed.
+        console.warn(
+          '[ZKPF] Failed to compose wallet-specific policy; using local template only.',
+          err,
+        );
+        if (!cancelled) {
+          setCustomPolicy((prev) => prev ?? navigationState.customPolicy ?? null);
+          setSelectedPolicyId((prev) => prev ?? navigationState.customPolicy?.policy_id ?? null);
+        }
+      } finally {
+        if (!cancelled) {
+          setWalletPolicySynced(true);
+        }
+      }
+    };
+
+    void syncWalletPolicy();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, navigationState?.customPolicy, walletPolicySynced]);
 
   useEffect(() => {
     // Skip auto-selection if we have a custom policy already selected
@@ -226,7 +311,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     }
     setWasmStatus('loading');
     setWasmError(null);
-    const { params, pk } = await client.loadArtifactsForKey(manifestMeta.key, manifestMeta.artifactUrls);
+    const { params, pk } = await client.loadArtifactsForKey(
+      manifestMeta.key, 
+      manifestMeta.artifactUrls,
+      { params: manifestMeta.paramsHash, pk: manifestMeta.pkHash },
+    );
     try {
       await prepareProverArtifacts({
         params,
@@ -295,6 +384,12 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           return;
         }
         
+        // Set the rail_id on the bundle based on the policy or default to custodial attestation.
+        // The WASM prover creates bundles with empty rail_id for backward compatibility,
+        // so we set it explicitly here to ensure proper rail routing and UI display.
+        const railId = customPolicy?.rail_id || selectedPolicy?.rail_id || 'CUSTODIAL_ATTESTATION';
+        proofBundle.rail_id = railId;
+        
         // Finalize
         setProofProgress('finalizing');
         await yieldToMain();
@@ -343,8 +438,26 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const handleWalletAttestationReady = useCallback(
     async (attestationJson: string) => {
       try {
+        console.log('[ProofBuilder Debug] Received attestation JSON from wallet:', attestationJson.slice(0, 500));
+        
         const parsed = JSON.parse(attestationJson) as CircuitInput;
+        console.log('[ProofBuilder Debug] Parsed attestation:', {
+          hasAttestation: !!parsed.attestation,
+          hasPublic: !!parsed.public,
+          attestationKeys: parsed.attestation ? Object.keys(parsed.attestation) : [],
+          publicKeys: parsed.public ? Object.keys(parsed.public) : [],
+        });
+        
         const bound = applySelectedPolicy(parsed);
+        console.log('[ProofBuilder Debug] After policy binding:', {
+          threshold_raw: bound.public.threshold_raw,
+          required_currency_code: bound.public.required_currency_code,
+          verifier_scope_id: bound.public.verifier_scope_id,
+          policy_id: bound.public.policy_id,
+          nullifier: bound.public.nullifier,
+          custodian_pubkey_hash: bound.public.custodian_pubkey_hash,
+        });
+        
         const pretty = JSON.stringify(bound, null, 2);
         setRawInput(pretty);
         setBundle(null);
@@ -352,9 +465,13 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         showToast('Wallet attestation loaded. Generating proof bundle…', 'success');
 
         const normalizedJson = JSON.stringify(bound);
+        console.log('[ProofBuilder Debug] Normalized JSON for WASM (first 500 chars):', normalizedJson.slice(0, 500));
+        console.log('[ProofBuilder Debug] Normalized JSON length:', normalizedJson.length);
+        
         await generateFromNormalizedJson(normalizedJson, { autoSendToVerifier: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'unknown error';
+        console.error('[ProofBuilder Debug] Error processing attestation:', err);
         setError(`Invalid wallet attestation JSON: ${message}`);
         showToast('Wallet attestation JSON could not be parsed', 'error');
       }
@@ -447,10 +564,10 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       const messageHashBytes = await wasmComputeAttestationMessageHash(normalizedJson);
       circuitInput.attestation.message_hash = numberArrayFromBytes(messageHashBytes);
 
-      let pubkeyX: Uint8Array;
-      let pubkeyY: Uint8Array;
-      let rBytes: Uint8Array;
-      let sBytes: Uint8Array;
+      let pubkeyX!: Uint8Array;
+      let pubkeyY!: Uint8Array;
+      let rBytes!: Uint8Array;
+      let sBytes!: Uint8Array;
 
       // Use auth wallet for signing if connected, otherwise generate synthetic key
       if (authStatus === 'connected' && authAccount && authSignMessage) {
@@ -458,19 +575,29 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           // Sign the message hash using the connected wallet
           const sigBytes = await authSignMessage(messageHashBytes);
           
-          // For wallets that return a signature, we extract r,s and recover public key
-          // Most wallets return 64-byte signatures (r || s)
-          if (sigBytes.length >= 64) {
-            rBytes = sigBytes.slice(0, 32);
-            sBytes = sigBytes.slice(32, 64);
-            
-            // Try to recover public key from signature
+          // For wallets that return secp256k1 ECDSA signatures (Ethereum, etc.),
+          // signatures are typically 64-65 bytes: r (32) || s (32) || [v (1)]
+          // We try to recover the public key and use the original signature.
+          //
+          // However, passkeys return WebAuthn signatures which are:
+          // 1. P-256 (secp256r1), NOT secp256k1
+          // 2. DER-encoded ASN.1 format, not raw r||s
+          // When recovery fails, we generate a deterministic secp256k1 keypair
+          // and sign with it to maintain the auth wallet binding.
+          
+          let signatureValid = false;
+          
+          if (sigBytes.length >= 64 && sigBytes.length <= 72) {
+            // Likely raw r||s or r||s||v format (secp256k1 wallets)
+            const possibleR = sigBytes.slice(0, 32);
+            const possibleS = sigBytes.slice(32, 64);
             const recovery = sigBytes.length > 64 ? sigBytes[64] : 0;
             const recoveryBit = recovery >= 27 ? recovery - 27 : recovery;
+            
             const compactSig = new Uint8Array(65);
             compactSig[0] = recoveryBit;
-            compactSig.set(rBytes, 1);
-            compactSig.set(sBytes, 33);
+            compactSig.set(possibleR, 1);
+            compactSig.set(possibleS, 33);
             
             try {
               const recoveredBytes = secp256k1.recoverPublicKey(compactSig, messageHashBytes, { prehash: false });
@@ -479,25 +606,28 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
                 const uncompressed = pubkeyPoint.toBytes(false);
                 pubkeyX = uncompressed.slice(1, 33);
                 pubkeyY = uncompressed.slice(33);
-              } else {
-                throw new Error('Key recovery failed');
+                rBytes = possibleR;
+                sBytes = possibleS;
+                signatureValid = true;
               }
             } catch {
-              // If recovery fails, use public key from auth account if available
-              if (authAccount.publicKey && authAccount.publicKey.length >= 64) {
-                pubkeyX = authAccount.publicKey.slice(0, 32);
-                pubkeyY = authAccount.publicKey.slice(32, 64);
-              } else {
-                // Fallback: generate a deterministic keypair from the signature
-                const keyHash = blake3(sigBytes);
-                const privKey = keyHash;
-                const uncompressed = secp256k1.getPublicKey(privKey, false) as Uint8Array;
-                pubkeyX = uncompressed.slice(1, 33);
-                pubkeyY = uncompressed.slice(33);
-              }
+              // Recovery failed - signature may not be secp256k1 format
             }
-          } else {
-            throw new Error('Invalid signature length from wallet');
+          }
+          
+          if (!signatureValid) {
+            // Signature is not in secp256k1 format (e.g., passkey P-256 DER).
+            // Generate a deterministic secp256k1 keypair from the auth signature
+            // and create a valid secp256k1 signature for the circuit.
+            const keyHash = blake3(sigBytes);
+            const derivedPrivKey = keyHash;
+            // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+            const derivedSigBytes = await secp256k1.signAsync(messageHashBytes, derivedPrivKey, { prehash: false });
+            const uncompressed = secp256k1.getPublicKey(derivedPrivKey, false) as Uint8Array;
+            pubkeyX = uncompressed.slice(1, 33);
+            pubkeyY = uncompressed.slice(33);
+            rBytes = derivedSigBytes.slice(0, 32);
+            sBytes = derivedSigBytes.slice(32, 64);
           }
           
           showToast(`Signed with ${authAccount.displayName}`, 'success');
@@ -505,24 +635,26 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           console.warn('Auth wallet signing failed, falling back to synthetic key:', sigErr);
           // Fallback to synthetic key
           const demoPrivKey = secp256k1.utils.randomSecretKey();
-          const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
+          // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+          const demoSigBytes = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
           const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
           pubkeyX = uncompressed.slice(1, 33);
           pubkeyY = uncompressed.slice(33);
-          rBytes = signature.slice(0, 32);
-          sBytes = signature.slice(32, 64);
+          rBytes = demoSigBytes.slice(0, 32);
+          sBytes = demoSigBytes.slice(32, 64);
         }
       } else {
         // Generate synthetic signing key (demo mode for non-custodial)
         const demoPrivKey = secp256k1.utils.randomSecretKey();
-        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+        // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+        const demoSigBytes = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
           prehash: false,
         });
         const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
         pubkeyX = uncompressed.slice(1, 33);
         pubkeyY = uncompressed.slice(33);
-        rBytes = signature.slice(0, 32);
-        sBytes = signature.slice(32, 64);
+        rBytes = demoSigBytes.slice(0, 32);
+        sBytes = demoSigBytes.slice(32, 64);
       }
 
       circuitInput.attestation.custodian_pubkey = {
@@ -617,6 +749,35 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const rail = railFromBundle(bundle);
   const bundleJson = useMemo(() => (bundle ? JSON.stringify(bundle, null, 2) : ''), [bundle]);
 
+  // Quick start: Load sample bundle and send to verification
+  const handleQuickStart = useCallback(async () => {
+    try {
+      const response = await fetch('/sample-bundle-orchard.json');
+      if (!response.ok) throw new Error(`Failed to load sample (${response.status})`);
+      const sampleBundle = await response.json();
+      
+      // Create a synthetic policy matching the sample bundle's parameters
+      const syntheticPolicy: PolicyDefinition = {
+        policy_id: sampleBundle.public_inputs.policy_id,
+        threshold_raw: sampleBundle.public_inputs.threshold_raw,
+        required_currency_code: sampleBundle.public_inputs.required_currency_code,
+        verifier_scope_id: sampleBundle.public_inputs.verifier_scope_id,
+        category: 'ZCASH_ORCHARD',
+        rail_id: sampleBundle.rail_id || 'ZCASH_ORCHARD',
+        label: 'Zcash Shielded Proof',
+      };
+      
+      showToast('Loading verification…', 'success');
+      
+      if (onBundleReady) {
+        onBundleReady(sampleBundle, syntheticPolicy);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load sample';
+      showToast(message, 'error');
+    }
+  }, [onBundleReady]);
+
   return (
     <section className="proof-builder card">
       <header>
@@ -626,6 +787,26 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       <p className="muted">
         Generate a cryptographic proof that verifies you meet a balance requirement—without revealing your actual balance or wallet addresses.
       </p>
+
+      {/* Quick Start Banner - prominent for first-time visitors */}
+      {!bundle && !rawInput.trim() && !isCustomPolicyFromWallet && (
+        <div className="quick-start-banner">
+          <div className="quick-start-content">
+            <div className="quick-start-icon">⚡</div>
+            <div className="quick-start-text">
+              <h3>See it in action</h3>
+              <p>Experience the full verification flow instantly with sample data.</p>
+            </div>
+            <button 
+              type="button" 
+              className="quick-start-button"
+              onClick={handleQuickStart}
+            >
+              Try it now →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Custom Policy Banner - shown when navigating from wallet */}
       {customPolicy && navigationState?.fromWallet && (
@@ -747,13 +928,6 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
             )}
           </div>
         )}
-        
-        {!selectedPolicy && !policiesQuery.isLoading && (
-          <div className="policy-hint-card">
-            <span className="policy-hint-icon">💡</span>
-            <p>Select a policy above to see its requirements. Your proof will demonstrate you meet the specified threshold.</p>
-          </div>
-        )}
       </div>
 
       {/* Connection Status */}
@@ -789,7 +963,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
                     ? 'WASM prover ready'
                     : wasmStatus === 'loading'
                       ? 'Preparing WASM runtime…'
-                      : 'WASM initialization failed'}
+                      : wasmError?.includes('proof generation')
+                        ? 'Proof generation failed'
+                        : wasmError?.includes('hash mismatch')
+                          ? 'Artifact download corrupted'
+                          : 'WASM initialization failed'}
                 </p>
                 <p className="builder-status-detail">
                   {manifestMeta

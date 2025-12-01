@@ -100,8 +100,7 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
 
   const prepareAttestationHash = useCallback(async () => {
     if (!policy) {
-      setError('Select a verifier policy before building a BTC attestation.');
-      updateStatus('warning', 'Select a policy from the verifier first.');
+      // Policy will be auto-selected, just return silently
       return;
     }
 
@@ -202,8 +201,7 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
 
   const buildAttestation = useCallback(async () => {
     if (!policy) {
-      setError('Select a verifier policy before building a BTC attestation.');
-      updateStatus('warning', 'Select a policy from the verifier first.');
+      // Policy will be auto-selected, just return silently
       return;
     }
     if (!baseInput || !messageHashBytes || !accountBytes) {
@@ -377,7 +375,7 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
           <div className="wallet-row">
             <strong>Verifier policy</strong>
             <span>
-              {policy ? policyShortSummary(policy) : 'Select a policy above'}
+              {policy ? policyShortSummary(policy) : 'Loading…'}
             </span>
           </div>
           {messageHashHex && (
@@ -426,13 +424,7 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
         >
           {isBuilding ? 'Building BTC attestation…' : 'Generate BTC attestation JSON'}
         </button>
-        {!policy && (
-          <p className="muted small">
-            Choose a verifier policy first so the BTC attestation can be checked against an explicit threshold and
-            scope.
-          </p>
-        )}
-        {policy && balanceSats.trim() === '0' && (
+        {balanceSats.trim() === '0' && (
           <p className="muted small zero-balance-info">
             ✓ Balance is 0 sats. You can generate an empty wallet attestation — 
             the proof will cryptographically confirm your BTC address holds no funds.
@@ -440,8 +432,8 @@ export function BtcWalletConnector({ onAttestationReady, onShowToast, policy }: 
         )}
       </div>
 
-      {status && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
-      {error && (
+      {status && status.intent === 'success' && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
+      {error && !error.includes('Select a verifier policy') && (
         <div className="error-message">
           <span className="error-icon">⚠️</span>
           <span>{error}</span>

@@ -1418,7 +1418,9 @@ impl<F: Field> Mul<F> for Expression<F> {
 
 /// Represents an index into a vector where each entry corresponds to a distinct
 /// point that polynomials are queried at.
+/// Reserved for future use in polynomial query optimization.
 #[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct PointIndex(pub usize);
 
 /// A "virtual cell" is a PLONK cell that has been queried at a particular relative offset
@@ -1565,6 +1567,8 @@ pub struct Gate<F: Field> {
     polys: Vec<Expression<F>>,
     /// We track queried selectors separately from other cells, so that we can use them to
     /// trigger debug checks on gates.
+    /// Currently unused but kept for potential debugging functionality.
+    #[allow(dead_code)]
     queried_selectors: Vec<Selector>,
     queried_cells: Vec<VirtualCell>,
 }
@@ -1585,6 +1589,9 @@ impl<F: Field> Gate<F> {
         &self.polys
     }
 
+    /// Returns the selectors queried by this gate.
+    /// Currently unused but kept for potential debugging functionality.
+    #[allow(dead_code)]
     pub(crate) fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
     }

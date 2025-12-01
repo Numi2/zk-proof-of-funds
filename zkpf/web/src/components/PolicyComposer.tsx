@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import type { ZkpfClient } from '../api/zkpf';
 import { ApiError } from '../api/zkpf';
 import type { PolicyCategory, PolicyComposeRequest } from '../types/zkpf';
@@ -8,270 +8,161 @@ interface Props {
   onComposed?: (policyId: number) => void;
 }
 
-type PolicyPreview = {
-  title: string;
-  summary: string;
-  details: { label: string; value: string }[];
-};
+// Quick preset templates for one-click policy creation
+const PRESETS = [
+  { label: '10+ ZEC shielded', description: 'At least 10 ZEC in Orchard', category: 'ZCASH_ORCHARD' as const, currency: 'ZEC', amount: 10 },
+  { label: '1+ ZEC shielded', description: 'At least 1 ZEC in Orchard', category: 'ZCASH_ORCHARD' as const, currency: 'ZEC', amount: 1 },
+  { label: '0.1+ ZEC shielded', description: 'At least 0.1 ZEC in Orchard', category: 'ZCASH_ORCHARD' as const, currency: 'ZEC', amount: 0.1 },
+  { label: 'Empty wallet', description: 'Prove zero ZEC balance', category: 'ZCASH_ORCHARD' as const, currency: 'ZEC', amount: 0, exactZero: true },
+] as const;
 
-function isoCurrencyCode(code: string): number {
-  switch (code.toUpperCase()) {
-    case 'USD':
-      return 840;
-    case 'EUR':
-      return 978;
-    default:
-      throw new Error(`Unsupported currency code: ${code}`);
-  }
+interface ParsedPolicy {
+  category: PolicyCategory;
+  currency: 'ZEC';
+  amount: number;
+  exactZero?: boolean;
+  label: string;
 }
 
+// Smart parser: extract policy parameters from natural language
+function parseNaturalLanguage(input: string): ParsedPolicy | null {
+  const text = input.toLowerCase().trim();
+  if (!text) return null;
+
+  // ZEC-only: this prover is for Zcash Orchard wallet balances
+  const currency: 'ZEC' = 'ZEC';
+  let amount = 0;
+  const category: PolicyCategory = 'ZCASH_ORCHARD';
+  let exactZero = false;
+
+  // Check for zero/empty wallet proof
+  if (/\b(zero|empty|no balance|0 zec|nothing)\b/.test(text)) {
+    exactZero = true;
+    amount = 0;
+  } else {
+    // Parse amounts with various formats
+    const amountPatterns = [
+      // 10 ZEC or 10 zcash or shielded
+      /([\d,]+(?:\.\d+)?)\s*(k|m|million|thousand)?\s*(?:zec|zcash|shielded)?/i,
+      // Generic number at end: "at least 50"
+      /(?:at least|minimum|min|>=?|≥)\s*([\d,]+(?:\.\d+)?)\s*(k|m|million|thousand)?/i,
+      // Just a number
+      /([\d,]+(?:\.\d+)?)\s*(k|m|million|thousand)?$/i,
+    ];
+
+    for (const pattern of amountPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const numStr = match[1].replace(/,/g, '');
+        let num = parseFloat(numStr);
+        const multiplier = match[2]?.toLowerCase();
+        
+        if (multiplier === 'k' || multiplier === 'thousand') {
+          num *= 1000;
+        } else if (multiplier === 'm' || multiplier === 'million') {
+          num *= 1000000;
+        }
+        
+        amount = num;
+        break;
+      }
+    }
+  }
+
+  // Generate a nice label
+  const formatAmount = (n: number) => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`;
+    return n.toLocaleString();
+  };
+
+  let label: string;
+  if (exactZero) {
+    label = 'Empty wallet (0 ZEC)';
+  } else if (amount > 0) {
+    label = `≥ ${formatAmount(amount)} ZEC`;
+  } else {
+    label = 'Custom policy';
+  }
+
+  if (amount === 0 && !exactZero) {
+    return null; // Need a valid amount unless proving zero
+  }
+
+  return { category, currency, amount, exactZero, label };
+}
+
+// ZEC currency code (custom ISO-style code for Zcash)
+const ZEC_CURRENCY_CODE = 999001;
+
 export function PolicyComposer({ client, onComposed }: Props) {
-  const [category, setCategory] = useState<PolicyCategory>('FIAT');
-  const [label, setLabel] = useState('');
-  const withCustomLabel = useCallback(
-    (fallback: string) => label.trim() || fallback,
-    [label],
-  );
-
-  // FIAT options
-  const [fiatCurrency, setFiatCurrency] = useState<'USD' | 'EUR'>('USD');
-  const [fiatThreshold, setFiatThreshold] = useState('10000');
-  const [fiatCustodianId, setFiatCustodianId] = useState('42');
-  const [fiatScopeId, setFiatScopeId] = useState('100');
-
-  // On-chain options
-  const [onchainCurrency, setOnchainCurrency] = useState<'USD' | 'EUR'>('USD');
-  const [onchainThreshold, setOnchainThreshold] = useState('100000');
-  const [onchainScopeId, setOnchainScopeId] = useState('200');
-
-  // Orchard options
-  const [orchardThreshold, setOrchardThreshold] = useState('50');
-  const [orchardScopeId, setOrchardScopeId] = useState('300');
-  const [orchardExactZero, setOrchardExactZero] = useState(false);
-
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const policyPreview = useMemo<PolicyPreview>(() => {
-    const toPositiveNumber = (raw: string) => {
-      const parsed = Number(raw);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    };
-    if (category === 'FIAT') {
-      const numeric = toPositiveNumber(fiatThreshold);
-      const hasThreshold = numeric > 0;
-      const human = hasThreshold
-        ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-        : '—';
-      const fallbackLabel = `Fiat: ≥ ${human} ${fiatCurrency} (custodian ${fiatCustodianId})`;
-      return {
-        title: 'Fiat proof policy',
-        summary: hasThreshold
-          ? `Requires ≥ ${human} ${fiatCurrency} at custodian ${fiatCustodianId} (scope ${fiatScopeId || '—'}).`
-          : 'Set a minimum fiat balance to preview the enforcement text.',
-        details: [
-          { label: 'Label', value: withCustomLabel(fallbackLabel) },
-          { label: 'Threshold', value: hasThreshold ? `≥ ${human} ${fiatCurrency}` : 'Add threshold' },
-          { label: 'Custodian', value: String(fiatCustodianId || '—') },
-          { label: 'Scope', value: String(fiatScopeId || '—') },
-        ],
-      };
-    }
-    if (category === 'ONCHAIN') {
-      const numeric = toPositiveNumber(onchainThreshold);
-      const hasThreshold = numeric > 0;
-      const human = hasThreshold
-        ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-        : '—';
-      const fallbackLabel = `On-chain: ≥ ${human} ${onchainCurrency} (multi-wallet)`;
-      return {
-        title: 'On-chain wallet policy',
-        summary: hasThreshold
-          ? `Requires ≥ ${human} ${onchainCurrency} across connected wallets in scope ${onchainScopeId || '—'}.`
-          : 'Set a target balance to preview the on-chain guardrail.',
-        details: [
-          { label: 'Label', value: withCustomLabel(fallbackLabel) },
-          { label: 'Threshold', value: hasThreshold ? `≥ ${human} ${onchainCurrency}` : 'Add threshold' },
-          { label: 'Scope', value: String(onchainScopeId || '—') },
-          { label: 'Rail operator', value: 'Indexer #1000' },
-        ],
-      };
-    }
-    // For "exact zero" mode, we use threshold = 0 to prove empty wallet
-    if (orchardExactZero) {
-      const fallbackLabel = 'Orchard: = 0 ZEC (empty wallet)';
-      return {
-        title: 'Zcash Orchard policy (zero balance)',
-        summary: `Confirms wallet has exactly 0 ZEC shielded balance for scope ${orchardScopeId || '—'}.`,
-        details: [
-          { label: 'Label', value: withCustomLabel(fallbackLabel) },
-          { label: 'Threshold', value: '= 0 ZEC' },
-          { label: 'Mode', value: 'Exact zero (empty wallet)' },
-          { label: 'Scope', value: String(orchardScopeId || '—') },
-        ],
-      };
-    }
-    const numeric = toPositiveNumber(orchardThreshold);
-    const hasThreshold = numeric > 0;
-    const human = hasThreshold
-      ? numeric.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
-      : '—';
-    const fallbackLabel = `Orchard: ≥ ${human} ZEC`;
-    return {
-      title: 'Zcash Orchard policy',
-      summary: hasThreshold
-        ? `Requires ≥ ${human} ZEC shielded balance for scope ${orchardScopeId || '—'}.`
-        : 'Set a ZEC amount to preview the Orchard guardrail.',
-      details: [
-        { label: 'Label', value: withCustomLabel(fallbackLabel) },
-        { label: 'Threshold', value: hasThreshold ? `≥ ${human} ZEC` : 'Add threshold' },
-        { label: 'Scope', value: String(orchardScopeId || '—') },
-        { label: 'Custodian allowlist', value: 'Not enforced' },
-      ],
-    };
-  }, [
-    category,
-    fiatCurrency,
-    fiatThreshold,
-    fiatCustodianId,
-    fiatScopeId,
-    onchainCurrency,
-    onchainThreshold,
-    onchainScopeId,
-    orchardThreshold,
-    orchardScopeId,
-    orchardExactZero,
-    withCustomLabel,
-  ]);
+  // Parse natural language in real-time
+  const parsed = useMemo(() => parseNaturalLanguage(input), [input]);
 
-  const handleSubmit: React.FormEventHandler = async (event) => {
-    event.preventDefault();
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    }
+  }, [input]);
+
+  const handlePreset = useCallback((preset: typeof PRESETS[number]) => {
+    const { amount } = preset;
+    const exactZero = 'exactZero' in preset && preset.exactZero === true;
+    
+    if (exactZero) {
+      setInput('Prove zero ZEC balance (empty wallet)');
+    } else {
+      setInput(`At least ${amount.toLocaleString()} ZEC`);
+    }
     setError(null);
     setSuccess(null);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    if (!parsed) {
+      setError('Please describe what you want to prove, e.g., "at least 10 ZEC" or "50 ZEC shielded"');
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
 
     try {
-      let payload: PolicyComposeRequest;
+      const { category, amount, exactZero, label } = parsed;
 
-      if (category === 'FIAT') {
-        const currencyCode = isoCurrencyCode(fiatCurrency);
-        const human = Number(fiatThreshold);
-        if (!Number.isFinite(human) || human <= 0) {
-          throw new Error('Enter a positive numeric threshold.');
-        }
-        const thresholdRaw = Math.round(human * 100); // cents
-        const custodianId = Number(fiatCustodianId);
-        const scopeId = Number(fiatScopeId);
-        if (!Number.isFinite(custodianId) || custodianId < 0) {
-          throw new Error('Enter a valid custodian ID.');
-        }
-        if (!Number.isFinite(scopeId) || scopeId < 0) {
-          throw new Error('Enter a valid scope ID.');
-        }
+      // Auto-generate scope ID based on a hash of the policy params for uniqueness
+      const scopeId = Math.abs((category.charCodeAt(0) * 100 + amount) % 10000);
 
-        const effectiveLabel = withCustomLabel(
-          `Fiat: ≥ ${human.toLocaleString()} ${fiatCurrency} (custodian ${custodianId})`,
-        );
+      // ZCASH_ORCHARD only
+      const thresholdRaw = exactZero ? 0 : Math.round(amount * 1e8); // zats
+      
+      const payload: PolicyComposeRequest = {
+        category,
+        rail_id: 'ZCASH_ORCHARD',
+        label,
+        options: {
+          network: 'mainnet',
+          pool: 'orchard',
+          threshold_zec_display: amount,
+          zec_decimals: 8,
+          ...(exactZero && { exact_zero: true }),
+        },
+        threshold_raw: thresholdRaw,
+        required_currency_code: ZEC_CURRENCY_CODE,
+        verifier_scope_id: scopeId,
+      };
 
-        payload = {
-          category,
-          rail_id: 'CUSTODIAL_ATTESTATION',
-          label: effectiveLabel,
-          options: {
-            tier: 'CUSTOM',
-            fiat_currency: fiatCurrency,
-            fiat_decimals: 2,
-            human_threshold: human,
-          },
-          threshold_raw: thresholdRaw,
-          required_currency_code: currencyCode,
-          verifier_scope_id: scopeId,
-        };
-      } else if (category === 'ONCHAIN') {
-        const currencyCode = isoCurrencyCode(onchainCurrency);
-        const human = Number(onchainThreshold);
-        if (!Number.isFinite(human) || human <= 0) {
-          throw new Error('Enter a positive numeric threshold.');
-        }
-        const thresholdRaw = Math.round(human * 100);
-        const scopeId = Number(onchainScopeId);
-        if (!Number.isFinite(scopeId) || scopeId < 0) {
-          throw new Error('Enter a valid scope ID.');
-        }
-
-        const effectiveLabel = withCustomLabel(
-          `On-chain: ≥ ${human.toLocaleString()} ${onchainCurrency} (multi-wallet)`,
-        );
-
-        payload = {
-          category,
-          rail_id: 'ONCHAIN_WALLET',
-          label: effectiveLabel,
-          options: {
-            asset_mode: 'BASKET',
-            display_currency: onchainCurrency,
-            fiat_decimals: 2,
-            human_threshold: human,
-          },
-          threshold_raw: thresholdRaw,
-          required_currency_code: currencyCode,
-          verifier_scope_id: scopeId,
-        };
-      } else {
-        // ZCASH_ORCHARD
-        const scopeId = Number(orchardScopeId);
-        if (!Number.isFinite(scopeId) || scopeId < 0) {
-          throw new Error('Enter a valid scope ID.');
-        }
-
-        if (orchardExactZero) {
-          // "Exact zero" mode: prove wallet has 0 ZEC
-          const effectiveLabel = withCustomLabel('Orchard: = 0 ZEC (empty wallet)');
-
-          payload = {
-            category,
-            rail_id: 'ZCASH_ORCHARD',
-            label: effectiveLabel,
-            options: {
-              network: 'mainnet',
-              pool: 'orchard',
-              threshold_zec_display: 0,
-              zec_decimals: 8,
-              exact_zero: true,
-            },
-            threshold_raw: 0,
-            // Synthetic code for ZEC; must match the Orchard rail configuration.
-            required_currency_code: 999001,
-            verifier_scope_id: scopeId,
-          };
-        } else {
-          const human = Number(orchardThreshold);
-          if (!Number.isFinite(human) || human <= 0) {
-            throw new Error('Enter a positive numeric threshold.');
-          }
-          const thresholdRaw = Math.round(human * 1e8); // zats
-
-          const effectiveLabel = withCustomLabel(`Orchard: ≥ ${human.toLocaleString()} ZEC`);
-
-          payload = {
-            category,
-            rail_id: 'ZCASH_ORCHARD',
-            label: effectiveLabel,
-            options: {
-              network: 'mainnet',
-              pool: 'orchard',
-              threshold_zec_display: human,
-              zec_decimals: 8,
-            },
-            threshold_raw: thresholdRaw,
-            // Synthetic code for ZEC; must match the Orchard rail configuration.
-            required_currency_code: 999001,
-            verifier_scope_id: scopeId,
-          };
-        }
-      }
-
-      setLoading(true);
       const response = await client.composePolicy(payload);
       setLoading(false);
 
@@ -285,197 +176,102 @@ export function PolicyComposer({ client, onComposed }: Props) {
         onComposed?.((composed as { policy_id: number }).policy_id);
       }
 
-      setSuccess(response.summary || 'Policy composed');
+      setSuccess('Policy created!');
+      setInput('');
     } catch (err) {
       setLoading(false);
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError((err as Error).message ?? 'Unknown error');
+        setError((err as Error).message ?? 'Something went wrong');
       }
+    }
+  }, [client, parsed, onComposed]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey && parsed) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }, [handleSubmit, parsed]);
+
+  // Get category label for display
+  const getCategoryLabel = (cat: PolicyCategory) => {
+    switch (cat) {
+      case 'ZCASH_ORCHARD': return 'Zcash Orchard';
+      default: return cat;
     }
   };
 
   return (
-    <section className="policy-composer">
-      <header className="policy-composer-header">
-        <h4>Compose a policy</h4>
-        <p className="muted small">
-          Create or reuse a policy for the selected rail. The verifier then enforces the thresholds
-          and settings you define here.
-        </p>
-      </header>
-      <form className="policy-composer-grid" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Category</span>
-          <select
-            value={category}
-            onChange={(event) => {
-              const next = event.target.value as PolicyCategory;
-              setCategory(next);
-              setError(null);
-              setSuccess(null);
-            }}
-          >
-            <option value="FIAT">Fiat proof</option>
-            <option value="ONCHAIN">On-chain proof</option>
-            <option value="ZCASH_ORCHARD">Zcash Orchard PoF</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Label (optional)</span>
-          <input
-            type="text"
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-            placeholder="e.g. HNW: ≥ 250,000 USD at Custodian 42"
-          />
-        </label>
-
-        {category === 'FIAT' && (
-          <>
-            <label className="field">
-              <span>Fiat currency</span>
-              <select
-                value={fiatCurrency}
-                onChange={(event) => setFiatCurrency(event.target.value as 'USD' | 'EUR')}
-              >
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Minimum balance ({fiatCurrency})</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={fiatThreshold}
-                onChange={(event) => setFiatThreshold(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Custodian ID</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={fiatCustodianId}
-                onChange={(event) => setFiatCustodianId(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Scope ID</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={fiatScopeId}
-                onChange={(event) => setFiatScopeId(event.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {category === 'ONCHAIN' && (
-          <>
-            <label className="field">
-              <span>Display currency</span>
-              <select
-                value={onchainCurrency}
-                onChange={(event) => setOnchainCurrency(event.target.value as 'USD' | 'EUR')}
-              >
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Minimum balance ({onchainCurrency})</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={onchainThreshold}
-                onChange={(event) => setOnchainThreshold(event.target.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Scope ID</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={onchainScopeId}
-                onChange={(event) => setOnchainScopeId(event.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        {category === 'ZCASH_ORCHARD' && (
-          <>
-            <label className="field checkbox-field">
-              <input
-                type="checkbox"
-                checked={orchardExactZero}
-                onChange={(event) => setOrchardExactZero(event.target.checked)}
-              />
-              <span>Exact zero balance (empty wallet proof)</span>
-            </label>
-            {!orchardExactZero && (
-              <label className="field">
-                <span>Minimum balance (ZEC)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.00000001"
-                  value={orchardThreshold}
-                  onChange={(event) => setOrchardThreshold(event.target.value)}
-                />
-              </label>
-            )}
-            <label className="field">
-              <span>Scope ID</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={orchardScopeId}
-                onChange={(event) => setOrchardScopeId(event.target.value)}
-              />
-            </label>
-          </>
-        )}
-
-        <div className="policy-preview-card">
-          <p className="eyebrow">Live preview</p>
-          <h5>{policyPreview.title}</h5>
-          <p className="muted small">{policyPreview.summary}</p>
-          <div className="policy-preview-grid">
-            {policyPreview.details.map((detail) => (
-              <div key={detail.label}>
-                <span>{detail.label}</span>
-                <strong>{detail.value}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="policy-composer-actions">
-          <button type="submit" className="tiny-button" disabled={loading}>
-            {loading ? 'Composing…' : 'Compose / reuse policy'}
-          </button>
-          {error && (
-            <span className="error-message inline">
-              <span className="error-icon">⚠️</span>
-              <span>{error}</span>
-            </span>
+    <section className="policy-composer policy-composer--natural">
+      <div className="policy-composer-natural-input-wrapper">
+        <textarea
+          ref={inputRef}
+          className="policy-composer-natural-input"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setError(null);
+            setSuccess(null);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Describe your policy... e.g., &quot;at least 10 ZEC&quot; or &quot;1 ZEC shielded&quot;"
+          rows={1}
+          disabled={loading}
+        />
+        <button
+          type="button"
+          className="policy-composer-submit-btn"
+          onClick={handleSubmit}
+          disabled={loading || !parsed}
+          title={parsed ? 'Create policy (Enter)' : 'Type a valid policy first'}
+        >
+          {loading ? (
+            <span className="policy-composer-spinner" />
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
           )}
-          {success && !error && <span className="success-message inline">{success}</span>}
+        </button>
+      </div>
+
+      {/* Quick presets */}
+      <div className="policy-composer-presets">
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            className="policy-composer-preset-chip"
+            onClick={() => handlePreset(preset)}
+            disabled={loading}
+            title={preset.description}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Live parsed preview */}
+      {parsed && (
+        <div className="policy-composer-preview">
+          <span className="policy-composer-preview-badge">{getCategoryLabel(parsed.category)}</span>
+          <span className="policy-composer-preview-label">{parsed.label}</span>
         </div>
-      </form>
+      )}
+
+      {/* Status messages */}
+      {error && (
+        <div className="policy-composer-message policy-composer-message--error">
+          {error}
+        </div>
+      )}
+      {success && !error && (
+        <div className="policy-composer-message policy-composer-message--success">
+          {success}
+        </div>
+      )}
     </section>
   );
 }
-
-

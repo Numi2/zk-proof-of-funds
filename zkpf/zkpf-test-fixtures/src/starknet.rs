@@ -3,10 +3,10 @@
 //! This module provides sample data for testing the Starknet proof-of-funds rail.
 
 use once_cell::sync::OnceCell;
-use zkpf_common::{ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION};
+use zkpf_common::{ProofBundle, VerifierPublicInputs};
 use zkpf_starknet_l2::{
     prove_starknet_pof, PublicMetaInputs, StarknetAccountSnapshot, StarknetPublicMeta,
-    StarknetSnapshot, TokenBalance, RAIL_ID_STARKNET_L2,
+    StarknetSnapshot, TokenBalance,
 };
 
 static STARKNET_FIXTURES: OnceCell<StarknetFixtures> = OnceCell::new();
@@ -131,6 +131,8 @@ pub fn minimal_starknet_snapshot(native_balance: u128) -> StarknetSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zkpf_common::CIRCUIT_VERSION;
+    use zkpf_starknet_l2::RAIL_ID_STARKNET_L2;
 
     #[test]
     fn test_starknet_fixtures_load() {

@@ -49,17 +49,11 @@ const URIPaymentPage = lazy(() =>
   import('./uri-payment/URIPaymentPage').then((module) => ({ default: module.URIPaymentPage })),
 );
 
-const P2PMarketplace = lazy(() =>
-  import('./p2p/P2PMarketplace').then((module) => ({ default: module.P2PMarketplace })),
-);
+const P2PMarketplace = lazy(() => import('./p2p/P2PMarketplace'));
 
-const P2POfferCreate = lazy(() =>
-  import('./p2p/P2POfferCreate').then((module) => ({ default: module.P2POfferCreate })),
-);
+const P2POfferCreate = lazy(() => import('./p2p/P2POfferCreate'));
 
-const P2POfferDetail = lazy(() =>
-  import('./p2p/P2POfferDetail').then((module) => ({ default: module.P2POfferDetail })),
-);
+const P2POfferDetail = lazy(() => import('./p2p/P2POfferDetail'));
 
 const SwapPage = lazy(() =>
   import('./swap/SwapPage').then((module) => ({ default: module.SwapPage })),
@@ -67,6 +61,14 @@ const SwapPage = lazy(() =>
 
 const TransparentToShielded = lazy(() =>
   import('./wallet/TransparentToShielded').then((module) => ({ default: module.TransparentToShielded })),
+);
+
+const DeFiPage = lazy(() =>
+  import('./defi/DeFiPage').then((module) => ({ default: module.DeFiPage })),
+);
+
+const CredentialsHub = lazy(() =>
+  import('./credentials/CredentialsHub').then((module) => ({ default: module.CredentialsHub })),
 );
 
 const DEFAULT_BASE = detectDefaultBase();
@@ -87,8 +89,18 @@ const HERO_HIGHLIGHTS = [
 
 const PRODUCT_SUITE = [
   {
-    id: 'wallet',
+    id: 'credentials',
     icon: '🔐',
+    title: 'Cross-chain Credentials Hub',
+    subtitle: 'Zcash • Mina • Starknet • NEAR',
+    description: 'Generate, manage, and share proof-of-funds credentials across multiple chains. Prove your funds exist without moving assets or revealing balances.',
+    features: ['Multi-chain proofs', 'One-click verification', 'Shareable credentials'],
+    gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+    link: '/credentials',
+  },
+  {
+    id: 'wallet',
+    icon: '🛡️',
     title: 'Privacy-First Web Wallet',
     subtitle: 'Zcash Orchard • Shielded by default',
     description: 'Full-featured Zcash wallet with shielded transactions, transparent-to-shielded conversion, and native ZKPassport integration. Your keys, your coins, your privacy.',
@@ -102,7 +114,7 @@ const PRODUCT_SUITE = [
     title: 'ZKPassport Integration',
     subtitle: 'Prove identity • Preserve privacy',
     description: 'Verify you\'re a unique real person using your passport, without revealing any personal data. ZKPassport uses zero-knowledge proofs to create a privacy-preserving identity layer.',
-    features: ['No PII stored', 'One-time passport scan', 'Sybil-resistant'],
+    features: ['No PII stored', 'One-time passport scan'],
     gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
     link: '/zkpassport',
   },
@@ -117,16 +129,6 @@ const PRODUCT_SUITE = [
     link: '/bound-identity',
   },
   {
-    id: 'tachyon',
-    icon: '⚡',
-    title: 'Tachyon Multi-Chain',
-    subtitle: 'Zcash • Mina • Starknet • NEAR',
-    description: 'Unified proof aggregation across five chains. Each chain serves its comparative advantage—never bridge assets, only proofs and attestations.',
-    features: ['Recursive SNARKs via Mina', 'STARK proofs on Starknet', 'TEE agents on NEAR'],
-    gradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)',
-    link: '/build',
-  },
-  {
     id: 'p2p',
     icon: '🤝',
     title: 'P2P Marketplace',
@@ -136,16 +138,7 @@ const PRODUCT_SUITE = [
     gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
     link: '/p2p',
   },
-  {
-    id: 'pcd',
-    icon: '🔄',
-    title: 'PCD State Machine',
-    subtitle: 'Proof-Carrying Data • Recursive chains',
-    description: 'Maintain a cryptographic chain of wallet states. Each proof commits to previous state, enabling auditable history without revealing balances.',
-    features: ['Genesis anchoring', 'Incremental updates', 'Tachyon metadata'],
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-    link: '/build',
-  },
+
 ];
 
 export function ZKPFApp() {
@@ -299,18 +292,22 @@ export function ZKPFApp() {
   const isWalletRoute = location.pathname.startsWith('/wallet');
   const isBoundIdentityRoute = location.pathname.startsWith('/bound-identity');
   const isP2PRoute = location.pathname.startsWith('/p2p');
+  const isDeFiRoute = location.pathname.startsWith('/defi');
+  const isCredentialsRoute = location.pathname.startsWith('/credentials');
 
   return (
     <div className="app-shell">
-      {!isWalletRoute && !isBoundIdentityRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isCredentialsRoute && (
         <div className="top-bar">
           <Link to="/wallet" className="top-nav-link">Wallet</Link>
+          <Link to="/credentials" className="top-nav-link">Credentials</Link>
           <Link to="/p2p" className="top-nav-link">P2P</Link>
+          <Link to="/defi" className="top-nav-link">CrossChain</Link>
           <Link to="/zkpassport" className="top-nav-link">ZKPassport</Link>
         </div>
       )}
       
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isCredentialsRoute && !isDeFiRoute && (
         <header className="hero">
           <div className="header-top">
             <div className="brand">
@@ -331,37 +328,45 @@ export function ZKPFApp() {
             Prove funds, without exposing privacy.
           </p>
 
-          <nav className="main-nav">
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-            >
-              Overview
-            </NavLink>
-            <NavLink
-              to="/build"
-              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-            >
-              Build proof
-            </NavLink>
-            <NavLink
-              to="/workbench"
-              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-            >
-              Verify console
-            </NavLink>
-            <NavLink
-              to="/policies"
-              className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
-            >
-              Policy composer
-            </NavLink>
-          </nav>
+          <div className="hero-cta">
+            <Link to="/build" className="hero-cta-button">
+              Try it now →
+            </Link>
+          </div>
+
+          {!isDeFiRoute && (
+            <nav className="main-nav">
+              <NavLink
+                to="/"
+                end
+                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+              >
+                Overview
+              </NavLink>
+              <NavLink
+                to="/build"
+                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+              >
+                Build proof
+              </NavLink>
+              <NavLink
+                to="/workbench"
+                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+              >
+                Verify console
+              </NavLink>
+              <NavLink
+                to="/policies"
+                className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
+              >
+                Policy composer
+              </NavLink>
+            </nav>
+          )}
         </header>
       )}
 
-      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isDeFiRoute && !isCredentialsRoute && (
         <ProgressChecklist
           steps={checklistSteps}
           onStepClick={(id) => {
@@ -412,48 +417,6 @@ export function ZKPFApp() {
                       <div className="product-card-arrow">→</div>
                     </Link>
                   ))}
-                </div>
-              </section>
-
-              {/* Architecture Overview */}
-              <section className="architecture-overview card">
-                <header>
-                  <p className="eyebrow">Architecture</p>
-                  <h2>How it all connects</h2>
-                </header>
-                <div className="architecture-diagram">
-                  <div className="arch-layer arch-layer-user">
-                    <span className="arch-layer-label">User Layer</span>
-                    <div className="arch-nodes">
-                      <div className="arch-node">🔐 Web Wallet</div>
-                      <div className="arch-node">🛂 ZKPassport</div>
-                      <div className="arch-node">🤝 P2P</div>
-                    </div>
-                  </div>
-                  <div className="arch-connector">
-                    <div className="arch-connector-line"></div>
-                    <span className="arch-connector-label">Zero-Knowledge Proofs</span>
-                  </div>
-                  <div className="arch-layer arch-layer-proof">
-                    <span className="arch-layer-label">Proof Layer</span>
-                    <div className="arch-nodes">
-                      <div className="arch-node">⚡ Tachyon Coordinator</div>
-                      <div className="arch-node">🔄 PCD State Machine</div>
-                    </div>
-                  </div>
-                  <div className="arch-connector">
-                    <div className="arch-connector-line"></div>
-                    <span className="arch-connector-label">Cross-Chain Attestations</span>
-                  </div>
-                  <div className="arch-layer arch-layer-chain">
-                    <span className="arch-layer-label">Chain Layer</span>
-                    <div className="arch-nodes">
-                      <div className="arch-node arch-node-zcash">Zcash</div>
-                      <div className="arch-node arch-node-mina">Mina</div>
-                      <div className="arch-node arch-node-starknet">Starknet</div>
-                      <div className="arch-node arch-node-near">NEAR</div>
-                    </div>
-                  </div>
                 </div>
               </section>
 
@@ -701,10 +664,48 @@ export function ZKPFApp() {
           )}
         />
 
+        {/* DeFi Bridge Hub Routes */}
+        <Route
+          path="/defi"
+          element={(
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading</p>
+                    <p className="muted small">Preparing Cross Chain Credentials…</p>
+                  </section>
+                )}
+              >
+                <DeFiPage />
+              </Suspense>
+            </RouteErrorBoundary>
+          )}
+        />
+
+        {/* Cross-chain Proof-of-Funds Credentials Hub */}
+        <Route
+          path="/credentials"
+          element={(
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={(
+                  <section className="card">
+                    <p className="eyebrow">Loading</p>
+                    <p className="muted small">Preparing Cross-chain Credentials Hub…</p>
+                  </section>
+                )}
+              >
+                <CredentialsHub />
+              </Suspense>
+            </RouteErrorBoundary>
+          )}
+        />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
+      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isCredentialsRoute && (
         <div className="hero-highlights">
           {HERO_HIGHLIGHTS.map((item) => (
             <div key={item.title} className="hero-highlight">
@@ -713,28 +714,6 @@ export function ZKPFApp() {
             </div>
           ))}
         </div>
-      )}
-
-      {/* Quick Stats Section - only on main pages */}
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && (
-        <section className="quick-stats">
-          <div className="stat-item">
-            <span className="stat-value">5</span>
-            <span className="stat-label">Chains Supported</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value">0</span>
-            <span className="stat-label">PII Stored</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value">∞</span>
-            <span className="stat-label">Privacy Preserved</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value">1</span>
-            <span className="stat-label">Click to Prove</span>
-          </div>
-        </section>
       )}
 
       <footer>

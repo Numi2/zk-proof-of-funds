@@ -231,6 +231,11 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
     );
   }
 
+  // Hide the panel entirely when not initialized (non-compact mode)
+  if (!state.isInitialized) {
+    return null;
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -249,22 +254,7 @@ export function TachyonStatePanel({ compact = false }: TachyonStatePanelProps) {
         </div>
       )}
 
-      {!state.isInitialized ? (
-        <div style={styles.initSection}>
-          <p style={styles.description}>
-            Initialize the Tachyon state machine to enable proof-carrying data (PCD) for your wallet.
-            This creates a genesis state and proof chain.
-          </p>
-          <button 
-            onClick={handleInitialize} 
-            style={styles.primaryButton} 
-            className="tachyon-primary-button"
-            disabled={state.status !== 'idle'}
-          >
-            {state.status === 'generating_proof' ? 'Initializing...' : 'Initialize Tachyon State'}
-          </button>
-        </div>
-      ) : (
+      {state.isInitialized && (
         <>
           <div style={styles.stateGrid}>
             <div style={styles.stateItem}>

@@ -8,11 +8,11 @@ description = "Mina recursive proof hub rail for zkpf: cross-chain PoF attestati
 # Core zkpf crates
 zkpf-common = { path = "../zkpf-common" }
 zkpf-circuit = { path = "../zkpf-circuit" }
-zkpf-mina-kimchi-wrapper = { path = "../zkpf-mina-kimchi-wrapper" }
+zkpf-mina-kimchi-wrapper = { path = "./zkpf-mina-kimchi-wrapper" }
 
 # Halo2 proving system (bn256 compatible) - matches workspace versions
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
-halo2curves_axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["circuit-params"] }
+halo2curves_axiom = { version = "0.7", package = "halo2curves-axiom", default-features = false, features = ["bn256-table"] }
 halo2-base = { path = "../vendor/halo2-base" }
 
 # Cryptography

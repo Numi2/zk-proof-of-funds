@@ -364,7 +364,7 @@ export const OmniBridge: React.FC = () => {
           </div>
 
           <div className="transfer-progress">
-            {getProgressSteps(activeTransfer.status).map((step, index) => (
+            {getProgressSteps(activeTransfer.status).map((step) => (
               <div
                 key={step.name}
                 className={`progress-step ${step.completed ? 'completed' : ''} ${step.active ? 'active' : ''}`}

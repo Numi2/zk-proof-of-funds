@@ -5,16 +5,26 @@ edition = "2021"
 
 [dependencies]
 zkpf-circuit = { path = "../zkpf-circuit" }
-halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", default-features = false, features = ["bn256-table"] }
 rand = "0.8"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-clap = { version = "4", features = ["derive"] }
-anyhow = "1"
 zkpf-common = { path = "../zkpf-common" }
 
+# Binary-only dependencies (CLI prover tool)
+clap = { version = "4", features = ["derive"], optional = true }
+anyhow = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[[bin]]
+name = "zkpf-prover"
+required-features = ["cli"]
+
+[features]
+default = []
+cli = ["dep:clap", "dep:anyhow", "dep:serde", "dep:serde_json"]
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["multicore"] }
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["multicore", "circuit-params"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["circuit-params"] }

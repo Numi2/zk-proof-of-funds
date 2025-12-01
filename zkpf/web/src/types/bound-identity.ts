@@ -394,7 +394,7 @@ export const DEFAULT_BINDING_PARAMS: HolderBindingParams = {
   nullifierDerivation: 'scope',
 };
 
-/** Currency code for ZEC in Zashi rail */
+/** Currency code for ZEC in custodial rail */
 export const ZEC_CURRENCY_CODE = 5915971;
 
 /** Currency code for ZEC in Orchard rail */

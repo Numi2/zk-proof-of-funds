@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { PcdProvider } from '../../context/PcdContext';
 import { AuthButton } from '../auth/AuthButton';
+import { PasskeyPrompt } from './PasskeyPrompt';
 
 export function WalletLayout() {
   const { state } = useWebZjsContext();
@@ -23,6 +24,7 @@ export function WalletLayout() {
 
   return (
     <PcdProvider>
+      <PasskeyPrompt />
       <div className="wallet-layout">
         <header className="wallet-page-header">
           <div className="wallet-header-top">

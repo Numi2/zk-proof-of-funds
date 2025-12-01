@@ -41,12 +41,9 @@ fn test_valid_proof_mock() {
     prover.assert_satisfied();
 }
 
-#[test]
-fn test_wrong_signature_fails() {
-    let mut input = valid_input();
-    input.attestation.signature.r[0] ^= 0x01;
-    assert!(run_mock_prover(input).verify().is_err());
-}
+// NOTE: ECDSA signature verification has been moved out of the circuit.
+// Signature tests are no longer needed here - signature verification
+// is performed by the backend before proof generation.
 
 #[test]
 fn test_balance_below_threshold_fails() {
@@ -94,112 +91,10 @@ fn test_custodian_pubkey_hash_mismatch_fails() {
     assert!(run_mock_prover(input).verify().is_err());
 }
 
-/// Test that a public key point NOT on the secp256k1 curve is rejected with an error.
-///
-/// This test verifies the critical on-curve validation that prevents invalid
-/// curve attacks. By modifying the y-coordinate of a valid public key, we
-/// create a point that no longer satisfies y² = x³ + 7 (mod p).
-///
-/// This is a security-critical check: without it, an attacker could potentially
-/// supply points from weaker curves or perform small-subgroup attacks.
-///
-/// The on-curve check returns `EcdsaError::PubkeyNotOnCurve` for consistent
-/// error handling with other ECDSA input validation errors.
-#[test]
-fn test_pubkey_not_on_curve_fails() {
-    let mut input = valid_input();
-    // Modify the y-coordinate to create a point that is NOT on the secp256k1 curve.
-    // A valid point (x, y) satisfies y² = x³ + 7. By incrementing y by 1,
-    // the equation no longer holds, making this an invalid curve point.
-    //
-    // Note: We modify the last byte to ensure the change is small enough
-    // to still be a valid field element but breaks the curve equation.
-    let original_y_last_byte = input.attestation.custodian_pubkey.y[31];
-    input.attestation.custodian_pubkey.y[31] = original_y_last_byte.wrapping_add(1);
-
-    // The proof should fail because the on-curve check (y² = x³ + 7) will not hold.
-    // With the new error handling, this returns an error rather than panicking.
-    let public_instances = zkpf_circuit::public_instances(&input.public);
-    let circuit = ZkpfCircuit::new(Some(input));
-    let k = circuit.params().k as u32;
-    let result = MockProver::run(k, &circuit, public_instances);
-
-    // MockProver::run returns Err when synthesize() fails
-    assert!(
-        result.is_err(),
-        "Expected MockProver::run to return Err for public key not on secp256k1 curve"
-    );
-}
-
-/// Test that signature values exceeding the secp256k1 scalar field modulus
-/// are rejected with a proper error (not a panic).
-///
-/// The secp256k1 scalar field modulus n is:
-/// n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-///
-/// Any signature r or s value >= n should be rejected by the ECDSA verification
-/// with a descriptive error message rather than a panic.
-#[test]
-fn test_invalid_signature_field_element_returns_error() {
-    let mut input = valid_input();
-    // Set signature.r to 0xFF...FF which exceeds the secp256k1 scalar field modulus
-    // This should trigger EcdsaError::InvalidSignatureR
-    input.attestation.signature.r = [0xFF; 32];
-
-    // The circuit should fail with an error during synthesis, not a panic.
-    // The MockProver::run will return an error when synthesize() fails.
-    let result = std::panic::catch_unwind(|| {
-        let public_instances = zkpf_circuit::public_instances(&input.public);
-        let circuit = ZkpfCircuit::new(Some(input));
-        let k = circuit.params().k as u32;
-        MockProver::run(k, &circuit, public_instances)
-    });
-
-    // The result should be Ok (no panic) but contain an error from synthesis
-    match result {
-        Ok(prover_result) => {
-            // MockProver::run returns Result<MockProver, Error>
-            // We expect Error::Synthesis due to invalid signature
-            assert!(
-                prover_result.is_err(),
-                "Expected MockProver::run to return Err for invalid signature field element"
-            );
-        }
-        Err(_) => {
-            // If it panicked, the test still passes (old behavior)
-            // but we prefer the new error handling
-        }
-    }
-}
-
-/// Test that message hash values exceeding the secp256k1 scalar field modulus
-/// are rejected with a proper error.
-#[test]
-fn test_invalid_message_hash_field_element_returns_error() {
-    let mut input = valid_input();
-    // Set message_hash to 0xFF...FF which exceeds the secp256k1 scalar field modulus
-    // This should trigger EcdsaError::InvalidMessageHash
-    input.attestation.message_hash = [0xFF; 32];
-
-    let result = std::panic::catch_unwind(|| {
-        let public_instances = zkpf_circuit::public_instances(&input.public);
-        let circuit = ZkpfCircuit::new(Some(input));
-        let k = circuit.params().k as u32;
-        MockProver::run(k, &circuit, public_instances)
-    });
-
-    match result {
-        Ok(prover_result) => {
-            assert!(
-                prover_result.is_err(),
-                "Expected MockProver::run to return Err for invalid message hash field element"
-            );
-        }
-        Err(_) => {
-            // Panic is acceptable fallback
-        }
-    }
-}
+// NOTE: ECDSA-related tests have been removed.
+// On-curve validation and signature field element tests are no longer applicable
+// because ECDSA verification has been moved out of the circuit to the backend.
+// This change reduced pk.bin from ~688MB to ~20MB.
 
 // ============================================================
 // Boundary Condition Tests

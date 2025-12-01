@@ -1,4 +1,5 @@
-import wasmInit, {
+// The bundler target auto-initializes WASM when the module is imported
+import {
   computeAttestationMessageHash,
   computeCustodianPubkeyHash,
   computeNullifier,
@@ -15,19 +16,13 @@ interface ProverArtifacts {
   key: string;
 }
 
-let wasmReady: Promise<void> | null = null;
 let cachedArtifactsKey: string | null = null;
 
-async function ensureWasmLoaded() {
-  if (!wasmReady) {
-    wasmReady = wasmInit()
-      .then(() => undefined)
-      .catch((err) => {
-        wasmReady = null;
-        throw err;
-      });
-  }
-  return wasmReady;
+// WASM is auto-initialized by the bundler, no async init needed
+async function ensureWasmLoaded(): Promise<void> {
+  // The wasm-pack bundler target auto-initializes when the module is imported.
+  // This function exists for API compatibility but does nothing.
+  return Promise.resolve();
 }
 
 export async function prepareProverArtifacts(artifacts: ProverArtifacts) {
@@ -62,7 +57,66 @@ export async function prepareProverArtifacts(artifacts: ProverArtifacts) {
 
 export async function generateBundle(attestationJson: string): Promise<ProofBundle> {
   await ensureWasmLoaded();
-  const raw = generateProofBundleCached(attestationJson);
+  
+  // Debug: Log the JSON being passed to WASM
+  console.log('[ZKPF Debug] Attestation JSON length:', attestationJson.length);
+  console.log('[ZKPF Debug] Attestation JSON (first 500 chars):', attestationJson.slice(0, 500));
+  
+  // Validate JSON is parseable before passing to WASM
+  try {
+    const parsed = JSON.parse(attestationJson);
+    console.log('[ZKPF Debug] JSON parsed successfully. Keys:', Object.keys(parsed));
+    if (parsed.attestation) {
+      console.log('[ZKPF Debug] attestation keys:', Object.keys(parsed.attestation));
+      console.log('[ZKPF Debug] account_id_hash:', parsed.attestation.account_id_hash);
+      console.log('[ZKPF Debug] message_hash length:', parsed.attestation.message_hash?.length);
+    }
+    if (parsed.public) {
+      console.log('[ZKPF Debug] public keys:', Object.keys(parsed.public));
+      console.log('[ZKPF Debug] nullifier:', parsed.public.nullifier);
+      console.log('[ZKPF Debug] custodian_pubkey_hash:', parsed.public.custodian_pubkey_hash);
+    }
+  } catch (parseErr) {
+    console.error('[ZKPF Debug] JSON parse failed:', parseErr);
+    throw new Error(`Invalid attestation JSON: ${parseErr instanceof Error ? parseErr.message : 'parse error'}`);
+  }
+  
+  // Check if artifacts are initialized
+  if (!cachedArtifactsKey) {
+    console.error('[ZKPF Debug] Prover artifacts not initialized! Call prepareProverArtifacts first.');
+    throw new Error('Prover artifacts not initialized. Call prepareProverArtifacts first.');
+  }
+  console.log('[ZKPF Debug] Prover artifacts key:', cachedArtifactsKey);
+  
+  let raw;
+  try {
+    console.log('[ZKPF Debug] Calling generateProofBundleCached...');
+    raw = generateProofBundleCached(attestationJson);
+    console.log('[ZKPF Debug] generateProofBundleCached returned successfully');
+  } catch (err) {
+    // Surface a more helpful error than the raw WebAssembly "unreachable" trap
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'unknown error';
+    
+    // Check for common WebAssembly errors
+    if (message.includes('unreachable') || message.includes('Unreachable')) {
+      throw new Error(
+        [
+          'WASM proof generation failed with an internal error.',
+          'This can happen if: (1) the prover artifacts (params/pk) are corrupted or truncated,',
+          '(2) the attestation JSON format is invalid, or (3) the browser ran out of memory.',
+          'Try refreshing the page to re-download artifacts. If the problem persists,',
+          'check that your attestation JSON is properly formatted.',
+          `Technical details: ${message}`,
+        ].join(' '),
+      );
+    }
+    throw err;
+  }
   const normalized = normalizeForJson(raw);
   return parseProofBundle(JSON.stringify(normalized));
 }

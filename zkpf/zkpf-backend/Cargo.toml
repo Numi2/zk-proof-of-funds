@@ -3,10 +3,6 @@ name = "zkpf-backend"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["mina-rail"]
-mina-rail = ["dep:zkpf-mina-rail"]
-
 [dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
@@ -23,18 +19,14 @@ uuid = { version = "1", features = ["serde", "v4"] }
 hex = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
+# k256 for secp256k1 ECDSA signature verification (attestation validation)
+k256 = { version = "0.13", features = ["ecdsa"] }
 base64 = "0.22"
 zkpf-verifier = { path = "../zkpf-verifier" }
 zkpf-common = { path = "../zkpf-common" }
 zkpf-prover = { path = "../zkpf-prover" }
 zkpf-circuit = { path = "../zkpf-circuit" }
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
-halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
 zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
-zkpf-wallet-state = { path = "../zkpf-wallet-state" }
-zkpf-mina-rail = { path = "../zkpf-mina-rail", default-features = false, features = ["server", "ivc"], optional = true }
-rand = "0.8"
-rand_chacha = "0.3"
 
 [dev-dependencies]
 hyper = { version = "0.14", features = ["full"] }

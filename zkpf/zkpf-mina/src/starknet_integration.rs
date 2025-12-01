@@ -40,10 +40,12 @@ pub const RAIL_ID_STARKNET: &str = "STARKNET_L2";
 
 /// Starknet chain identifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum StarknetChainId {
     /// Starknet Mainnet
     Mainnet,
     /// Starknet Sepolia Testnet
+    #[default]
     Sepolia,
     /// Starknet Goerli (deprecated)
     #[deprecated(note = "Goerli is deprecated, use Sepolia")]
@@ -83,11 +85,6 @@ impl StarknetChainId {
     }
 }
 
-impl Default for StarknetChainId {
-    fn default() -> Self {
-        StarknetChainId::Sepolia
-    }
-}
 
 /// Metadata extracted from a Starknet proof bundle.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -159,6 +156,7 @@ impl StarknetProofMetadata {
 
 /// Configuration for wrapping a Starknet proof into Mina.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct StarknetWrapConfig {
     /// Holder identifier (must match the holder used in Starknet proof).
     pub holder_id: String,
@@ -172,17 +170,6 @@ pub struct StarknetWrapConfig {
     pub validity_window_slots: Option<u64>,
 }
 
-impl Default for StarknetWrapConfig {
-    fn default() -> Self {
-        Self {
-            holder_id: String::new(),
-            mina_slot: 0,
-            zkapp_address: None,
-            chain_id: None,
-            validity_window_slots: None,
-        }
-    }
-}
 
 /// Result of wrapping a Starknet proof into Mina.
 #[derive(Clone, Debug, Serialize, Deserialize)]

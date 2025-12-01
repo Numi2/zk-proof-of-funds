@@ -5,11 +5,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   omniBridgeApi,
-  ChainInfo,
-  TokenInfo,
-  TransferStatus,
-  FeeEstimate,
-  BridgeInfo,
+  type ChainInfo,
+  type TokenInfo,
+  type TransferStatus,
+  type FeeEstimate,
+  type BridgeInfo,
 } from '../services/omni-bridge-api';
 
 // ============================================================================
@@ -110,7 +110,7 @@ export function useFeeEstimate(params: FeeEstimateParams) {
   const [fee, setFee] = useState<FeeEstimate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     // Clear previous debounce
@@ -170,7 +170,7 @@ export function useTransfer(transferId: string | null) {
   const [transfer, setTransfer] = useState<TransferStatus | null>(null);
   const [isLoading, setIsLoading] = useState(!!transferId);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<NodeJS.Timeout>();
+  const pollRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     if (!transferId) {

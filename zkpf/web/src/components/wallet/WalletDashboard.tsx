@@ -12,7 +12,6 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { useWebzjsActions } from '../../hooks/useWebzjsActions';
-import { TachyonStatePanel } from '../TachyonStatePanel';
 import { PersonhoodSettings } from './PersonhoodSettings';
 import type { PolicyDefinition } from '../../types/zkpf';
 import { detectBrowser, type BrowserInfo } from '../../utils/browserCompat';
@@ -44,19 +43,35 @@ function zatsToZec(zats: number): string {
 }
 
 function createBalancePolicy(balanceZats: number): PolicyDefinition {
-  const ZEC_CURRENCY_CODE = 5915971;
-  const customPolicyId = 900000000 + Math.floor(Math.random() * 1000000);
+  // Use the non-custodial Zcash Orchard currency code (999001)
+  // The WebWallet is a non-custodial Orchard wallet
+  const ZEC_ORCHARD_CURRENCY_CODE = 999001;
+  
+  // Generate a deterministic policy_id based on the policy parameters.
+  // This ensures the same balance always gets the same policy_id, making
+  // verification work seamlessly even if the user loads a previously generated bundle.
+  // Format: 9XXYYYYYY where XX = currency code mod 100, YYYYYY = threshold-based hash
+  const thresholdHash = Math.abs(
+    (balanceZats * 31 + ZEC_ORCHARD_CURRENCY_CODE * 17) % 10000000
+  );
+  const customPolicyId = 900000000 + thresholdHash;
+  
+  // Use a deterministic scope_id derived from the currency code
+  // This ensures all Zcash Orchard proofs use the same scope
+  const verifierScopeId = 999001000 + (balanceZats % 1000);
+  
   const zecAmount = balanceZats / 100_000_000;
   const formattedAmount = zecAmount.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 8,
   });
   
+  // Use ZCASH_ORCHARD rail for non-custodial shielded Zcash proofs
   return {
     policy_id: customPolicyId,
-    verifier_scope_id: 314159265,
+    verifier_scope_id: verifierScopeId,
     threshold_raw: balanceZats,
-    required_currency_code: ZEC_CURRENCY_CODE,
+    required_currency_code: ZEC_ORCHARD_CURRENCY_CODE,
     required_custodian_id: 0,
     category: 'ZCASH_ORCHARD',
     rail_id: 'ZCASH_ORCHARD',
@@ -74,9 +89,7 @@ function friendlyError(err: unknown): string {
   if (msg.includes('invalid') && msg.includes('seed')) {
     return 'Invalid seed phrase. Make sure all 24 words are correct.';
   }
-  if (msg.includes('SharedArrayBuffer') || msg.includes('crossOriginIsolated')) {
-    return 'Your browser configuration prevents this wallet from working. Try Chrome or Firefox.';
-  }
+
   if (msg.includes('WebAssembly') || msg.includes('WASM')) {
     return 'Failed to load wallet engine. Try refreshing the page.';
   }
@@ -91,7 +104,7 @@ type ConnectStep = 'input' | 'backup' | 'connecting';
 
 export function WalletDashboard() {
   const { state, dispatch } = useWebZjsContext();
-  const { connectWebZjsSnap, createAccountFromSeed } = useWebzjsActions();
+  const { createAccountFromSeed } = useWebzjsActions();
   const navigate = useNavigate();
   
   // Connection flow state
@@ -276,31 +289,7 @@ export function WalletDashboard() {
     }
   }, [validateSeedInput, handleConnectWithSeed]);
 
-  // Connect via MetaMask
-  const handleConnectSnap = useCallback(async () => {
-    setIsConnecting(true);
-    setLocalError(null);
-    setConnectStep('connecting');
-    
-    try {
-      const viewingKey = await connectWebZjsSnap();
-      if (viewingKey) {
-        try {
-          localStorage.setItem(UFVK_STORAGE_KEY, viewingKey);
-        } catch {
-          console.warn('Could not store viewing key in localStorage');
-        }
-      }
-    } catch (err) {
-      setLocalError(friendlyError(err));
-      setConnectStep('input');
-      console.error('Failed to connect wallet:', err);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [connectWebZjsSnap]);
-
-  // Sync wallet - works for BOTH seed and snap users
+  // Sync wallet
   const handleSync = useCallback(async () => {
     if (!state.webWallet || state.activeAccount == null) return;
     if (isSyncing) return;
@@ -659,26 +648,7 @@ export function WalletDashboard() {
               Restore Wallet
             </button>
 
-            <div style={{ 
-              margin: '1.5rem 0', 
-              textAlign: 'center', 
-              color: '#64748b', 
-              fontSize: '0.8rem' 
-            }}>
-              or
-            </div>
-
-            <button 
-              onClick={handleConnectSnap} 
-              disabled={isConnecting}
-              className="wallet-connect-button ghost"
-              style={{ width: '100%' }}
-            >
-              Connect via MetaMask Snap
-            </button>
-            <p className="muted small" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-              For MetaMask users with the Zcash snap installed
-            </p>
+            
           </div>
 
           {displayError && (
@@ -778,11 +748,6 @@ export function WalletDashboard() {
             {syncError}
           </div>
         )}
-      </div>
-
-      {/* Tachyon State */}
-      <div className="card wallet-tachyon-card">
-        <TachyonStatePanel />
       </div>
 
       {/* Personhood Verification */}

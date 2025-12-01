@@ -109,6 +109,40 @@ pub fn prove_bundle_with_rng<R: RngCore>(
     ProofBundle::new(proof, public_inputs)
 }
 
+/// Error type for proof generation failures.
+#[derive(Debug)]
+pub struct ProofGenError(pub String);
+
+impl std::fmt::Display for ProofGenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "proof generation failed: {}", self.0)
+    }
+}
+
+impl std::error::Error for ProofGenError {}
+
+/// Proves and returns a bundle, returning an error instead of panicking.
+/// This is the preferred API for WASM builds where panic = abort and catch_unwind doesn't work.
+pub fn prove_bundle_result(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+) -> Result<ProofBundle, ProofGenError> {
+    prove_bundle_result_with_rng(params, pk, input, &mut OsRng)
+}
+
+/// Proves and returns a bundle with custom RNG, returning an error instead of panicking.
+pub fn prove_bundle_result_with_rng<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> Result<ProofBundle, ProofGenError> {
+    let public_inputs = public_to_verifier_inputs(&input.public);
+    let proof = create_proof_bytes_with_rng_result(params, pk, input, rng)?;
+    Ok(ProofBundle::new(proof, public_inputs))
+}
+
 fn create_proof_bytes(
     params: &ParamsKZG<Bn256>,
     pk: &plonk::ProvingKey<G1Affine>,
@@ -123,6 +157,16 @@ fn create_proof_bytes_with_rng<R: RngCore>(
     input: ZkpfCircuitInput,
     rng: &mut R,
 ) -> Vec<u8> {
+    create_proof_bytes_with_rng_result(params, pk, input, rng)
+        .unwrap_or_else(|e| panic!("proof generation failed: {}", e.0))
+}
+
+fn create_proof_bytes_with_rng_result<R: RngCore>(
+    params: &ParamsKZG<Bn256>,
+    pk: &plonk::ProvingKey<G1Affine>,
+    input: ZkpfCircuitInput,
+    rng: &mut R,
+) -> Result<Vec<u8>, ProofGenError> {
     let instance_slices = zkpf_circuit::public_instances(&input.public);
     let instance_refs: Vec<&[Fr]> = instance_slices.iter().map(|col| col.as_slice()).collect();
 
@@ -140,6 +184,6 @@ fn create_proof_bytes_with_rng<R: RngCore>(
         rng,
         &mut transcript,
     )
-    .expect("proof gen");
-    transcript.finalize()
+    .map_err(|e| ProofGenError(format!("{:?}", e)))?;
+    Ok(transcript.finalize())
 }

@@ -13,6 +13,8 @@
 //!
 //! This proves the value is non-negative and less than 2^num_bits.
 
+#![allow(dead_code)]
+
 use ff::PrimeField;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Value},

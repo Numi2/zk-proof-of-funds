@@ -151,11 +151,11 @@ impl PoFReceipt {
     /// Compute the receipt hash for verification
     pub fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = Keccak256::new();
-        hasher.update(&self.holder_id);
+        hasher.update(self.holder_id);
         hasher.update(self.policy_id.to_be_bytes());
-        hasher.update(&self.snapshot_id);
+        hasher.update(self.snapshot_id);
         hasher.update(self.chain_id_origin.to_be_bytes());
-        hasher.update(&self.attestation_hash);
+        hasher.update(self.attestation_hash);
         hasher.update(self.validity_window.to_be_bytes());
         hasher.update(self.issued_at.to_be_bytes());
         hasher.finalize().into()

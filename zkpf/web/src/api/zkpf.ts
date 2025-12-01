@@ -1,3 +1,5 @@
+import { blake3 } from '@noble/hashes/blake3.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 import type {
   AttestRequest,
   AttestResponse,
@@ -23,6 +25,10 @@ import type {
   PcdVerifyResponse,
 } from '../types/pcd';
 import { toUint8Array } from '../utils/bytes';
+
+function computeBlake3Hex(data: Uint8Array): string {
+  return bytesToHex(blake3(data));
+}
 
 const LOCAL_FALLBACK_BASE = 'http://localhost:3000';
 
@@ -99,6 +105,10 @@ export class ZkpfClient {
       vk: string;
       pk: string;
     },
+    expectedHashes?: {
+      params?: string;
+      pk?: string;
+    },
   ): Promise<{ params: Uint8Array; pk: Uint8Array; vk?: Uint8Array }> {
     const cached = this.artifactCache.get(cacheKey);
     if (cached?.params && cached?.pk) {
@@ -111,13 +121,36 @@ export class ZkpfClient {
     if (!urls) {
       throw new Error(
         'Client-side proof generation is not available on this deployment. ' +
-        'The proving key (pk.bin) is not hosted. Please use the Zashi wallet flow or contact support.'
+        'The proving key (pk.bin) is not hosted. Please use the zkpf provider flow or contact support.'
       );
     }
     const [paramsBytes, pkBytes] = await Promise.all([
       this.downloadArtifact(urls.params),
       this.downloadArtifact(urls.pk),
     ]);
+    
+    // Verify artifact hashes if expected hashes are provided
+    if (expectedHashes?.params) {
+      const actualParamsHash = computeBlake3Hex(paramsBytes);
+      if (actualParamsHash !== expectedHashes.params) {
+        throw new Error(
+          `Params artifact hash mismatch. Expected: ${expectedHashes.params.slice(0, 16)}..., ` +
+          `Got: ${actualParamsHash.slice(0, 16)}... ` +
+          'The download may be corrupted or incomplete. Try refreshing the page.'
+        );
+      }
+    }
+    if (expectedHashes?.pk) {
+      const actualPkHash = computeBlake3Hex(pkBytes);
+      if (actualPkHash !== expectedHashes.pk) {
+        throw new Error(
+          `Proving key artifact hash mismatch. Expected: ${expectedHashes.pk.slice(0, 16)}..., ` +
+          `Got: ${actualPkHash.slice(0, 16)}... ` +
+          'The download may be corrupted or incomplete. Try refreshing the page.'
+        );
+      }
+    }
+    
     const vkBytes = urls.vk ? await this.downloadArtifact(urls.vk) : cached?.vk ? toUint8Array(cached.vk) : undefined;
     this.artifactCache.set(cacheKey, {
       params: paramsBytes,
@@ -142,10 +175,20 @@ export class ZkpfClient {
         throw new Error(
           `Artifact not available: ${pathOrUrl}. ` +
           'The proving key may not be hosted on this deployment. ' +
-          'Please use the Zashi wallet flow for proof generation.'
+          'Please use the zkpf provider flow for proof generation.'
         );
       }
       throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
+    }
+    // Check content-type to detect when SPA routing incorrectly serves HTML
+    // instead of the binary artifact (e.g., missing proxy rewrite rules)
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('text/html')) {
+      throw new Error(
+        `Artifact endpoint returned HTML instead of binary data: ${pathOrUrl}. ` +
+        'This usually means the artifact route is not properly proxied to the backend. ' +
+        'Please check the vercel.json or proxy configuration.'
+      );
     }
     const buffer = await response.arrayBuffer();
     // Return a Uint8Array view directly instead of materializing a gigantic

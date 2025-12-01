@@ -272,7 +272,7 @@ mod serde_fr_bytes {
     {
         struct FrVisitor;
 
-        impl<'de> de::Visitor<'de> for FrVisitor {
+        impl de::Visitor<'_> for FrVisitor {
             type Value = Fr;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {

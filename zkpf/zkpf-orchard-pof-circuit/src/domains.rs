@@ -169,6 +169,7 @@ impl CommitDomains<pallas::Affine, OrchardFixedBases, PofHashDomains> for PofCom
 pub type PofFixedBases = OrchardFixedBases;
 
 /// Re-export OrchardFixedBasesFull as PofFullWidth for consistency.
+#[allow(dead_code)]
 pub type PofFullWidth = OrchardFixedBasesFull;
 
 // ============================================================================
@@ -176,6 +177,7 @@ pub type PofFullWidth = OrchardFixedBasesFull;
 // ============================================================================
 
 /// Sinsemilla parameters matching the Orchard specification.
+#[allow(dead_code)]
 pub mod sinsemilla {
     /// Number of bits of each message piece in SinsemillaHashToPoint.
     /// This is the "K" parameter from ZIP-224.
@@ -190,7 +192,7 @@ pub mod sinsemilla {
     pub const L_ORCHARD_MERKLE: usize = 520;
 
     /// Maximum number of words (K-bit pieces) in a message.
-    pub const MAX_WORDS: usize = (L_ORCHARD_MERKLE + K - 1) / K;
+    pub const MAX_WORDS: usize = L_ORCHARD_MERKLE.div_ceil(K);
 }
 
 // ============================================================================
@@ -198,6 +200,7 @@ pub mod sinsemilla {
 // ============================================================================
 
 /// Convert raw bytes to a Pallas affine point.
+#[allow(dead_code)]
 pub fn bytes_to_point(x_bytes: [u8; 32], y_bytes: [u8; 32]) -> Option<pallas::Affine> {
     let x_opt = pallas::Base::from_repr(x_bytes);
     let y_opt = pallas::Base::from_repr(y_bytes);
@@ -217,6 +220,7 @@ pub fn bytes_to_point(x_bytes: [u8; 32], y_bytes: [u8; 32]) -> Option<pallas::Af
 }
 
 /// Extract x-coordinate from a Pallas affine point.
+#[allow(dead_code)]
 pub fn extract_x(point: &pallas::Affine) -> pallas::Base {
     if bool::from(point.is_identity()) {
         pallas::Base::zero()

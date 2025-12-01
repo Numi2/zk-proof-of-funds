@@ -380,22 +380,168 @@
 .chain-icon.solana { background: linear-gradient(135deg, #9945ff, #14f195); color: #fff; }
 
 /* Responsive */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .omni-bridge {
-    padding: 1.5rem;
+    max-width: 100%;
+    padding: 1.25rem;
     border-radius: 16px;
+  }
+
+  .omni-bridge-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 
   .omni-bridge-title {
     font-size: 1.25rem;
   }
 
+  .omni-bridge-subtitle {
+    font-size: 0.8rem;
+  }
+
+  .chain-selector {
+    gap: 0.625rem;
+  }
+
+  .chain-selector-label {
+    font-size: 0.8rem;
+  }
+
+  .chain-select {
+    padding: 0.875rem;
+    font-size: 0.95rem;
+  }
+
+  .swap-direction-button {
+    margin: -0.375rem 0;
+    padding: 0.625rem;
+  }
+
+  .token-amount-section {
+    gap: 0.625rem;
+  }
+
   .token-row {
     flex-direction: column;
+    gap: 0.625rem;
   }
 
   .token-select {
     flex: 1;
+    padding: 0.875rem;
+    font-size: 0.95rem;
+  }
+
+  .amount-input {
+    padding: 0.875rem;
+    font-size: 1.125rem;
+  }
+
+  .balance-row {
+    font-size: 0.8rem;
+  }
+
+  .recipient-section {
+    gap: 0.625rem;
+  }
+
+  .recipient-label {
+    font-size: 0.8rem;
+  }
+
+  .recipient-input {
+    padding: 0.875rem;
+    font-size: 0.85rem;
+  }
+
+  .fee-summary {
+    padding: 0.875rem;
+  }
+
+  .fee-row {
+    font-size: 0.8rem;
+  }
+
+  .bridge-button {
+    padding: 0.875rem 1.25rem;
+    font-size: 1rem;
+  }
+
+  .transfer-status {
+    padding: 1rem;
+  }
+
+  .transfer-status-title {
+    font-size: 0.95rem;
+  }
+
+  .transfer-status-badge {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.625rem;
+  }
+
+  .transfer-details {
+    font-size: 0.8rem;
+  }
+
+  .transfer-detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .transfer-detail-row span:last-child {
+    word-break: break-all;
+  }
+}
+
+@media (max-width: 480px) {
+  .omni-bridge {
+    padding: 1rem;
+    border-radius: 12px;
+  }
+
+  .omni-bridge-title {
+    font-size: 1.125rem;
+  }
+
+  .omni-bridge-subtitle {
+    font-size: 0.75rem;
+  }
+
+  .chain-select,
+  .token-select,
+  .amount-input {
+    padding: 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .amount-input {
+    font-size: 1rem;
+  }
+
+  .recipient-input {
+    padding: 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .bridge-button {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  .transfer-status {
+    padding: 0.875rem;
+  }
+
+  .transfer-status-title {
+    font-size: 0.9rem;
+  }
+
+  .transfer-details {
+    font-size: 0.75rem;
   }
 }
 

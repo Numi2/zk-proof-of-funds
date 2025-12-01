@@ -8,9 +8,9 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use zkpf_common::{
-    hash_bytes_hex, load_prover_artifacts, serialize_params, serialize_proving_key,
-    serialize_verifying_key, write_manifest, ArtifactFile, ArtifactManifest, ProverArtifacts,
-    CIRCUIT_VERSION, MANIFEST_FILE, MANIFEST_VERSION,
+    load_prover_artifacts, serialize_params, serialize_proving_key, serialize_verifying_key,
+    write_manifest, ArtifactFile, ArtifactManifest, ProverArtifacts, CIRCUIT_VERSION, MANIFEST_FILE,
+    MANIFEST_VERSION,
 };
 use zkpf_prover::setup;
 use zkpf_starknet_l2::{

@@ -26,7 +26,8 @@ use rand_core::RngCore;
 use std::io;
 
 // Direct rayon imports for trait methods (map, collect, etc.)
-// These are needed unconditionally because into_par_iter() returns rayon types
+// These are only needed when multicore feature is enabled
+#[cfg(feature = "multicore")]
 use rayon::iter::ParallelIterator;
 
 fn div_by_vanishing<F: Field>(poly: Polynomial<F, Coeff>, roots: &[F]) -> Vec<F> {

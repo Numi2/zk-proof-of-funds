@@ -238,24 +238,18 @@ pub fn verify_orchard_pof_proof(
 
 /// Build the public instance vector for the circuit.
 fn build_public_instances(public: &OrchardInnerPublicInputs) -> Vec<pallas::Base> {
-    let mut instances = Vec::new();
-
-    // Anchor (as field element)
-    instances.push(pallas::Base::from_repr(public.anchor_orchard).unwrap_or(pallas::Base::zero()));
-
-    // Height (as field element)
-    instances.push(pallas::Base::from(public.height as u64));
-
-    // Threshold (as field element)
-    instances.push(pallas::Base::from(public.threshold_zats));
-
-    // Sum (as field element)
-    instances.push(pallas::Base::from(public.sum_zats));
-
-    // UFVK commitment
-    instances.push(
+    let mut instances = vec![
+        // Anchor (as field element)
+        pallas::Base::from_repr(public.anchor_orchard).unwrap_or(pallas::Base::zero()),
+        // Height (as field element)
+        pallas::Base::from(public.height as u64),
+        // Threshold (as field element)
+        pallas::Base::from(public.threshold_zats),
+        // Sum (as field element)
+        pallas::Base::from(public.sum_zats),
+        // UFVK commitment
         pallas::Base::from_repr(public.ufvk_commitment).unwrap_or(pallas::Base::zero()),
-    );
+    ];
 
     // Holder binding (if present)
     if let Some(binding) = public.binding {

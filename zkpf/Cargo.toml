@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     # Core circuit synthesis framework
-    "ragu",
     "zkpf-circuit",
     "zkpf-prover",
     "zkpf-verifier",
@@ -12,46 +11,49 @@ members = [
     "zkpf-tools",
     "zkpf-test-fixtures",
     "xtask",
-    "zkpf-zcash-orchard-wallet",
+    # NOTE: These packages have a nonempty version conflict (ChainSafe fork uses nonempty 0.11, orchard 0.10.2 uses 0.7)
+    # "zkpf-zcash-orchard-wallet",
     "zkpf-zcash-orchard-circuit",
     "zkpf-rails-zcash-orchard",
     "zkpf-orchard-inner",
     "zkpf-orchard-pof-circuit",
-    "zkpf-custodian-registry",
+    # "zkpf-custodian-registry",
     # Starknet L2 rail
-    "zkpf-starknet-l2",
     "zkpf-rails-starknet",
+    "zkpf-rails-starknet/zkpf-starknet-l2",
     # Axelar GMP rail (interchain PoF receipts)
     "zkpf-axelar-gmp",
-    "zkpf-rails-axelar",
+    "zkpf-axelar-gmp/zkpf-rails-axelar",
     # Omni Bridge rail (NEAR, ETH, ARB, Base, Solana bridging)
     # NOTE: These packages have a Solana dependency version conflict that needs resolution
-    # "zkpf-omni-bridge",
     # "zkpf-rails-omni",
+    # "zkpf-rails-omni/zkpf-omni-bridge",
     # Mina recursive proof hub rail
     "zkpf-mina",
-    "zkpf-rails-mina",
+    "zkpf-mina/zkpf-rails-mina",
     # Mina Proof of State Kimchi wrapper (BN254 circuit for Mina state verification)
-    "zkpf-mina-kimchi-wrapper",
+    "zkpf-mina/zkpf-mina-kimchi-wrapper",
     # Mina state relayer
-    "zkpf-mina-relayer",
+    "zkpf-mina/zkpf-mina-relayer",
     # Mina Recursive Rail for tachystamp aggregation (offloads slot 2 PCD)
-    "zkpf-mina-rail",
+    "zkpf-mina/zkpf-mina-rail",
     # URI-Encapsulated Payments (ZIP 324)
     "zkpf-uri-payment",
     # Wallet state machine with ZK proofs
     "zkpf-wallet-state",
-    # Unified multi-chain Tachyon wallet
-    "zkpf-tachyon-wallet",
+    # NOTE: Depends on zkpf-zcash-orchard-wallet (nonempty conflict)
+    # "zkpf-tachyon-wallet",
     # NEAR TEE-backed private AI agent
-    "zkpf-near-tee",
-    # PCZT library for transparent-to-shielded transactions
-    "zkpf-pczt-transparent",
+    # "zkpf-near-tee",
+    # NOTE: ChainSafe fork nonempty version conflict
+    # "zkpf-pczt-transparent",
     # x402 Payment Required protocol for ZEC
-    "zkpf-x402",
+    # "zkpf-x402",
 ]
 
 [patch.crates-io]
 base64ct = { git = "https://github.com/RustCrypto/formats.git", rev = "0ebdd64122a6dc5f0461140a91c7f2cdcec8e015", package = "base64ct" }
 halo2-base = { path = "vendor/halo2-base" }
 halo2-axiom = { path = "vendor/halo2-axiom" }
+halo2curves-axiom = { path = "vendor/halo2curves-axiom" }
+halo2-ecc = { path = "vendor/halo2-ecc" }

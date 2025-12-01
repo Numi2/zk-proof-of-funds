@@ -20,7 +20,8 @@ use crate::{
 };
 
 // Direct rayon imports for trait methods (enumerate, try_fold, try_reduce)
-// These are needed unconditionally because into_par_iter() returns rayon types
+// These are only needed when multicore feature is enabled
+#[cfg(feature = "multicore")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// A proof verification strategy that returns the proof's MSM.

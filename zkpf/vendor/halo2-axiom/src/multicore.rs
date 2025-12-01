@@ -7,15 +7,18 @@ compile_error!(
     "The multicore feature flag is not supported on wasm32 architectures without atomics"
 );
 
+// ParallelIterator is used by plonk/permutation/keygen.rs in multicore mode,
+// but unused in single-threaded (WASM) builds. Keep the re-export for multicore.
+#[allow(unused_imports)]
 pub use maybe_rayon::{
-    iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+    iter::{IntoParallelIterator, ParallelIterator},
     join, scope,
 };
 
 #[cfg(feature = "multicore")]
 pub use maybe_rayon::{
     current_num_threads,
-    iter::{IndexedParallelIterator, IntoParallelRefIterator},
+    iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator},
     slice::{ParallelSlice, ParallelSliceMut},
 };
 

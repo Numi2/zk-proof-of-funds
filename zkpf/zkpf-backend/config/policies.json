@@ -11,190 +11,7 @@
     "purpose": "Testing proof generation and verification flow",
     "useCases": ["Developer testing", "Demo applications", "Learning the system"]
   },
-  {
-    "policy_id": 2,
-    "threshold_raw": 1000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 2,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Demo: Small balance ($10+)",
-    "category": "DEMO",
-    "description": "For testing with a small balance threshold.",
-    "purpose": "Testing with minimal requirements",
-    "useCases": ["Integration testing", "Sandbox environments"]
-  },
-  {
-    "policy_id": 3,
-    "threshold_raw": 10000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 3,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Demo: $100+ balance",
-    "category": "DEMO",
-    "description": "Demonstrates proof of funds with a $100 threshold.",
-    "purpose": "Development and testing",
-    "useCases": ["E2E testing", "Demo to stakeholders"]
-  },
 
-  {
-    "policy_id": 100,
-    "threshold_raw": 50000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 100,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Basic verification ($500+)",
-    "category": "FIAT",
-    "description": "Prove you have at least $500 in your account.",
-    "purpose": "General-purpose low-threshold verification",
-    "useCases": ["Online marketplace eligibility", "Basic account verification", "Subscription services"]
-  },
-  {
-    "policy_id": 101,
-    "threshold_raw": 100000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 101,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Standard verification ($1,000+)",
-    "category": "FIAT",
-    "description": "Prove you have at least $1,000 in available funds.",
-    "purpose": "Standard proof of funds for common transactions",
-    "useCases": ["Peer-to-peer transactions", "Service deposits", "Membership applications"]
-  },
-  {
-    "policy_id": 102,
-    "threshold_raw": 250000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 102,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Bank account opening ($2,500+)",
-    "category": "FIAT",
-    "description": "Meet minimum balance requirements for premium bank accounts.",
-    "purpose": "Bank account and financial service applications",
-    "useCases": ["Premium checking accounts", "Investment account minimums", "Credit union membership"]
-  },
-  {
-    "policy_id": 103,
-    "threshold_raw": 500000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 103,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Rental application ($5,000+)",
-    "category": "FIAT",
-    "description": "Prove sufficient funds for rental security deposits and first month's rent.",
-    "purpose": "Housing rental applications",
-    "useCases": ["Apartment applications", "Rental security deposits", "Landlord verification"]
-  },
-  {
-    "policy_id": 104,
-    "threshold_raw": 1000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 104,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Personal loan ($10,000+)",
-    "category": "FIAT",
-    "description": "Demonstrate financial capacity for personal loan applications.",
-    "purpose": "Lending and credit applications",
-    "useCases": ["Personal loans", "Auto financing", "Credit line increases"]
-  },
-  {
-    "policy_id": 105,
-    "threshold_raw": 2500000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 105,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Major purchase ($25,000+)",
-    "category": "FIAT",
-    "description": "Prove funds for significant purchases like vehicles or home down payments.",
-    "purpose": "Large transaction verification",
-    "useCases": ["Car purchases", "Home down payments", "Major equipment purchases"]
-  },
-  {
-    "policy_id": 106,
-    "threshold_raw": 5000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 106,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Small business ($50,000+)",
-    "category": "FIAT",
-    "description": "Verify business capitalization for small business operations.",
-    "purpose": "Business account verification",
-    "useCases": ["Business account opening", "Vendor onboarding", "Contract bidding"]
-  },
-  {
-    "policy_id": 107,
-    "threshold_raw": 10000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 107,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Business operations ($100,000+)",
-    "category": "FIAT",
-    "description": "Demonstrate substantial business funds for larger operations.",
-    "purpose": "Mid-size business verification",
-    "useCases": ["Supplier credit applications", "Lease agreements", "Partnership verification"]
-  },
-  {
-    "policy_id": 108,
-    "threshold_raw": 25000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 108,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Enterprise reserve ($250,000+)",
-    "category": "FIAT",
-    "description": "High-value verification for enterprise-level operations.",
-    "purpose": "Large enterprise verification",
-    "useCases": ["Enterprise contracts", "Large-scale procurement", "Institutional partnerships"]
-  },
-
-  {
-    "policy_id": 110,
-    "threshold_raw": 100000,
-    "required_currency_code": 978,
-    "verifier_scope_id": 110,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "EUR: Basic (€1,000+)",
-    "category": "FIAT",
-    "description": "Euro-denominated basic verification.",
-    "purpose": "European market transactions",
-    "useCases": ["EU marketplace access", "European vendor verification"]
-  },
-  {
-    "policy_id": 111,
-    "threshold_raw": 1000000,
-    "required_currency_code": 978,
-    "verifier_scope_id": 111,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "EUR: Business (€10,000+)",
-    "category": "FIAT",
-    "description": "Euro-denominated business verification.",
-    "purpose": "European business operations",
-    "useCases": ["EU business accounts", "Cross-border B2B transactions"]
-  },
-
-  {
-    "policy_id": 200,
-    "threshold_raw": 0,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 200,
-    "rail_id": "ZCASH_ORCHARD",
-    "label": "Orchard: Empty wallet (= 0 ZEC)",
-    "category": "ZCASH_ORCHARD",
-    "description": "Prove your Orchard wallet has exactly zero balance.",
-    "purpose": "Prove wallet is empty for compliance or fresh start verification",
-    "useCases": ["Compliance verification", "Clean wallet attestation"],
-    "options": { "exact_zero": true }
-  },
-  {
-    "policy_id": 201,
-    "threshold_raw": 10000000,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 201,
-    "rail_id": "ZCASH_ORCHARD",
-    "label": "Orchard: Small holder (0.1+ ZEC)",
-    "category": "ZCASH_ORCHARD",
-    "description": "Prove you hold at least 0.1 ZEC in shielded Orchard funds.",
-    "purpose": "Basic Zcash holder verification",
-    "useCases": ["Community membership", "Airdrop eligibility", "Basic holder status"]
-  },
   {
     "policy_id": 202,
     "threshold_raw": 100000000,
@@ -207,117 +24,7 @@
     "purpose": "Standard Zcash holder verification",
     "useCases": ["DAO voting eligibility", "Premium features access", "Staking requirements"]
   },
-  {
-    "policy_id": 203,
-    "threshold_raw": 1000000000,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 203,
-    "rail_id": "ZCASH_ORCHARD",
-    "label": "Orchard: Active holder (10+ ZEC)",
-    "category": "ZCASH_ORCHARD",
-    "description": "Prove you hold at least 10 ZEC in shielded Orchard funds.",
-    "purpose": "Active participant verification",
-    "useCases": ["Governance participation", "Higher-tier access", "Lending collateral"]
-  },
-  {
-    "policy_id": 204,
-    "threshold_raw": 10000000000,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 204,
-    "rail_id": "ZCASH_ORCHARD",
-    "label": "Orchard: Major holder (100+ ZEC)",
-    "category": "ZCASH_ORCHARD",
-    "description": "Prove you hold at least 100 ZEC in shielded Orchard funds.",
-    "purpose": "Major holder verification",
-    "useCases": ["Institutional verification", "Large-scale privacy transactions", "Whale status"]
-  },
 
-  {
-    "policy_id": 300,
-    "threshold_raw": 0,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 300,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zashi: Empty wallet (= 0 ZEC)",
-    "category": "ZASHI",
-    "description": "Prove your Zashi custodial wallet is empty.",
-    "purpose": "Empty wallet verification via Zashi provider",
-    "useCases": ["Account closure verification", "Fresh wallet proof"],
-    "options": { "exact_zero": true }
-  },
-  {
-    "policy_id": 301,
-    "threshold_raw": 10000000,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 301,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zashi: Small holder (0.1+ ZEC)",
-    "category": "ZASHI",
-    "description": "Prove you hold at least 0.1 ZEC via Zashi provider.",
-    "purpose": "Basic Zashi holder verification",
-    "useCases": ["Account verification", "Basic holder status"]
-  },
-  {
-    "policy_id": 302,
-    "threshold_raw": 100000000,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 302,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zashi: Standard holder (1+ ZEC)",
-    "category": "ZASHI",
-    "description": "Prove you hold at least 1 ZEC via Zashi provider.",
-    "purpose": "Standard Zashi holder verification",
-    "useCases": ["Community access", "Service eligibility"]
-  },
-  {
-    "policy_id": 303,
-    "threshold_raw": 1000000000,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 303,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zashi: Active holder (10+ ZEC)",
-    "category": "ZASHI",
-    "description": "Prove you hold at least 10 ZEC via Zashi provider.",
-    "purpose": "Active holder verification",
-    "useCases": ["Premium access", "Higher service tiers"]
-  },
-  {
-    "policy_id": 304,
-    "threshold_raw": 10000000000,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 304,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zashi: Major holder (100+ ZEC)",
-    "category": "ZASHI",
-    "description": "Prove you hold at least 100 ZEC via Zashi provider.",
-    "purpose": "Major holder verification",
-    "useCases": ["Institutional access", "High-value services"]
-  },
-
-  {
-    "policy_id": 400,
-    "threshold_raw": 100000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 400,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Basic (0.1+ ETH)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 0.1 ETH on Starknet L2.",
-    "purpose": "Basic Starknet account verification",
-    "useCases": ["DeFi access", "NFT marketplace eligibility"]
-  },
-  {
-    "policy_id": 401,
-    "threshold_raw": 500000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 401,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Active user (0.5+ ETH)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 0.5 ETH on Starknet L2.",
-    "purpose": "Active Starknet user verification",
-    "useCases": ["Protocol governance", "Airdrop eligibility", "Beta access"]
-  },
   {
     "policy_id": 402,
     "threshold_raw": 1000000000000000000,
@@ -329,55 +36,6 @@
     "description": "Prove you hold at least 1 ETH on Starknet L2.",
     "purpose": "Standard Starknet holder verification",
     "useCases": ["Lending platforms", "Premium DeFi features"]
-  },
-  {
-    "policy_id": 403,
-    "threshold_raw": 5000000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 403,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Power user (5+ ETH)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 5 ETH on Starknet L2.",
-    "purpose": "Power user verification",
-    "useCases": ["Protocol participation", "DAO voting weight"]
-  },
-  {
-    "policy_id": 404,
-    "threshold_raw": 10000000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 404,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Whale (10+ ETH)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 10 ETH on Starknet L2.",
-    "purpose": "High-value account verification",
-    "useCases": ["Institutional services", "Large-scale DeFi operations"]
-  },
-
-  {
-    "policy_id": 410,
-    "threshold_raw": 100000000000000000000,
-    "required_currency_code": 22691,
-    "verifier_scope_id": 410,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: STRK holder (100+ STRK)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 100 STRK tokens.",
-    "purpose": "STRK token holder verification",
-    "useCases": ["Governance eligibility", "Staking participation"]
-  },
-  {
-    "policy_id": 411,
-    "threshold_raw": 1000000000000000000000,
-    "required_currency_code": 22691,
-    "verifier_scope_id": 411,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Major STRK (1,000+ STRK)",
-    "category": "STARKNET",
-    "description": "Prove you hold at least 1,000 STRK tokens.",
-    "purpose": "Major STRK holder verification",
-    "useCases": ["Protocol governance", "Advanced staking"]
   },
 
   {
@@ -396,89 +54,11 @@
       "aggregate_cross_chain": true
     }
   },
-  {
-    "policy_id": 501,
-    "threshold_raw": 1000000000,
-    "required_currency_code": 2001,
-    "verifier_scope_id": 501,
-    "rail_id": "ONCHAIN_WALLET",
-    "label": "USDC: Standard ($1,000+)",
-    "category": "USDC",
-    "description": "Prove you hold at least $1,000 USDC across supported chains.",
-    "purpose": "Standard stablecoin holder verification",
-    "useCases": ["Lending collateral", "Payment capacity"],
-    "usdc_config": {
-      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
-      "aggregate_cross_chain": true
-    }
-  },
-  {
-    "policy_id": 502,
-    "threshold_raw": 10000000000,
-    "required_currency_code": 2001,
-    "verifier_scope_id": 502,
-    "rail_id": "ONCHAIN_WALLET",
-    "label": "USDC: Significant ($10,000+)",
-    "category": "USDC",
-    "description": "Prove you hold at least $10,000 USDC across supported chains.",
-    "purpose": "Significant stablecoin holdings verification",
-    "useCases": ["Institutional services", "Large transactions"],
-    "usdc_config": {
-      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
-      "aggregate_cross_chain": true
-    }
-  },
-  {
-    "policy_id": 503,
-    "threshold_raw": 100000000000,
-    "required_currency_code": 2001,
-    "verifier_scope_id": 503,
-    "rail_id": "ONCHAIN_WALLET",
-    "label": "USDC: Treasury ($100,000+)",
-    "category": "USDC",
-    "description": "Prove you hold at least $100,000 USDC across supported chains.",
-    "purpose": "Treasury-level stablecoin verification",
-    "useCases": ["Corporate treasury", "Institutional operations"],
-    "usdc_config": {
-      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
-      "aggregate_cross_chain": true
-    }
-  },
-
-  {
-    "policy_id": 510,
-    "threshold_raw": 1000000000,
-    "required_currency_code": 2001,
-    "verifier_scope_id": 510,
-    "rail_id": "STARKNET_L2",
-    "label": "USDC on Starknet ($1,000+)",
-    "category": "USDC_STARKNET",
-    "description": "Prove you hold at least $1,000 USDC on Starknet L2.",
-    "purpose": "Starknet-specific USDC verification",
-    "useCases": ["Starknet DeFi", "L2-native services"],
-    "usdc_config": {
-      "allowed_chains": ["starknet"],
-      "aggregate_cross_chain": false
-    }
-  },
-
-  {
-    "policy_id": 600,
-    "threshold_raw": 10000000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 600,
-    "rail_id": "ONCHAIN_WALLET",
-    "label": "Multi-wallet aggregate ($100,000+)",
-    "category": "ONCHAIN",
-    "description": "Prove combined holdings across multiple connected wallets.",
-    "purpose": "Aggregate multi-wallet verification",
-    "useCases": ["Portfolio verification", "Net worth proof", "Institutional services"]
-  },
 
   {
     "policy_id": 700,
     "threshold_raw": 100000000,
-    "required_currency_code": 5915971,
+    "required_currency_code": 999001,
     "verifier_scope_id": 700,
     "rail_id": "BOUND_IDENTITY",
     "label": "Identity-bound: Basic KYC (1+ ZEC)",
@@ -490,40 +70,6 @@
       "identity_requirements": { "age_gte": 18 },
       "validity_days": 30,
       "scope": "bound-identity:basic-kyc"
-    }
-  },
-  {
-    "policy_id": 701,
-    "threshold_raw": 1000000000,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 701,
-    "rail_id": "BOUND_IDENTITY",
-    "label": "Identity-bound: Credit check (10+ ZEC)",
-    "category": "BOUND_IDENTITY",
-    "description": "Prove funds with identity verification for credit/lending applications.",
-    "purpose": "Credit and lending verification",
-    "useCases": ["DeFi lending", "Credit applications", "Collateralized loans"],
-    "bound_identity_config": {
-      "identity_requirements": { "age_gte": 18, "disclose_nationality": true },
-      "validity_days": 7,
-      "scope": "bound-identity:credit-check"
-    }
-  },
-  {
-    "policy_id": 702,
-    "threshold_raw": 0,
-    "required_currency_code": 5915971,
-    "verifier_scope_id": 702,
-    "rail_id": "BOUND_IDENTITY",
-    "label": "Identity-bound: Escrow participant",
-    "category": "BOUND_IDENTITY",
-    "description": "Verify identity for escrow participation (no minimum balance).",
-    "purpose": "Escrow and P2P transaction verification",
-    "useCases": ["P2P trading", "Escrow services", "Dispute resolution"],
-    "bound_identity_config": {
-      "identity_requirements": { "age_gte": 18 },
-      "validity_days": 14,
-      "scope": "bound-identity:escrow"
     }
   },
 
@@ -543,22 +89,6 @@
       "validity_window_secs": 86400
     }
   },
-  {
-    "policy_id": 801,
-    "threshold_raw": 5000000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 801,
-    "rail_id": "AXELAR_GMP",
-    "label": "Interchain: Extended broadcast (5+ ETH)",
-    "category": "AXELAR_INTERCHAIN",
-    "description": "Prove larger holdings and broadcast to extended chain set.",
-    "purpose": "Extended cross-chain verification",
-    "useCases": ["Institutional cross-chain ops", "Multi-chain governance"],
-    "axelar_config": {
-      "broadcast_chains": ["osmosis", "neutron", "arbitrum", "optimism", "base"],
-      "validity_window_secs": 172800
-    }
-  },
 
   {
     "policy_id": 900,
@@ -574,24 +104,6 @@
     "mina_config": {
       "network": "testnet",
       "validity_window_slots": 7200
-    }
-  },
-  {
-    "policy_id": 901,
-    "threshold_raw": 10000000000,
-    "required_currency_code": 840,
-    "verifier_scope_id": 901,
-    "rail_id": "MINA_RECURSIVE",
-    "label": "Mina recursive: Multi-rail ($100K+)",
-    "category": "MINA_AGGREGATED",
-    "description": "Aggregate proofs from multiple rails (Starknet + Orchard + Custodial).",
-    "purpose": "Multi-rail aggregated proof",
-    "useCases": ["Portfolio aggregation", "Institutional verification"],
-    "mina_config": {
-      "network": "mainnet",
-      "validity_window_slots": 7200,
-      "allow_multi_rail_aggregation": true,
-      "allowed_source_rails": ["STARKNET_L2", "ZCASH_ORCHARD", "CUSTODIAL_ATTESTATION"]
     }
   }
 ]

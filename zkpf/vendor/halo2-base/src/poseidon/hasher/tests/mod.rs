@@ -3,8 +3,6 @@ use crate::halo2_proofs::halo2curves::{bn256::Fr, ff::PrimeField};
 
 use itertools::Itertools;
 
-mod compatibility;
-mod hasher;
 mod state;
 
 #[test]

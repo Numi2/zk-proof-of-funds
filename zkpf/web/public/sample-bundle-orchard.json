@@ -1,5 +1,5 @@
 {
-  "circuit_version": 3,
+  "circuit_version": 5,
   "rail_id": "ZCASH_ORCHARD",
   "proof": [
     12, 34, 56, 78, 90, 123, 45, 67, 89, 101, 202, 154, 37, 218, 64, 118,
@@ -13,7 +13,7 @@
   "public_inputs": {
     "threshold_raw": 1000000000,
     "required_currency_code": 999001,
-    "current_epoch": 1700001234,
+    "current_epoch": 1764596800,
     "verifier_scope_id": 300,
     "policy_id": 100200,
     "nullifier": [

@@ -8,6 +8,7 @@ use group::{
     prime::PrimeCurveAffine,
     Curve, GroupOpsOwned, ScalarMulOwned,
 };
+#[cfg(feature = "multicore")]
 use rayon::prelude::*;
 
 use halo2curves::msm::msm_best;
@@ -112,7 +113,8 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
 ///
 /// This function will panic if the two vectors are not the same size.
 /// For vectors smaller than 32 elements, it uses sequential computation for better performance.
-/// For larger vectors, it switches to parallel computation.
+/// For larger vectors, it switches to parallel computation (when multicore feature is enabled).
+#[cfg(feature = "multicore")]
 pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
     assert_eq!(a.len(), b.len());
 
@@ -127,6 +129,19 @@ pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
 
     // Use parallel computation
     a.par_iter().zip(b.par_iter()).map(|(a, b)| (*a) * b).sum()
+}
+
+/// This computes the inner product of two vectors `a` and `b`.
+///
+/// This function will panic if the two vectors are not the same size.
+#[cfg(not(feature = "multicore"))]
+pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
+    assert_eq!(a.len(), b.len());
+    let mut acc = F::ZERO;
+    for (a, b) in a.iter().zip(b.iter()) {
+        acc += (*a) * (*b);
+    }
+    acc
 }
 
 /// Divides polynomial `a` in `X` by `X - b` with

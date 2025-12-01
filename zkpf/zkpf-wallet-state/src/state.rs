@@ -381,7 +381,7 @@ mod serde_fr_bytes {
     {
         struct FrVisitor;
 
-        impl<'de> de::Visitor<'de> for FrVisitor {
+        impl de::Visitor<'_> for FrVisitor {
             type Value = Fr;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -402,7 +402,7 @@ mod serde_fr_bytes {
                 let mut bytes = [0u8; 32];
                 hex::decode_to_slice(hex_str, &mut bytes).map_err(E::custom)?;
                 // Use from_repr to match serialize's to_repr (little-endian)
-                Fr::from_repr(bytes.into())
+                Fr::from_repr(bytes)
                     .into_option()
                     .ok_or_else(|| E::custom("invalid field element encoding"))
             }
@@ -433,10 +433,10 @@ mod hex {
         for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
             let hi = (chunk[0] as char)
                 .to_digit(16)
-                .ok_or_else(|| format!("invalid hex char"))?;
+                .ok_or_else(|| "invalid hex char".to_string())?;
             let lo = (chunk[1] as char)
                 .to_digit(16)
-                .ok_or_else(|| format!("invalid hex char"))?;
+                .ok_or_else(|| "invalid hex char".to_string())?;
             out[i] = ((hi << 4) | lo) as u8;
         }
         Ok(())

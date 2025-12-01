@@ -9,27 +9,24 @@ primary_region = 'arn'
 [build]
 
 [env]
-  ZKPF_ENABLE_PROVER = "0"
+
+  ZKPF_ENABLE_PROVER = "1"
   # Personhood database (uses same volume as nullifiers)
   ZKPF_PERSONHOOD_DB = "/app/data/personhood.db"
-  # Mina Rail configuration
-  MINA_RAIL_ENABLED = "1"
-  MINA_RAIL_NUM_SHARDS = "16"
-  MINA_RAIL_MAX_TACHYSTAMPS = "10000"
-  MINA_RAIL_EPOCH_SLOTS = "7200"
-  MINA_RAIL_IVC_DEPTH = "14"
+  # Mina Rail disabled - moved to separate zkpf-mina-rail crate
+  MINA_RAIL_ENABLED = "0"
 
 [http_service]
   internal_port = 3000
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]
-  memory = '2gb'
-  cpu_kind = 'shared'
+
+  memory = '1gb'
   cpus = 1
 
 [[mounts]]

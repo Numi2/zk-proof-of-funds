@@ -5,11 +5,13 @@
   "files": [
     "zkpf_wasm_bg.wasm",
     "zkpf_wasm.js",
+    "zkpf_wasm_bg.js",
     "zkpf_wasm.d.ts"
   ],
   "main": "zkpf_wasm.js",
   "types": "zkpf_wasm.d.ts",
   "sideEffects": [
+    "./zkpf_wasm.js",
     "./snippets/*"
   ]
 }

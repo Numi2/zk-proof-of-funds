@@ -3,6 +3,7 @@ use std::ops::DerefMut;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use itertools::Itertools;
+#[cfg(feature = "multicore")]
 use rayon::slice::ParallelSliceMut;
 
 use crate::halo2_proofs::{
@@ -139,9 +140,14 @@ impl<F: Field + Ord> VirtualRegionManager<F> for SharedCopyConstraintManager<F> 
         // sort by constant so constant assignment order is deterministic
         // this is necessary because constants can be assigned by multiple CPU threads
         // We further sort by ContextCell because the backend implementation of `raw_constrain_equal` (permutation argument) seems to depend on the order you specify copy constraints...
+        #[cfg(feature = "multicore")]
         manager
             .constant_equalities
             .par_sort_unstable_by(|(c1, cell1), (c2, cell2)| c1.cmp(c2).then(cell1.cmp(cell2)));
+        #[cfg(not(feature = "multicore"))]
+        manager
+            .constant_equalities
+            .sort_unstable_by(|(c1, cell1), (c2, cell2)| c1.cmp(c2).then(cell1.cmp(cell2)));
         // Assign fixed cells, we go left to right, then top to bottom, to avoid needing to know number of rows here
         let mut fixed_col = 0;
         let mut fixed_offset = 0;
@@ -159,7 +165,10 @@ impl<F: Field + Ord> VirtualRegionManager<F> for SharedCopyConstraintManager<F> 
         }
 
         // Just in case: we sort by ContextCell because the backend implementation of `raw_constrain_equal` (permutation argument) seems to depend on the order you specify copy constraints...
+        #[cfg(feature = "multicore")]
         manager.advice_equalities.par_sort_unstable();
+        #[cfg(not(feature = "multicore"))]
+        manager.advice_equalities.sort_unstable();
         // Impose equality constraints between assigned advice cells
         // At this point we assume all cells have been assigned by other VirtualRegionManagers
         for (left, right) in &manager.advice_equalities {

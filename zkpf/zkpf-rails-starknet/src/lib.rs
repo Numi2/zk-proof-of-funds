@@ -873,8 +873,8 @@ impl From<&DefiPosition> for DefiPositionResponse {
         let position_type = match pos.position_type {
             PositionType::LiquidityPool => "liquidity_pool",
             PositionType::Lending => "lending",
-            PositionType::Staking => "staking",
             PositionType::Vault => "vault",
+            PositionType::Perpetual => "perpetual",
             PositionType::Other => "other",
         }.to_string();
         

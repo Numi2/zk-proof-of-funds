@@ -27,11 +27,6 @@ const railMeta: Record<
       'Works for both L1 and L2 balances',
     ],
   },
-  fiat: {
-    label: 'Fiat',
-    summary: 'Bank, trust, or money market balances represented as structured data for the verifier.',
-    highlights: ['ISO currency mapping', 'Custodian IDs mirror treasury ledgers', 'Pairs well with bank attestations'],
-  },
   orchard: {
     label: 'Zcash Orchard',
     summary:

@@ -10,7 +10,7 @@ const CURRENCY_META: Record<number, CurrencyMeta> = {
   840: { code: 'USD', label: 'United States Dollar', decimals: 2 },
   978: { code: 'EUR', label: 'Euro', decimals: 2 },
   999001: { code: 'ZEC', label: 'Zcash (Orchard)', decimals: 8 },
-  5915971: { code: 'ZEC', label: 'Zashi (custodial)', decimals: 8 },
+  5915971: { code: 'ZEC', label: 'Zcash (custodial)', decimals: 8 },
   // Crypto assets
   1027: { code: 'ETH', label: 'Ethereum', decimals: 18 },
   22691: { code: 'STRK', label: 'Starknet Token', decimals: 18 },
@@ -21,10 +21,9 @@ const CURRENCY_META: Record<number, CurrencyMeta> = {
 
 const CATEGORY_LABELS: Record<string, string> = {
   DEMO: 'Demo & testing',
-  FIAT: 'Fiat currency',
   ONCHAIN: 'On-chain wallet',
   ZCASH_ORCHARD: 'Zcash Orchard',
-  ZASHI: 'Zashi provider',
+  CUSTODIAL: 'Custodial provider',
   STARKNET: 'Starknet L2',
   STARKNET_DEFI: 'Starknet DeFi',
   AXELAR_INTERCHAIN: 'Cross-chain (Axelar)',

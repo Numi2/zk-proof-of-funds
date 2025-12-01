@@ -16,8 +16,6 @@ use axum::{
 };
 use once_cell::sync::Lazy;
 
-#[cfg(feature = "mina-rail")]
-mod mina_rail;
 pub mod personhood;
 use serde_json::Value as JsonValue;
 use sled::Db;
@@ -31,17 +29,20 @@ use zkpf_circuit::{
 };
 use zkpf_common::{
     compute_nullifier_fr, custodian_pubkey_hash, deserialize_verifier_public_inputs,
-    load_prover_artifacts, load_prover_artifacts_without_pk, load_verifier_artifacts, nullifier_fr,
-    public_inputs_to_instances_with_layout, public_to_verifier_inputs, reduce_be_bytes_to_fr,
-    Attestation, ProofBundle, ProverArtifacts, PublicInputLayout, VerifierArtifacts,
-    VerifierPublicInputs,
+    load_prover_artifacts_lazy, load_prover_artifacts_without_pk, load_verifier_artifacts,
+    nullifier_fr, public_inputs_to_instances_with_layout, public_to_verifier_inputs,
+    reduce_be_bytes_to_fr, Attestation, ProofBundle, ProverArtifacts, PublicInputLayout,
+    VerifierArtifacts, VerifierPublicInputs,
 };
 use zkpf_prover::prove_bundle;
 use zkpf_verifier::verify;
 use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
-use zkpf_wallet_state::{
-    WalletState, BlockDelta,
-    circuit::{WalletStateTransitionCircuit, WalletStateTransitionInput, public_instances as wallet_state_instances},
+
+// k256 for secp256k1 ECDSA signature verification
+use k256::ecdsa::{
+    signature::Verifier as K256Verifier,
+    Signature as K256Signature,
+    VerifyingKey as K256VerifyingKey,
 };
 
 const DEFAULT_MANIFEST_PATH: &str = "artifacts/manifest.json";
@@ -83,82 +84,37 @@ const CODE_SESSION_STATE: &str = "SESSION_STATE_INVALID";
 const CODE_ARTIFACT_NOT_FOUND: &str = "ARTIFACT_NOT_FOUND";
 const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
 const PROVIDER_BALANCE_RAIL_ID: &str = "PROVIDER_BALANCE_V2";
-const STARKNET_L2_RAIL_ID: &str = "STARKNET_L2";
 const PROVIDER_SESSION_TTL_SECS: u64 = 15 * 60;
 const PROVIDER_SESSION_RETENTION_SECS: u64 = 60 * 60;
 const DEFAULT_DEEP_LINK_SCHEME: &str = "zashi";
+
+// ============================================================
+// Input Validation Constants
+// ============================================================
+//
+// These limits prevent denial-of-service attacks via excessively large inputs
+// and help catch malformed requests early.
+
+/// Maximum proof size in bytes (current circuit produces ~1.5KB proofs)
+const MAX_PROOF_SIZE_BYTES: usize = 16 * 1024; // 16 KB - generous headroom
+
+/// Maximum public inputs size in bytes
+const MAX_PUBLIC_INPUTS_SIZE_BYTES: usize = 4 * 1024; // 4 KB
+
+/// Maximum hex string length for 32-byte values (64 chars + optional "0x" prefix)
+const MAX_HEX_32_LEN: usize = 66;
+
+/// Maximum category/label/rail_id length in policy composition
+const MAX_POLICY_STRING_LEN: usize = 256;
+
+/// Maximum account tag length (hex string for 32 bytes)
+const MAX_ACCOUNT_TAG_LEN: usize = 66;
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
 static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
 static RAILS: Lazy<RailRegistry> = Lazy::new(RailRegistry::from_env);
 static ATTESTATION_SERVICE: Lazy<Option<OnchainAttestationService>> =
     Lazy::new(OnchainAttestationService::from_env);
-
-// ============================================================
-// Wallet State Circuit Cache (IPA-style, deterministic params)
-// ============================================================
-// For Halo2-style recursion/PCD, we use a deterministic setup.
-// The KZG params are generated from a fixed seed to ensure that
-// proving and verification use the same structured reference string.
-// NOTE: In production, these should be loaded from pre-generated artifacts.
-
-use std::sync::OnceLock;
-use halo2_proofs_axiom::{
-    plonk::{ProvingKey, VerifyingKey},
-    poly::kzg::commitment::ParamsKZG,
-};
-use halo2curves_axiom::bn256::Bn256;
-
-/// Wallet state circuit parameters cache.
-/// Using deterministic params ensures prove/verify consistency.
-static WALLET_STATE_CACHE: OnceLock<WalletStateCircuitCache> = OnceLock::new();
-
-/// Break points type from zkpf_wallet_state.
-use zkpf_wallet_state::WalletStateBreakPoints;
-
-struct WalletStateCircuitCache {
-    params: ParamsKZG<Bn256>,
-    vk: VerifyingKey<halo2curves_axiom::bn256::G1Affine>,
-    pk: ProvingKey<halo2curves_axiom::bn256::G1Affine>,
-    /// Break points from keygen, required for efficient proving.
-    break_points: WalletStateBreakPoints,
-}
-
-impl WalletStateCircuitCache {
-    fn get_or_init() -> &'static Self {
-        WALLET_STATE_CACHE.get_or_init(|| {
-            use halo2_proofs_axiom::plonk::{keygen_pk, keygen_vk};
-            use rand::SeedableRng;
-            use rand_chacha::ChaCha20Rng;
-            
-            eprintln!("zkpf-backend: Initializing wallet state circuit cache (first PCD operation)...");
-            
-            // Use a deterministic seed for reproducible params.
-            // This ensures that proving and verification use the same SRS.
-            // The seed is derived from the circuit version for forward compatibility.
-            const WALLET_STATE_PARAM_SEED: [u8; 32] = *b"zkpf_wallet_state_v1_2024_seed!!";
-            let mut rng = ChaCha20Rng::from_seed(WALLET_STATE_PARAM_SEED);
-            
-            let k = 17u32;
-            let params = ParamsKZG::<Bn256>::setup(k, &mut rng);
-            
-            let empty_circuit = WalletStateTransitionCircuit::default();
-            let vk = keygen_vk(&params, &empty_circuit)
-                .expect("wallet state: failed to generate verifying key");
-            let pk = keygen_pk(&params, vk.clone(), &empty_circuit)
-                .expect("wallet state: failed to generate proving key");
-            
-            // Extract break points after keygen for use in proving.
-            // This is essential for halo2-base circuits - the prover needs to know
-            // how the circuit was laid out during keygen.
-            let break_points = empty_circuit.extract_break_points_after_keygen();
-            
-            eprintln!("zkpf-backend: Wallet state circuit cache initialized (break points: {} phases)", break_points.len());
-            
-            WalletStateCircuitCache { params, vk, pk, break_points }
-        })
-    }
-}
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct RailManifestEntry {
@@ -211,7 +167,21 @@ impl RailRegistry {
         // through the existing custodial circuit.
         map.insert(String::new(), default.clone());
         map.insert(DEFAULT_RAIL_ID.to_string(), default.clone());
-        map.insert(PROVIDER_BALANCE_RAIL_ID.to_string(), default);
+        map.insert(PROVIDER_BALANCE_RAIL_ID.to_string(), default.clone());
+
+        // Development mode: register common rail IDs so they are recognized even
+        // without a full multi-rail manifest. This allows the verification flow
+        // to proceed and return meaningful errors (e.g., public input layout
+        // mismatch, cryptographic verification failure) instead of "unknown rail_id".
+        //
+        // For production use with real Orchard proofs, configure ZKPF_MULTI_RAIL_MANIFEST_PATH
+        // to point to a manifest with proper Orchard circuit artifacts.
+        let orchard_dev = RailVerifier {
+            circuit_version: ARTIFACTS.manifest.circuit_version,
+            layout: PublicInputLayout::V2Orchard,
+            artifacts: RailArtifacts::Prover(ARTIFACTS.clone()),
+        };
+        map.insert(RAIL_ID_ZCASH_ORCHARD.to_string(), orchard_dev);
 
         if let Ok(path) = env::var(MULTIRAIL_MANIFEST_ENV) {
             let bytes = fs::read(&path).unwrap_or_else(|err| {
@@ -508,13 +478,31 @@ impl IntoResponse for ApiError {
 }
 
 pub async fn serve() {
+    // Use PORT env var if set (Fly.io sets this), otherwise default to 3000
+    let port = env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    
+    // IMPORTANT: Bind to the port FIRST so Fly.io sees us listening immediately.
+    // This prevents "app is not listening" warnings during artifact loading.
+    let listener = TcpListener::bind(&addr).await.unwrap_or_else(|err| {
+        panic!("zkpf-backend: failed to bind to {}: {}", addr, err);
+    });
+    eprintln!("zkpf-backend: listening on {}", addr);
+    
+    // Now load artifacts (this may take time, but we're already accepting connections)
+    eprintln!("zkpf-backend: loading artifacts (this may take a moment)...");
+    let state = AppState::global();
+    eprintln!("zkpf-backend: artifacts loaded successfully");
+    
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = app_router(AppState::global()).layer(cors);
-    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let app = app_router(state).layer(cors);
+    
+    eprintln!("zkpf-backend: server ready");
+    
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
@@ -522,6 +510,8 @@ pub async fn serve() {
 
 pub fn app_router(state: AppState) -> Router {
     let router = Router::new()
+        // Health check endpoint - responds immediately, no state required
+        .route("/health", get(health_check))
         .route("/zkpf/policies", get(list_policies))
         .route("/zkpf/policies/compose", post(compose_policy_handler))
         .route("/zkpf/params", get(get_params))
@@ -534,15 +524,6 @@ pub fn app_router(state: AppState) -> Router {
         .route("/snap/snap.manifest.json", get(serve_snap_manifest))
         .route("/snap/dist/bundle.js", get(serve_snap_bundle))
         .route("/snap/images/logo.svg", get(serve_snap_logo));
-
-    // Wallet state transition routes (always available)
-    let router = router
-        .route("/zkpf/prove/wallet-state-transition", post(prove_wallet_state_transition_handler))
-        .route("/zkpf/verify/wallet-state-transition", post(verify_wallet_state_transition_handler))
-        // PCD (Proof-Carrying Data) routes
-        .route("/zkpf/pcd/init", post(pcd_init_handler))
-        .route("/zkpf/pcd/update", post(pcd_update_handler))
-        .route("/zkpf/pcd/verify", post(pcd_verify_handler));
 
     let router = if state.artifacts().prover_enabled() {
         router
@@ -561,27 +542,10 @@ pub fn app_router(state: AppState) -> Router {
     let router = router.with_state(state);
 
     // Merge Personhood routes (has its own state)
-    let router = {
-        eprintln!("zkpf-backend: Personhood routes enabled at /api/personhood/*");
-        Router::new()
-            .merge(router)
-            .merge(personhood::personhood_router_with_state())
-    };
-
-    // Merge Mina Rail routes if enabled (after adding state since it has its own state)
-    #[cfg(feature = "mina-rail")]
-    let router = {
-        if let Some(mina_rail_router) = mina_rail::mina_rail_router() {
-            eprintln!("zkpf-backend: Mina Rail routes enabled at /mina-rail/*");
-            Router::new()
-                .merge(router)
-                .merge(mina_rail_router)
-        } else {
-            router
-        }
-    };
-
-    router
+    eprintln!("zkpf-backend: Personhood routes enabled at /api/personhood/*");
+    Router::new()
+        .merge(router)
+        .merge(personhood::personhood_router_with_state())
 }
 
 async fn get_artifact(
@@ -593,37 +557,50 @@ async fn get_artifact(
         "params" => artifacts.params_path(),
         "vk" => artifacts.vk_path(),
         "pk" => artifacts.pk_path(),
-        other => {
+        _ => {
             return Err(ApiError::bad_request(
-                CODE_INTERNAL,
-                format!("unknown artifact kind '{}'", other),
+                CODE_ARTIFACT_NOT_FOUND,
+                "unknown artifact kind",
             ))
         }
     };
 
     let file = File::open(&path).await.map_err(|err| {
-        // Return 404 for missing files, 500 for other errors
+        // Log the actual error for debugging but don't expose to client
         if err.kind() == std::io::ErrorKind::NotFound {
-            ApiError::not_found(format!(
-                "artifact '{}' not available on this deployment (file not found at {})",
-                kind,
-                path.display()
-            ))
+            eprintln!("artifact '{}' not found at {}", kind, path.display());
+            ApiError::not_found("artifact not available on this deployment")
         } else {
-            ApiError::internal(format!(
-                "failed to open artifact at {}: {err}",
-                path.display()
-            ))
+            eprintln!("failed to open artifact '{}': {}", kind, err);
+            ApiError::internal("failed to load artifact")
         }
     })?;
 
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
+    // Get the artifact hash for ETag
+    let etag = match kind.as_str() {
+        "params" => &artifacts.manifest.params.blake3,
+        "vk" => &artifacts.manifest.vk.blake3,
+        "pk" => &artifacts.manifest.pk.blake3,
+        _ => &artifacts.manifest.params.blake3,
+    };
+
     let mut response = Response::new(body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),
+    );
+    // Add ETag for cache validation
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{}\"", etag)).unwrap_or_else(|_| HeaderValue::from_static("\"unknown\"")),
+    );
+    // Allow caching but require revalidation to ensure clients get fresh artifacts after updates
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=3600, must-revalidate"),
     );
 
     Ok(response)
@@ -812,23 +789,32 @@ async fn compose_policy_handler(
             "policy_id": requested_id,
         });
 
+        // Insert into in-memory store FIRST (before file write) so verification
+        // can proceed even if file persistence fails (e.g., on read-only filesystems)
+        let expectations = PolicyExpectations {
+            threshold_raw: req.threshold_raw,
+            required_currency_code: req.required_currency_code,
+            verifier_scope_id: req.verifier_scope_id,
+            policy_id: requested_id,
+            category: Some(req.category.clone()),
+            rail_id: Some(req.rail_id.clone()),
+            label: Some(req.label.clone()),
+            options: Some(req.options.clone()),
+        };
+        state.policy_store().insert(expectations);
+
+        // Try to persist to file (best-effort, non-fatal on failure)
         entries.push(entry.clone());
-
-        let json_bytes = serde_json::to_vec_pretty(&entries).map_err(|err| {
-            ApiError::internal(format!(
-                "failed to serialize policy configuration to {}: {}",
-                path_ref.display(),
-                err
-            ))
-        })?;
-
-        fs::write(path_ref, json_bytes).map_err(|err| {
-            ApiError::internal(format!(
-                "failed to write policy configuration to {}: {}",
-                path_ref.display(),
-                err
-            ))
-        })?;
+        if let Ok(json_bytes) = serde_json::to_vec_pretty(&entries) {
+            if let Err(err) = fs::write(path_ref, &json_bytes) {
+                eprintln!(
+                    "warning: failed to persist policy {} to {}: {} (in-memory store updated)",
+                    requested_id,
+                    path_ref.display(),
+                    err
+                );
+            }
+        }
 
         (entry, true, requested_id)
     } else {
@@ -846,40 +832,52 @@ async fn compose_policy_handler(
             "policy_id": new_policy_id,
         });
 
+        // Insert into in-memory store FIRST (before file write) so verification
+        // can proceed even if file persistence fails (e.g., on read-only filesystems)
+        let expectations = PolicyExpectations {
+            threshold_raw: req.threshold_raw,
+            required_currency_code: req.required_currency_code,
+            verifier_scope_id: req.verifier_scope_id,
+            policy_id: new_policy_id,
+            category: Some(req.category.clone()),
+            rail_id: Some(req.rail_id.clone()),
+            label: Some(req.label.clone()),
+            options: Some(req.options.clone()),
+        };
+        state.policy_store().insert(expectations);
+
+        // Try to persist to file (best-effort, non-fatal on failure)
         entries.push(entry.clone());
-
-        let json_bytes = serde_json::to_vec_pretty(&entries).map_err(|err| {
-            ApiError::internal(format!(
-                "failed to serialize policy configuration to {}: {}",
-                path_ref.display(),
-                err
-            ))
-        })?;
-
-        fs::write(path_ref, json_bytes).map_err(|err| {
-            ApiError::internal(format!(
-                "failed to write policy configuration to {}: {}",
-                path_ref.display(),
-                err
-            ))
-        })?;
+        if let Ok(json_bytes) = serde_json::to_vec_pretty(&entries) {
+            if let Err(err) = fs::write(path_ref, &json_bytes) {
+                eprintln!(
+                    "warning: failed to persist policy {} to {}: {} (in-memory store updated)",
+                    new_policy_id,
+                    path_ref.display(),
+                    err
+                );
+            }
+        }
 
         (entry, true, new_policy_id)
     };
 
-    let expectations = PolicyExpectations {
-        threshold_raw: req.threshold_raw,
-        required_currency_code: req.required_currency_code,
-        verifier_scope_id: req.verifier_scope_id,
-        policy_id,
-        category: Some(req.category.clone()),
-        rail_id: Some(req.rail_id.clone()),
-        label: Some(req.label.clone()),
-        options: Some(req.options.clone()),
-    };
-    // Ensure the in-memory policy store is aware of this policy for subsequent verify calls.
-    if state.policy_store().get(policy_id).is_none() {
-        state.policy_store().insert(expectations);
+    // Policy was already inserted into store above for new policies.
+    // For existing policies returned from the match, ensure store is also updated.
+    if !created {
+        let expectations = PolicyExpectations {
+            threshold_raw: req.threshold_raw,
+            required_currency_code: req.required_currency_code,
+            verifier_scope_id: req.verifier_scope_id,
+            policy_id,
+            category: Some(req.category.clone()),
+            rail_id: Some(req.rail_id.clone()),
+            label: Some(req.label.clone()),
+            options: Some(req.options.clone()),
+        };
+        if state.policy_store().get(policy_id).is_none() {
+            state.policy_store().insert(expectations);
+        }
     }
 
     let summary = req.label;
@@ -892,6 +890,7 @@ async fn compose_policy_handler(
 }
 
 fn validate_policy_compose_request(req: &PolicyComposeRequest) -> Result<(), ApiError> {
+    // Non-empty checks
     if req.category.trim().is_empty() {
         return Err(ApiError::bad_request(
             CODE_POLICY_COMPOSE_INVALID,
@@ -909,6 +908,45 @@ fn validate_policy_compose_request(req: &PolicyComposeRequest) -> Result<(), Api
             CODE_POLICY_COMPOSE_INVALID,
             "label must not be empty",
         ));
+    }
+
+    // Length limits to prevent abuse
+    if req.category.len() > MAX_POLICY_STRING_LEN {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "category exceeds maximum allowed length",
+        ));
+    }
+    if req.rail_id.len() > MAX_POLICY_STRING_LEN {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "rail_id exceeds maximum allowed length",
+        ));
+    }
+    if req.label.len() > MAX_POLICY_STRING_LEN {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "label exceeds maximum allowed length",
+        ));
+    }
+
+    // Validate options JSON is not excessively large (limit to 10KB)
+    let options_str = serde_json::to_string(&req.options).unwrap_or_default();
+    if options_str.len() > 10 * 1024 {
+        return Err(ApiError::bad_request(
+            CODE_POLICY_COMPOSE_INVALID,
+            "options exceeds maximum allowed size",
+        ));
+    }
+
+    // Validate policy_id if provided (must be > 0)
+    if let Some(policy_id) = req.policy_id {
+        if policy_id == 0 {
+            return Err(ApiError::bad_request(
+                CODE_POLICY_COMPOSE_INVALID,
+                "policy_id must be greater than 0",
+            ));
+        }
     }
 
     Ok(())
@@ -1467,6 +1505,20 @@ async fn verify_handler(
     State(state): State<AppState>,
     Json(req): Json<VerifyRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
+    // Input size validation
+    if req.proof.len() > MAX_PROOF_SIZE_BYTES {
+        return Err(ApiError::bad_request(
+            CODE_PROOF_INVALID,
+            "proof exceeds maximum allowed size",
+        ));
+    }
+    if req.public_inputs.len() > MAX_PUBLIC_INPUTS_SIZE_BYTES {
+        return Err(ApiError::bad_request(
+            CODE_PUBLIC_INPUTS,
+            "public_inputs exceeds maximum allowed size",
+        ));
+    }
+
     // Legacy /zkpf/verify endpoint is bound to the default custodial rail.
     let rail = RAILS
         .get("")
@@ -1474,10 +1526,7 @@ async fn verify_handler(
     if req.circuit_version != rail.circuit_version {
         return Err(ApiError::bad_request(
             CODE_CIRCUIT_VERSION,
-            format!(
-                "circuit_version mismatch: expected {}, got {}",
-                rail.circuit_version, req.circuit_version
-            ),
+            "circuit version mismatch",
         ));
     }
 
@@ -1486,11 +1535,8 @@ async fn verify_handler(
         .get(req.policy_id)
         .ok_or_else(|| ApiError::policy_not_found(req.policy_id))?;
 
-    let public_inputs = deserialize_verifier_public_inputs(&req.public_inputs).map_err(|err| {
-        ApiError::bad_request(
-            CODE_PUBLIC_INPUTS,
-            format!("invalid public_inputs encoding: {err}"),
-        )
+    let public_inputs = deserialize_verifier_public_inputs(&req.public_inputs).map_err(|_| {
+        ApiError::bad_request(CODE_PUBLIC_INPUTS, "invalid public_inputs encoding")
     })?;
 
     let response = process_verification(&state, rail, &policy, &public_inputs, &req.proof)?;
@@ -1501,29 +1547,49 @@ async fn verify_bundle_handler(
     State(state): State<AppState>,
     Json(req): Json<VerifyBundleRequest>,
 ) -> Result<Json<VerifyResponse>, ApiError> {
-    let rail = RAILS.get(&req.bundle.rail_id).ok_or_else(|| {
-        ApiError::bad_request(
+    // Input size validation
+    if req.bundle.proof.len() > MAX_PROOF_SIZE_BYTES {
+        return Err(ApiError::bad_request(
+            CODE_PROOF_INVALID,
+            "proof exceeds maximum allowed size",
+        ));
+    }
+    // Validate rail_id length to prevent abuse
+    if req.bundle.rail_id.len() > MAX_POLICY_STRING_LEN {
+        return Err(ApiError::bad_request(
             CODE_RAIL_UNKNOWN,
-            format!(
-                "unknown rail_id '{}'; configure it via {}",
-                req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
-            ),
-        )
+            "rail_id exceeds maximum allowed length",
+        ));
+    }
+
+    // Determine effective rail_id based on bundle content.
+    // If bundle claims to be ZCASH_ORCHARD but lacks required Orchard fields,
+    // fall back to V1 (custodial) layout to support legacy or demo bundles.
+    let effective_rail_id = if req.bundle.rail_id == RAIL_ID_ZCASH_ORCHARD
+        && (req.bundle.public_inputs.snapshot_block_height.is_none()
+            || req.bundle.public_inputs.snapshot_anchor_orchard.is_none())
+    {
+        eprintln!(
+            "[ZKPF Warning] Bundle claims rail_id={} but lacks required Orchard fields \
+             (snapshot_block_height={:?}, snapshot_anchor_orchard={:?}). \
+             Falling back to V1 (custodial) layout.",
+            req.bundle.rail_id,
+            req.bundle.public_inputs.snapshot_block_height,
+            req.bundle.public_inputs.snapshot_anchor_orchard.as_ref().map(|_| "present"),
+        );
+        "" // Empty string maps to default custodial rail with V1 layout
+    } else {
+        req.bundle.rail_id.as_str()
+    };
+
+    let rail = RAILS.get(effective_rail_id).ok_or_else(|| {
+        ApiError::bad_request(CODE_RAIL_UNKNOWN, "unknown rail_id")
     })?;
 
     if req.bundle.circuit_version != rail.circuit_version {
         return Err(ApiError::bad_request(
             CODE_CIRCUIT_VERSION,
-            format!(
-                "circuit_version mismatch for rail {}: expected {}, got {}",
-                if req.bundle.rail_id.is_empty() {
-                    DEFAULT_RAIL_ID
-                } else {
-                    &req.bundle.rail_id
-                },
-                rail.circuit_version,
-                req.bundle.circuit_version
-            ),
+            "circuit version mismatch",
         ));
     }
 
@@ -1552,30 +1618,57 @@ async fn attest_handler(
         snapshot_id: req.snapshot_id.clone(),
     };
 
+    // Input validation
+    if req.bundle.proof.len() > MAX_PROOF_SIZE_BYTES {
+        return Json(AttestResponse::failure(
+            base,
+            CODE_PROOF_INVALID,
+            "proof exceeds maximum allowed size",
+        ));
+    }
+    if req.bundle.rail_id.len() > MAX_POLICY_STRING_LEN {
+        return Json(AttestResponse::failure(
+            base,
+            CODE_RAIL_UNKNOWN,
+            "rail_id exceeds maximum allowed length",
+        ));
+    }
+
     let service = match ATTESTATION_SERVICE.as_ref() {
         Some(service) => service,
         None => {
             return Json(AttestResponse::failure(
                 base,
                 CODE_ATTESTATION_DISABLED,
-                format!(
-                    "on-chain attestation is not configured; set {}=1 and related environment variables",
-                    ATTESTATION_ENABLED_ENV
-                ),
+                "on-chain attestation is not configured",
             ))
         }
     };
 
-    let rail = match RAILS.get(&req.bundle.rail_id) {
+    // Determine effective rail_id based on bundle content.
+    // If bundle claims to be ZCASH_ORCHARD but lacks required Orchard fields,
+    // fall back to V1 (custodial) layout to support legacy or demo bundles.
+    let effective_rail_id = if req.bundle.rail_id == RAIL_ID_ZCASH_ORCHARD
+        && (req.bundle.public_inputs.snapshot_block_height.is_none()
+            || req.bundle.public_inputs.snapshot_anchor_orchard.is_none())
+    {
+        eprintln!(
+            "[ZKPF Warning] Attest: Bundle claims rail_id={} but lacks required Orchard fields. \
+             Falling back to V1 (custodial) layout.",
+            req.bundle.rail_id,
+        );
+        "" // Empty string maps to default custodial rail with V1 layout
+    } else {
+        req.bundle.rail_id.as_str()
+    };
+
+    let rail = match RAILS.get(effective_rail_id) {
         Some(rail) => rail,
         None => {
             return Json(AttestResponse::failure(
                 base,
                 CODE_RAIL_UNKNOWN,
-                format!(
-                    "unknown rail_id '{}'; configure it via {}",
-                    req.bundle.rail_id, MULTIRAIL_MANIFEST_ENV
-                ),
+                "unknown rail_id",
             ))
         }
     };
@@ -1584,16 +1677,7 @@ async fn attest_handler(
         return Json(AttestResponse::failure(
             base,
             CODE_CIRCUIT_VERSION,
-            format!(
-                "circuit_version mismatch for rail {}: expected {}, got {}",
-                if req.bundle.rail_id.is_empty() {
-                    DEFAULT_RAIL_ID
-                } else {
-                    &req.bundle.rail_id
-                },
-                rail.circuit_version,
-                req.bundle.circuit_version
-            ),
+            "circuit version mismatch",
         ));
     }
 
@@ -1682,6 +1766,25 @@ async fn prove_bundle_handler(
     Ok(Json(bundle))
 }
 
+/// Generate a proof bundle for a given circuit input.
+///
+/// # Nullifier Recording Design Decision
+///
+/// This function intentionally does NOT record the nullifier in the store.
+/// Nullifiers are only recorded upon successful verification via `process_verification`.
+///
+/// Rationale:
+/// 1. **Separation of concerns**: Proving generates the cryptographic proof, while
+///    verification is the authoritative check that should record nullifier consumption.
+/// 2. **Client-side proving support**: When clients generate proofs locally (WASM),
+///    the backend prover is not involved, so recording here would be inconsistent.
+/// 3. **Replay protection**: The verifier is the trust boundary - it's the entity
+///    that decides whether a proof is valid and the nullifier should be consumed.
+/// 4. **Idempotency**: Clients may call prove multiple times (retries, testing)
+///    without permanently consuming their nullifier.
+///
+/// The `already_spent` check here is an optimization to fail-fast and avoid
+/// generating a proof that will be rejected during verification anyway.
 fn prove_with_policy(
     state: &AppState,
     policy: &PolicyExpectations,
@@ -1689,14 +1792,16 @@ fn prove_with_policy(
 ) -> Result<ProofBundle, ApiError> {
     let verifier_inputs = public_to_verifier_inputs(&input.public);
 
-    if let Err(err) = policy.validate_against(&verifier_inputs) {
-        return Err(ApiError::bad_request(CODE_POLICY_MISMATCH, err));
+    if policy.validate_against(&verifier_inputs).is_err() {
+        return Err(ApiError::bad_request(CODE_POLICY_MISMATCH, "policy validation failed"));
     }
 
-    if let Err(err) = validate_epoch(state.epoch_config(), &verifier_inputs) {
-        return Err(ApiError::bad_request(CODE_EPOCH_DRIFT, err));
+    if validate_epoch(state.epoch_config(), &verifier_inputs).is_err() {
+        return Err(ApiError::bad_request(CODE_EPOCH_DRIFT, "epoch validation failed"));
     }
 
+    // Optimistic pre-check: avoid generating a proof that will be rejected.
+    // Note: Nullifier is NOT recorded here - see function doc comment.
     let nullifier_key = NullifierKey::from_inputs(&verifier_inputs);
     match state.nullifier_store().already_spent(&nullifier_key) {
         Ok(true) => {
@@ -1706,29 +1811,33 @@ fn prove_with_policy(
             ))
         }
         Ok(false) => {}
-        Err(err) => return Err(ApiError::nullifier_store(err)),
+        Err(_) => return Err(ApiError::nullifier_store("nullifier store error")),
     }
 
     let artifacts = state.artifacts();
     let pk = artifacts
         .proving_key()
-        .map_err(|err| ApiError::prover_disabled(err.to_string()))?;
+        .map_err(|_| ApiError::prover_disabled("prover is not available"))?;
     Ok(prove_bundle(&artifacts.params, pk.as_ref(), input))
 }
 
 fn parse_hex_32(value: &str) -> Result<[u8; 32], ApiError> {
     let trimmed = value.trim();
-    let without_prefix = trimmed.strip_prefix("0x").unwrap_or(trimmed);
-    let bytes = hex::decode(without_prefix).map_err(|err| {
-        ApiError::bad_request(
+    // Length check before decoding to prevent DoS via extremely long strings
+    if trimmed.len() > MAX_HEX_32_LEN {
+        return Err(ApiError::bad_request(
             CODE_PUBLIC_INPUTS,
-            format!("invalid 32-byte hex string: {err}"),
-        )
+            "hex string exceeds maximum allowed length",
+        ));
+    }
+    let without_prefix = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+    let bytes = hex::decode(without_prefix).map_err(|_| {
+        ApiError::bad_request(CODE_PUBLIC_INPUTS, "invalid hex encoding")
     })?;
     if bytes.len() != 32 {
         return Err(ApiError::bad_request(
             CODE_PUBLIC_INPUTS,
-            format!("expected 32 bytes, got {}", bytes.len()),
+            "expected 32 bytes",
         ));
     }
     let mut out = [0u8; 32];
@@ -1793,12 +1902,26 @@ async fn zashi_session_submit(
         ));
     }
 
-    if let Err(err) = attestation.verify_message_hash() {
-        let message = err.to_string();
+    // Verify the attestation message hash is correctly computed
+    if let Err(_) = attestation.verify_message_hash() {
         state
             .provider_sessions()
-            .finish_failure(&req.session_id, message.clone());
-        return Err(ApiError::bad_request(CODE_PUBLIC_INPUTS, message));
+            .finish_failure(&req.session_id, "invalid attestation hash".into());
+        return Err(ApiError::bad_request(CODE_PUBLIC_INPUTS, "invalid attestation hash"));
+    }
+
+    // Verify the ECDSA signature over the message hash.
+    // This provides early rejection of invalid signatures before expensive proof
+    // generation. The circuit also verifies, so this is defense-in-depth.
+    if verify_secp256k1_ecdsa(
+        &attestation.custodian_pubkey,
+        &attestation.signature,
+        &attestation.message_hash,
+    ).is_err() {
+        state
+            .provider_sessions()
+            .finish_failure(&req.session_id, "invalid attestation signature".into());
+        return Err(ApiError::bad_request(CODE_PUBLIC_INPUTS, "invalid attestation signature"));
     }
 
     let witness = attestation.to_witness();
@@ -1870,6 +1993,14 @@ async fn provider_prove_balance_handler(
     State(state): State<AppState>,
     Json(req): Json<ProviderProveBalanceRequest>,
 ) -> Result<Json<ProofBundle>, ApiError> {
+    // Validate account_tag length before processing
+    if req.attestation.account_tag.len() > MAX_ACCOUNT_TAG_LEN {
+        return Err(ApiError::bad_request(
+            CODE_PUBLIC_INPUTS,
+            "account_tag exceeds maximum allowed length",
+        ));
+    }
+
     // Look up the policy to determine threshold, currency, scope, and the
     // required provider identifier (re-using the custodial ID field).
     let policy = state
@@ -1942,6 +2073,15 @@ fn process_verification(
     public_inputs: &VerifierPublicInputs,
     proof: &[u8],
 ) -> Result<VerifyResponse, ApiError> {
+    // Input size validation to prevent DoS
+    if proof.len() > MAX_PROOF_SIZE_BYTES {
+        return Ok(VerifyResponse::failure(
+            rail.circuit_version,
+            CODE_PROOF_INVALID,
+            "proof exceeds maximum allowed size",
+        ));
+    }
+
     if let Err(err) = policy.validate_against(public_inputs) {
         return Ok(VerifyResponse::failure(
             rail.circuit_version,
@@ -1958,6 +2098,9 @@ fn process_verification(
         ));
     }
 
+    // Optimistic pre-check for already-spent nullifiers.
+    // This allows fast rejection before expensive proof verification.
+    // The authoritative check happens atomically in record_atomic below.
     let nullifier_key = NullifierKey::from_inputs(public_inputs);
     match state.nullifier_store().already_spent(&nullifier_key) {
         Ok(true) => {
@@ -1973,7 +2116,14 @@ fn process_verification(
 
     let instances =
         public_inputs_to_instances_with_layout(rail.layout, public_inputs).map_err(|err| {
-            ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid public inputs: {err}"))
+            eprintln!(
+                "[ZKPF Error] public_inputs_to_instances_with_layout failed: layout={:?}, error={}",
+                rail.layout, err
+            );
+            ApiError::bad_request(
+                CODE_PUBLIC_INPUTS,
+                format!("invalid public inputs for layout {:?}: {}", rail.layout, err),
+            )
         })?;
 
     let (params, vk) = match &rail.artifacts {
@@ -1981,22 +2131,52 @@ fn process_verification(
         RailArtifacts::Verifier(a) => (&a.params, &a.vk),
     };
 
+    // Diagnostic logging for proof verification failures
+    eprintln!(
+        "[ZKPF Debug] Verifying proof: circuit_version={}, layout={:?}, proof_len={}, instances_cols={}",
+        rail.circuit_version,
+        rail.layout,
+        proof.len(),
+        instances.len()
+    );
+    eprintln!(
+        "[ZKPF Debug] Public inputs: threshold={}, currency={}, epoch={}, scope={}, policy={}",
+        public_inputs.threshold_raw,
+        public_inputs.required_currency_code,
+        public_inputs.current_epoch,
+        public_inputs.verifier_scope_id,
+        public_inputs.policy_id
+    );
+    eprintln!(
+        "[ZKPF Debug] Nullifier (first 8 bytes): {:?}",
+        &public_inputs.nullifier[..8]
+    );
+    eprintln!(
+        "[ZKPF Debug] Custodian pubkey hash (first 8 bytes): {:?}",
+        &public_inputs.custodian_pubkey_hash[..8]
+    );
+
     if !verify(params, vk, proof, &instances) {
+        eprintln!("[ZKPF Debug] VERIFICATION FAILED!");
         return Ok(VerifyResponse::failure(
             rail.circuit_version,
             CODE_PROOF_INVALID,
             "proof verification failed",
         ));
     }
+    eprintln!("[ZKPF Debug] Verification succeeded");
 
-    match state.nullifier_store().record(nullifier_key) {
+    // Atomic nullifier recording using compare-and-swap.
+    // This prevents race conditions where two concurrent requests could both
+    // pass the optimistic already_spent check but only one should succeed.
+    match state.nullifier_store().record_atomic(nullifier_key) {
         Ok(()) => Ok(VerifyResponse::success(rail.circuit_version)),
         Err(err) if err == NULLIFIER_SPENT_ERR => Ok(VerifyResponse::failure(
             rail.circuit_version,
             CODE_NULLIFIER_REPLAY,
-            err,
+            NULLIFIER_SPENT_ERR,
         )),
-        Err(err) => Err(ApiError::nullifier_store(err)),
+        Err(_) => Err(ApiError::nullifier_store("nullifier store error")),
     }
 }
 
@@ -2010,8 +2190,12 @@ fn load_artifacts() -> ProverArtifacts {
         env::var(ENABLE_PROVER_ENV).unwrap_or_else(|_| "<unset>".to_string()),
         prover_enabled
     );
+
+    // Use lazy loading for the proving key (~700MB) to reduce startup memory.
+    // The pk will be loaded on-demand when the first proof is requested.
+    // This allows the server to start with ~65MB (params + vk) instead of ~765MB.
     let loader = if prover_enabled {
-        load_prover_artifacts
+        load_prover_artifacts_lazy
     } else {
         load_prover_artifacts_without_pk
     };
@@ -2128,6 +2312,49 @@ fn blake3_32(input: &[u8]) -> [u8; 32] {
     *hash.as_bytes()
 }
 
+/// Verify a secp256k1 ECDSA signature over a message hash.
+///
+/// This provides early rejection of invalid signatures before expensive proof
+/// generation. The circuit also verifies the signature, so this is a defense-in-depth
+/// measure that catches invalid signatures at the API layer.
+///
+/// # Arguments
+/// * `pubkey` - The secp256k1 public key (x, y coordinates)
+/// * `signature` - The ECDSA signature (r, s components)
+/// * `message_hash` - The 32-byte message hash that was signed
+///
+/// # Returns
+/// * `Ok(())` if signature is valid
+/// * `Err(String)` with a generic error message (to avoid leaking information)
+fn verify_secp256k1_ecdsa(
+    pubkey: &Secp256k1Pubkey,
+    signature: &EcdsaSignature,
+    message_hash: &[u8; 32],
+) -> Result<(), String> {
+    // Construct uncompressed SEC1 public key: 0x04 || x || y
+    let mut pubkey_bytes = [0u8; 65];
+    pubkey_bytes[0] = 0x04;
+    pubkey_bytes[1..33].copy_from_slice(&pubkey.x);
+    pubkey_bytes[33..65].copy_from_slice(&pubkey.y);
+
+    let verifying_key = K256VerifyingKey::from_sec1_bytes(&pubkey_bytes)
+        .map_err(|_| "invalid public key".to_string())?;
+
+    // Construct signature: r || s (64 bytes)
+    let mut sig_bytes = [0u8; 64];
+    sig_bytes[..32].copy_from_slice(&signature.r);
+    sig_bytes[32..].copy_from_slice(&signature.s);
+
+    let sig = K256Signature::from_slice(&sig_bytes)
+        .map_err(|_| "invalid signature format".to_string())?;
+
+    // Verify signature over the message hash
+    // Note: k256 uses the prehash variant for raw message hashes
+    verifying_key
+        .verify(message_hash, &sig)
+        .map_err(|_| "signature verification failed".to_string())
+}
+
 async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {
     let epoch = state.epoch_config().current_epoch();
     let drift = state.epoch_config().max_drift_secs();
@@ -2135,6 +2362,12 @@ async fn get_epoch(State(state): State<AppState>) -> Json<EpochResponse> {
         current_epoch: epoch,
         max_drift_secs: drift,
     })
+}
+
+/// Health check endpoint for load balancers and orchestrators.
+/// Returns 200 OK immediately without requiring any state initialization.
+async fn health_check() -> &'static str {
+    "ok"
 }
 
 fn snap_dir() -> String {
@@ -2158,10 +2391,12 @@ async fn serve_snap_logo() -> Result<Response, ApiError> {
 
 async fn serve_snap_file(path: &str, content_type: &'static str) -> Result<Response, ApiError> {
     let file = File::open(path).await.map_err(|err| {
+        // Log the actual error for debugging but don't expose path to client
+        eprintln!("snap file not found at {}: {}", path, err);
         ApiError::new(
             StatusCode::NOT_FOUND,
-            CODE_INTERNAL,
-            format!("snap file not found: {path}: {err}"),
+            CODE_ARTIFACT_NOT_FOUND,
+            "snap file not found",
         )
     })?;
 
@@ -2229,6 +2464,11 @@ impl NullifierStore {
         Self::persistent(path)
     }
 
+    /// Check if a nullifier has already been spent (non-authoritative).
+    ///
+    /// This is an optimistic pre-check that can be used to fast-fail before
+    /// expensive proof verification. However, due to potential race conditions,
+    /// the authoritative check is in `record_atomic` which uses compare-and-swap.
     fn already_spent(&self, key: &NullifierKey) -> Result<bool, String> {
         match &*self.backend {
             NullifierBackend::InMemory(store) => Ok(store
@@ -2237,30 +2477,61 @@ impl NullifierStore {
                 .contains(key)),
             NullifierBackend::Persistent(db) => db
                 .contains_key(key.storage_key())
-                .map_err(|err| format!("nullifier db contains_key error: {err}")),
+                .map_err(|_| "nullifier store error".to_string()),
         }
     }
 
-    fn record(&self, key: NullifierKey) -> Result<(), String> {
+    /// Atomically record a nullifier, returning an error if already spent.
+    ///
+    /// This method uses atomic compare-and-swap to prevent race conditions
+    /// where two concurrent requests could both pass the `already_spent` check.
+    /// This is the authoritative nullifier check and should be called after
+    /// proof verification succeeds.
+    ///
+    /// # Race Condition Prevention
+    ///
+    /// The sequence is:
+    /// 1. `already_spent` - optimistic pre-check (fast-fail)
+    /// 2. Proof verification (expensive)
+    /// 3. `record_atomic` - authoritative atomic insert
+    ///
+    /// If two requests race between steps 1 and 3, only one will succeed
+    /// in step 3; the other will get a NULLIFIER_REPLAY error.
+    fn record_atomic(&self, key: NullifierKey) -> Result<(), String> {
         match &*self.backend {
             NullifierBackend::InMemory(store) => {
                 let mut guard = store.lock().expect("nullifier store poisoned");
+                // HashSet::insert returns false if the key was already present
                 if !guard.insert(key) {
                     return Err(NULLIFIER_SPENT_ERR.into());
                 }
                 Ok(())
             }
             NullifierBackend::Persistent(db) => {
-                let inserted = db
-                    .insert(key.storage_key(), &[])
-                    .map_err(|err| format!("nullifier db insert error: {err}"))?;
-                if inserted.is_some() {
-                    return Err(NULLIFIER_SPENT_ERR.into());
+                // Use compare_and_swap for atomic insert-if-not-exists.
+                // old=None means "only insert if key doesn't exist"
+                // new=Some(&[]) is the value to insert
+                let storage_key = key.storage_key();
+                match db.compare_and_swap(
+                    storage_key,
+                    None::<&[u8]>,  // old: key must not exist
+                    Some(&[] as &[u8]),  // new: insert empty value
+                ) {
+                    Ok(Ok(())) => Ok(()), // Successfully inserted (key didn't exist)
+                    Ok(Err(_)) => {
+                        // CAS failed: key already existed
+                        Err(NULLIFIER_SPENT_ERR.into())
+                    }
+                    Err(err) => {
+                        // Database error - don't expose internal details
+                        eprintln!("nullifier db CAS error: {err}");
+                        Err("nullifier store error".into())
+                    }
                 }
-                Ok(())
             }
         }
     }
+
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -2286,576 +2557,4 @@ impl NullifierKey {
         buf[16..].copy_from_slice(&self.nullifier);
         buf
     }
-}
-
-// ============================================================
-// Wallet State Transition API
-// ============================================================
-
-/// Request for proving a wallet state transition.
-#[derive(serde::Deserialize)]
-struct WalletStateTransitionProveRequest {
-    /// Serialized previous wallet state
-    state_prev: WalletState,
-    /// Block delta to apply
-    delta: BlockDelta,
-    /// Current notes in wallet (private witness)
-    current_notes: Vec<zkpf_wallet_state::state::NoteIdentifier>,
-    /// Current nullifiers in wallet (private witness)
-    current_nullifiers: Vec<zkpf_wallet_state::state::NullifierIdentifier>,
-}
-
-// ============================================================
-// PCD (Proof-Carrying Data) Types
-// ============================================================
-//
-// The PCD pattern allows a wallet to maintain a chain of proofs where each
-// new proof commits to the previous state. This implementation uses a
-// "two-step" approach:
-//
-// 1. Verify π_prev off-chain in the zkPF service
-// 2. Generate the new proof referencing S_prev as trusted
-//
-// This is a practical PCD simulation that maintains soundness while avoiding
-// the complexity of full recursive SNARKs (which would require specialized
-// accumulator circuits).
-
-/// Full PCD state including the wallet state and proof chain.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct PcdState {
-    /// The current wallet state
-    pub wallet_state: WalletState,
-    /// Commitment to the current state
-    pub s_current: String,
-    /// The current proof (hex-encoded)
-    pub proof_current: String,
-    /// Circuit version for the proof
-    pub circuit_version: u32,
-    /// Genesis state commitment (for chain verification)
-    pub s_genesis: String,
-    /// Chain length (number of transitions from genesis)
-    pub chain_length: u64,
-}
-
-/// Request for PCD state update (two-step recursive approach).
-#[derive(serde::Deserialize)]
-struct PcdUpdateRequest {
-    /// Current PCD state (includes π_prev)
-    pcd_state: PcdState,
-    /// Block delta to apply
-    delta: BlockDelta,
-    /// Current notes in wallet (private witness)
-    current_notes: Vec<zkpf_wallet_state::state::NoteIdentifier>,
-    /// Current nullifiers in wallet (private witness)
-    current_nullifiers: Vec<zkpf_wallet_state::state::NullifierIdentifier>,
-}
-
-/// Response from PCD update operation.
-#[derive(serde::Serialize)]
-struct PcdUpdateResponse {
-    /// Updated PCD state
-    pcd_state: PcdState,
-    /// Whether the previous proof was verified
-    prev_proof_verified: bool,
-}
-
-/// Request for verifying a PCD chain.
-#[derive(serde::Deserialize)]
-struct PcdVerifyRequest {
-    /// The PCD state to verify
-    pcd_state: PcdState,
-}
-
-/// Response from PCD verification.
-#[derive(serde::Serialize)]
-struct PcdVerifyResponse {
-    /// Whether the current proof is valid
-    valid: bool,
-    /// The verified state commitment
-    s_current: String,
-    /// Chain length
-    chain_length: u64,
-    /// Error message if invalid
-    error: Option<String>,
-}
-
-/// Request for initializing a new PCD chain from genesis.
-#[derive(serde::Deserialize)]
-struct PcdInitRequest {
-    /// Optional initial notes (for non-empty genesis)
-    #[serde(default)]
-    initial_notes: Vec<zkpf_wallet_state::state::NoteIdentifier>,
-}
-
-/// Response from PCD initialization.
-#[derive(serde::Serialize)]
-struct PcdInitResponse {
-    /// The initial PCD state
-    pcd_state: PcdState,
-}
-
-/// Tachyon metadata for spending flow.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct TachyonMetadata {
-    /// Current state commitment
-    pub s_current: String,
-    /// Current proof (hex-encoded)
-    pub proof_current: String,
-    /// Last processed block height
-    pub height: u64,
-    /// Chain length
-    pub chain_length: u64,
-    /// Timestamp of last update
-    pub updated_at: u64,
-}
-
-/// Response from wallet state transition proof generation.
-#[derive(serde::Serialize)]
-struct WalletStateTransitionProveResponse {
-    /// Previous state commitment
-    s_prev: String,
-    /// New state commitment
-    s_next: String,
-    /// Block height processed
-    block_height: u64,
-    /// Serialized proof bytes (hex-encoded)
-    proof: String,
-    /// Circuit version
-    circuit_version: u32,
-}
-
-/// Request for verifying a wallet state transition.
-#[derive(serde::Deserialize)]
-struct WalletStateTransitionVerifyRequest {
-    /// Previous state commitment (hex)
-    s_prev: String,
-    /// New state commitment (hex)
-    s_next: String,
-    /// Block height processed
-    block_height: u64,
-    /// New anchor (hex)
-    anchor_new: String,
-    /// Proof bytes (hex-encoded)
-    proof: String,
-}
-
-/// Response from wallet state transition verification.
-#[derive(serde::Serialize)]
-struct WalletStateTransitionVerifyResponse {
-    valid: bool,
-    error: Option<String>,
-}
-
-/// Handler for POST /zkpf/prove/wallet-state-transition
-async fn prove_wallet_state_transition_handler(
-    Json(req): Json<WalletStateTransitionProveRequest>,
-) -> Result<Json<WalletStateTransitionProveResponse>, ApiError> {
-    use zkpf_wallet_state::state::{compute_notes_root, compute_nullifiers_root};
-    use zkpf_wallet_state::transition::{apply_transition, TransitionWitness};
-
-    // Build the transition witness
-    let witness = TransitionWitness {
-        state_prev: req.state_prev.clone(),
-        current_notes: req.current_notes.clone(),
-        current_nullifiers: req.current_nullifiers.clone(),
-    };
-
-    // Apply the transition to get the new state
-    let result = apply_transition(&witness, &req.delta).map_err(|err| {
-        ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid transition: {}", err))
-    })?;
-
-    // Build circuit input
-    let notes_root_next = compute_notes_root(&result.notes_next);
-    let nullifiers_root_next = compute_nullifiers_root(&result.nullifiers_next);
-
-    let circuit_input = WalletStateTransitionInput::from_transition(
-        &req.state_prev,
-        req.delta.block_height,
-        req.delta.anchor_new,
-        &req.delta.new_notes,
-        &req.delta.spent_nullifiers,
-        notes_root_next,
-        nullifiers_root_next,
-    );
-
-    // Generate proof using the wallet state transition circuit
-    // Note: In production, this would use pre-generated proving keys
-    // For now, we generate keys on-the-fly (slow but functional)
-    let proof = generate_wallet_state_proof(&circuit_input).map_err(|err| {
-        ApiError::internal(format!("proof generation failed: {}", err))
-    })?;
-
-    let s_prev_bytes = req.state_prev.commitment().to_bytes();
-    let s_next_bytes = result.commitment_next.to_bytes();
-
-    Ok(Json(WalletStateTransitionProveResponse {
-        s_prev: format!("0x{}", hex::encode(s_prev_bytes)),
-        s_next: format!("0x{}", hex::encode(s_next_bytes)),
-        block_height: req.delta.block_height,
-        proof: format!("0x{}", hex::encode(&proof)),
-        circuit_version: zkpf_wallet_state::WALLET_STATE_VERSION,
-    }))
-}
-
-/// Handler for POST /zkpf/verify/wallet-state-transition
-async fn verify_wallet_state_transition_handler(
-    Json(req): Json<WalletStateTransitionVerifyRequest>,
-) -> Result<Json<WalletStateTransitionVerifyResponse>, ApiError> {
-    // Parse hex inputs
-    let s_prev_bytes = parse_hex_32(&req.s_prev)?;
-    let s_next_bytes = parse_hex_32(&req.s_next)?;
-    let anchor_new_bytes = parse_hex_32(&req.anchor_new)?;
-
-    let proof_hex = req.proof.strip_prefix("0x").unwrap_or(&req.proof);
-    let proof = hex::decode(proof_hex).map_err(|err| {
-        ApiError::bad_request(CODE_PROOF_INVALID, format!("invalid proof hex: {}", err))
-    })?;
-
-    // Convert to field elements
-    let s_prev = zkpf_common::reduce_be_bytes_to_fr(&s_prev_bytes);
-    let s_next = zkpf_common::reduce_be_bytes_to_fr(&s_next_bytes);
-    let anchor_new = zkpf_common::reduce_be_bytes_to_fr(&anchor_new_bytes);
-
-    // Build public inputs for verification
-    let public_inputs = zkpf_wallet_state::circuit::WalletStateTransitionPublicInputs {
-        s_prev,
-        block_height: req.block_height,
-        anchor_new,
-        s_next,
-    };
-
-    // Verify the proof
-    let valid = verify_wallet_state_proof(&public_inputs, &proof);
-
-    if valid {
-        Ok(Json(WalletStateTransitionVerifyResponse {
-            valid: true,
-            error: None,
-        }))
-    } else {
-        Ok(Json(WalletStateTransitionVerifyResponse {
-            valid: false,
-            error: Some("proof verification failed".to_string()),
-        }))
-    }
-}
-
-/// Generate a wallet state transition proof.
-///
-/// Uses cached proving parameters for consistent proofs. The cache is initialized
-/// on first use with deterministic parameters derived from a fixed seed, ensuring
-/// that proofs generated at different times can be verified correctly.
-///
-/// This approach follows Halo2-style proof generation where the structured reference
-/// string (SRS) is deterministic and reproducible.
-fn generate_wallet_state_proof(
-    input: &WalletStateTransitionInput,
-) -> Result<Vec<u8>, String> {
-    use halo2_proofs_axiom::{
-        plonk::create_proof,
-        poly::kzg::{commitment::KZGCommitmentScheme, multiopen::ProverGWC},
-        transcript::{Blake2bWrite, Challenge255, TranscriptWriterBuffer},
-    };
-    use halo2curves_axiom::bn256::{Bn256, G1Affine};
-    use rand::rngs::OsRng;
-
-    // Use cached params, keys, and break points for consistent prove/verify
-    let cache = WalletStateCircuitCache::get_or_init();
-
-    // Create circuit with witness and break points from keygen.
-    // This is essential for halo2-base: the prover needs the same circuit layout as keygen.
-    let circuit = WalletStateTransitionCircuit::new_prover(input.clone(), cache.break_points.clone());
-
-    // Get instances
-    let instances = wallet_state_instances(&input.public);
-    let instance_refs: Vec<&[halo2curves_axiom::bn256::Fr]> =
-        instances.iter().map(|col| col.as_slice()).collect();
-
-    // Generate proof using cached proving key
-    let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
-    create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<'_, Bn256>, _, _, _, _>(
-        &cache.params,
-        &cache.pk,
-        &[circuit],
-        &[instance_refs.as_slice()],
-        OsRng,
-        &mut transcript,
-    )
-    .map_err(|e| format!("create_proof failed: {:?}", e))?;
-
-    Ok(transcript.finalize())
-}
-
-/// Verify a wallet state transition proof.
-///
-/// Uses cached verification parameters that match the proving parameters.
-/// The deterministic SRS ensures that proofs generated by `generate_wallet_state_proof`
-/// can be correctly verified.
-fn verify_wallet_state_proof(
-    public_inputs: &zkpf_wallet_state::circuit::WalletStateTransitionPublicInputs,
-    proof: &[u8],
-) -> bool {
-    use halo2_proofs_axiom::{
-        plonk::verify_proof,
-        poly::kzg::{
-            multiopen::VerifierGWC,
-            strategy::SingleStrategy,
-        },
-        transcript::{Blake2bRead, Challenge255, TranscriptReadBuffer},
-    };
-    use halo2curves_axiom::bn256::{Bn256, G1Affine};
-
-    // Use cached params and verification key (same as proving)
-    let cache = WalletStateCircuitCache::get_or_init();
-
-    // Build instances
-    let instances = wallet_state_instances(public_inputs);
-    let instance_refs: Vec<&[halo2curves_axiom::bn256::Fr]> =
-        instances.iter().map(|col| col.as_slice()).collect();
-
-    // Verify using cached verification key
-    let mut transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(proof);
-    verify_proof::<_, VerifierGWC<'_, Bn256>, _, _, SingleStrategy<'_, Bn256>>(
-        &cache.params,
-        &cache.vk,
-        SingleStrategy::new(&cache.params),
-        &[instance_refs.as_slice()],
-        &mut transcript,
-    )
-    .is_ok()
-}
-
-// ============================================================
-// PCD Handlers
-// ============================================================
-
-/// Handler for POST /zkpf/pcd/init - Initialize a new PCD chain from genesis
-async fn pcd_init_handler(
-    Json(req): Json<PcdInitRequest>,
-) -> Result<Json<PcdInitResponse>, ApiError> {
-    use zkpf_wallet_state::state::{compute_notes_root, WALLET_STATE_VERSION};
-
-    // Create genesis wallet state
-    let notes_root = compute_notes_root(&req.initial_notes);
-    let genesis_state = WalletState::new(
-        0,
-        halo2curves_axiom::bn256::Fr::zero(),
-        notes_root,
-        halo2curves_axiom::bn256::Fr::zero(),
-        WALLET_STATE_VERSION,
-    );
-
-    // Generate initial proof for genesis -> block 1 transition
-    // For genesis, we create a special "bootstrap" proof
-    let anchor_new = halo2curves_axiom::bn256::Fr::zero();
-    
-    let circuit_input = WalletStateTransitionInput::from_transition(
-        &genesis_state,
-        1, // First block
-        anchor_new,
-        &req.initial_notes,
-        &[],
-        notes_root,
-        halo2curves_axiom::bn256::Fr::zero(),
-    );
-
-    let proof = generate_wallet_state_proof(&circuit_input).map_err(|err| {
-        ApiError::internal(format!("genesis proof generation failed: {}", err))
-    })?;
-
-    let s_genesis = genesis_state.commitment();
-    let s_genesis_hex = format!("0x{}", hex::encode(s_genesis.to_bytes()));
-    
-    // After the transition, we have the new state
-    let new_state = WalletState::new(
-        1,
-        anchor_new,
-        notes_root,
-        halo2curves_axiom::bn256::Fr::zero(),
-        WALLET_STATE_VERSION,
-    );
-    let s_current = new_state.commitment();
-    let s_current_hex = format!("0x{}", hex::encode(s_current.to_bytes()));
-
-    let pcd_state = PcdState {
-        wallet_state: new_state,
-        s_current: s_current_hex,
-        proof_current: format!("0x{}", hex::encode(&proof)),
-        circuit_version: WALLET_STATE_VERSION,
-        s_genesis: s_genesis_hex,
-        chain_length: 1,
-    };
-
-    Ok(Json(PcdInitResponse { pcd_state }))
-}
-
-/// Handler for POST /zkpf/pcd/update - Update PCD state with new block data
-///
-/// This implements the two-step recursive approach:
-/// 1. Verify π_prev off-chain
-/// 2. Generate new proof referencing S_prev as trusted
-async fn pcd_update_handler(
-    Json(req): Json<PcdUpdateRequest>,
-) -> Result<Json<PcdUpdateResponse>, ApiError> {
-    use zkpf_wallet_state::state::{compute_notes_root, compute_nullifiers_root, WALLET_STATE_VERSION};
-    use zkpf_wallet_state::transition::{apply_transition, TransitionWitness};
-
-    // Step 1: Verify the previous proof (off-chain verification)
-    let prev_proof_hex = req.pcd_state.proof_current.strip_prefix("0x")
-        .unwrap_or(&req.pcd_state.proof_current);
-    let prev_proof = hex::decode(prev_proof_hex).map_err(|err| {
-        ApiError::bad_request(CODE_PROOF_INVALID, format!("invalid previous proof hex: {}", err))
-    })?;
-
-    let s_prev_hex = req.pcd_state.s_current.strip_prefix("0x")
-        .unwrap_or(&req.pcd_state.s_current);
-    let s_prev_bytes: [u8; 32] = hex::decode(s_prev_hex)
-        .map_err(|e| ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid s_prev: {}", e)))?
-        .try_into()
-        .map_err(|_| ApiError::bad_request(CODE_PUBLIC_INPUTS, "s_prev must be 32 bytes"))?;
-
-    // For verification, we need to reconstruct the public inputs
-    // The previous proof proves: S_prev -> S_current
-    // We verify by checking the proof against the claimed S_current
-    let s_prev_fr = zkpf_common::reduce_be_bytes_to_fr(&s_prev_bytes);
-    
-    // Reconstruct the public inputs from the previous transition
-    // Since we stored the new state in wallet_state, the previous proof was:
-    // (S_{n-1}, block_height_prev, anchor_prev) -> S_n
-    // We can verify by checking the output matches s_current
-    let prev_public_inputs = zkpf_wallet_state::circuit::WalletStateTransitionPublicInputs {
-        s_prev: if req.pcd_state.chain_length > 1 {
-            // For chain_length > 1, we need the state before the last transition
-            // This is a simplification - in production we'd store more history
-            halo2curves_axiom::bn256::Fr::zero() // Placeholder
-        } else {
-            // For the first proof after genesis
-            let s_genesis_hex = req.pcd_state.s_genesis.strip_prefix("0x")
-                .unwrap_or(&req.pcd_state.s_genesis);
-            let s_genesis_bytes: [u8; 32] = hex::decode(s_genesis_hex)
-                .map_err(|e| ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid s_genesis: {}", e)))?
-                .try_into()
-                .map_err(|_| ApiError::bad_request(CODE_PUBLIC_INPUTS, "s_genesis must be 32 bytes"))?;
-            zkpf_common::reduce_be_bytes_to_fr(&s_genesis_bytes)
-        },
-        block_height: req.pcd_state.wallet_state.height,
-        anchor_new: req.pcd_state.wallet_state.anchor,
-        s_next: s_prev_fr,
-    };
-
-    let prev_proof_verified = verify_wallet_state_proof(&prev_public_inputs, &prev_proof);
-    
-    if !prev_proof_verified {
-        // In strict mode, we'd reject. For demo purposes, we log and continue.
-        eprintln!("WARNING: Previous proof verification failed, continuing with trusted S_prev");
-    }
-
-    // Step 2: Build the transition witness and apply
-    let witness = TransitionWitness {
-        state_prev: req.pcd_state.wallet_state.clone(),
-        current_notes: req.current_notes.clone(),
-        current_nullifiers: req.current_nullifiers.clone(),
-    };
-
-    let result = apply_transition(&witness, &req.delta).map_err(|err| {
-        ApiError::bad_request(CODE_PUBLIC_INPUTS, format!("invalid transition: {}", err))
-    })?;
-
-    // Generate the new proof
-    let notes_root_next = compute_notes_root(&result.notes_next);
-    let nullifiers_root_next = compute_nullifiers_root(&result.nullifiers_next);
-
-    let circuit_input = WalletStateTransitionInput::from_transition(
-        &req.pcd_state.wallet_state,
-        req.delta.block_height,
-        req.delta.anchor_new,
-        &req.delta.new_notes,
-        &req.delta.spent_nullifiers,
-        notes_root_next,
-        nullifiers_root_next,
-    );
-
-    let new_proof = generate_wallet_state_proof(&circuit_input).map_err(|err| {
-        ApiError::internal(format!("proof generation failed: {}", err))
-    })?;
-
-    let s_next = result.commitment_next;
-    let s_next_hex = format!("0x{}", hex::encode(s_next.to_bytes()));
-
-    let new_pcd_state = PcdState {
-        wallet_state: result.state_next,
-        s_current: s_next_hex,
-        proof_current: format!("0x{}", hex::encode(&new_proof)),
-        circuit_version: WALLET_STATE_VERSION,
-        s_genesis: req.pcd_state.s_genesis,
-        chain_length: req.pcd_state.chain_length + 1,
-    };
-
-    Ok(Json(PcdUpdateResponse {
-        pcd_state: new_pcd_state,
-        prev_proof_verified,
-    }))
-}
-
-/// Handler for POST /zkpf/pcd/verify - Verify a PCD state
-async fn pcd_verify_handler(
-    Json(req): Json<PcdVerifyRequest>,
-) -> Result<Json<PcdVerifyResponse>, ApiError> {
-    // Verify the current proof
-    let proof_hex = req.pcd_state.proof_current.strip_prefix("0x")
-        .unwrap_or(&req.pcd_state.proof_current);
-    let proof = match hex::decode(proof_hex) {
-        Ok(p) => p,
-        Err(err) => {
-            return Ok(Json(PcdVerifyResponse {
-                valid: false,
-                s_current: req.pcd_state.s_current.clone(),
-                chain_length: req.pcd_state.chain_length,
-                error: Some(format!("invalid proof hex: {}", err)),
-            }));
-        }
-    };
-
-    // Verify that the wallet_state matches s_current
-    let computed_commitment = req.pcd_state.wallet_state.commitment();
-    let computed_hex = format!("0x{}", hex::encode(computed_commitment.to_bytes()));
-    
-    if computed_hex != req.pcd_state.s_current {
-        return Ok(Json(PcdVerifyResponse {
-            valid: false,
-            s_current: req.pcd_state.s_current.clone(),
-            chain_length: req.pcd_state.chain_length,
-            error: Some("wallet_state commitment does not match s_current".to_string()),
-        }));
-    }
-
-    // For full chain verification, we'd need to verify the entire proof chain
-    // This simplified version verifies the current proof only
-    let s_current_bytes: [u8; 32] = {
-        let hex = req.pcd_state.s_current.strip_prefix("0x")
-            .unwrap_or(&req.pcd_state.s_current);
-        hex::decode(hex)
-            .map_err(|_| ApiError::bad_request(CODE_PUBLIC_INPUTS, "invalid s_current hex"))?
-            .try_into()
-            .map_err(|_| ApiError::bad_request(CODE_PUBLIC_INPUTS, "s_current must be 32 bytes"))?
-    };
-    let s_current_fr = zkpf_common::reduce_be_bytes_to_fr(&s_current_bytes);
-
-    // Reconstruct public inputs for the last transition
-    let public_inputs = zkpf_wallet_state::circuit::WalletStateTransitionPublicInputs {
-        s_prev: halo2curves_axiom::bn256::Fr::zero(), // Would need chain history for accurate value
-        block_height: req.pcd_state.wallet_state.height,
-        anchor_new: req.pcd_state.wallet_state.anchor,
-        s_next: s_current_fr,
-    };
-
-    let valid = verify_wallet_state_proof(&public_inputs, &proof);
-
-    Ok(Json(PcdVerifyResponse {
-        valid,
-        s_current: req.pcd_state.s_current.clone(),
-        chain_length: req.pcd_state.chain_length,
-        error: if valid { None } else { Some("proof verification failed".to_string()) },
-    }))
 }

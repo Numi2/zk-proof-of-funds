@@ -177,7 +177,7 @@ pub fn attestation_message_hash(fields: &AttestationFields<'_>) -> [u8; 32] {
     fr_to_be_bytes(&digest)
 }
 
-pub const CIRCUIT_VERSION: u32 = 3;
+pub const CIRCUIT_VERSION: u32 = 5;
 pub const MANIFEST_VERSION: u32 = 1;
 pub const MANIFEST_FILE: &str = "manifest.json";
 
@@ -291,6 +291,23 @@ impl ProverArtifacts {
         vk: plonk::VerifyingKey<G1Affine>,
         pk: Option<plonk::ProvingKey<G1Affine>>,
     ) -> Self {
+        Self::from_parts_with_lazy(manifest, artifact_dir, params, vk, pk, false)
+    }
+
+    /// Create ProverArtifacts with optional lazy loading of the proving key.
+    ///
+    /// When `lazy_prover=true` and `pk=None`, the prover is considered enabled
+    /// but the proving key will be loaded from disk on first use (via `proving_key()`).
+    /// This saves ~700MB of memory at startup for deployments that need proving
+    /// capability but want to defer the memory cost until actual proof generation.
+    pub fn from_parts_with_lazy(
+        manifest: ArtifactManifest,
+        artifact_dir: PathBuf,
+        params: ParamsKZG<Bn256>,
+        vk: plonk::VerifyingKey<G1Affine>,
+        pk: Option<plonk::ProvingKey<G1Affine>>,
+        lazy_prover: bool,
+    ) -> Self {
         let pk_cell = OnceCell::new();
         let prover_enabled = if let Some(pk) = pk {
             pk_cell
@@ -298,7 +315,8 @@ impl ProverArtifacts {
                 .expect("pk OnceCell should be empty on initialization");
             true
         } else {
-            false
+            // If lazy_prover is true, prover is enabled but pk will be loaded on demand
+            lazy_prover
         };
 
         Self {
@@ -574,7 +592,16 @@ pub fn deserialize_verifier_public_inputs(bytes: &[u8]) -> Result<VerifierPublic
     serde_json::from_slice(bytes).context("failed to deserialize public inputs")
 }
 
+/// Default rail identifier for the custodial attestation rail.
+///
+/// Use this constant when creating bundles for the custodial circuit to ensure
+/// consistent rail identification across the system.
+pub const DEFAULT_RAIL_ID: &str = "CUSTODIAL_ATTESTATION";
+
 impl ProofBundle {
+    /// Creates a new proof bundle with an empty rail_id (legacy compatibility).
+    ///
+    /// For new code, prefer `new_with_rail` to explicitly specify the rail.
     pub fn new(proof: Vec<u8>, public_inputs: VerifierPublicInputs) -> Self {
         Self {
             rail_id: String::new(),
@@ -582,6 +609,31 @@ impl ProofBundle {
             proof,
             public_inputs,
         }
+    }
+
+    /// Creates a new proof bundle with an explicit rail identifier.
+    ///
+    /// Use `DEFAULT_RAIL_ID` for custodial attestation proofs.
+    pub fn new_with_rail(
+        rail_id: impl Into<String>,
+        proof: Vec<u8>,
+        public_inputs: VerifierPublicInputs,
+    ) -> Self {
+        Self {
+            rail_id: rail_id.into(),
+            circuit_version: CIRCUIT_VERSION,
+            proof,
+            public_inputs,
+        }
+    }
+
+    /// Sets the rail identifier on an existing bundle.
+    ///
+    /// This is useful when the bundle is created without knowing the rail,
+    /// and the rail needs to be set later.
+    pub fn with_rail_id(mut self, rail_id: impl Into<String>) -> Self {
+        self.rail_id = rail_id.into();
+        self
     }
 }
 
@@ -612,16 +664,37 @@ pub fn load_verifier_artifacts(path: impl AsRef<Path>) -> Result<VerifierArtifac
 }
 
 pub fn load_prover_artifacts(path: impl AsRef<Path>) -> Result<ProverArtifacts> {
-    load_prover_artifacts_with_mode(path, true)
+    load_prover_artifacts_with_mode(path, LoadPkMode::Eager)
 }
 
 pub fn load_prover_artifacts_without_pk(path: impl AsRef<Path>) -> Result<ProverArtifacts> {
-    load_prover_artifacts_with_mode(path, false)
+    load_prover_artifacts_with_mode(path, LoadPkMode::Disabled)
+}
+
+/// Load prover artifacts with lazy proving key loading.
+///
+/// This loads only params (~64MB) and vk (~1KB) at startup. The proving key
+/// (~700MB) is loaded on-demand when `proving_key()` is first called.
+///
+/// Use this for memory-constrained deployments (e.g., Fly.io with 2GB RAM)
+/// that need proving capability but want to defer the memory cost.
+pub fn load_prover_artifacts_lazy(path: impl AsRef<Path>) -> Result<ProverArtifacts> {
+    load_prover_artifacts_with_mode(path, LoadPkMode::Lazy)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LoadPkMode {
+    /// Load proving key immediately at startup (high memory, fast first proof)
+    Eager,
+    /// Don't load proving key, prover is disabled
+    Disabled,
+    /// Prover enabled but pk loaded on first use (low startup memory)
+    Lazy,
 }
 
 fn load_prover_artifacts_with_mode(
     path: impl AsRef<Path>,
-    load_pk: bool,
+    mode: LoadPkMode,
 ) -> Result<ProverArtifacts> {
     let manifest_path = path.as_ref();
     let manifest = read_manifest(manifest_path)?;
@@ -630,7 +703,7 @@ fn load_prover_artifacts_with_mode(
 
     let params_bytes = read_artifact_file(&artifact_dir, &manifest.params, "params")?;
     let vk_bytes = read_artifact_file(&artifact_dir, &manifest.vk, "verifying key")?;
-    let pk_bytes = if load_pk {
+    let pk_bytes = if mode == LoadPkMode::Eager {
         Some(read_artifact_file(
             &artifact_dir,
             &manifest.pk,
@@ -648,12 +721,14 @@ fn load_prover_artifacts_with_mode(
         None
     };
 
-    Ok(ProverArtifacts::from_parts(
+    let lazy_prover = mode == LoadPkMode::Lazy;
+    Ok(ProverArtifacts::from_parts_with_lazy(
         manifest,
         artifact_dir,
         params,
         vk,
         pk,
+        lazy_prover,
     ))
 }
 

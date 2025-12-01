@@ -58,7 +58,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
 
   const handleStartSession = useCallback(async () => {
     if (!policy) {
-      onShowToast('Select a Zashi policy before starting.', 'error');
+      onShowToast('Select a zkpf policy before starting.', 'error');
       return;
     }
     setIsStarting(true);
@@ -68,7 +68,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
       setSession(response);
       setSnapshot(null);
       deliveredBundleSession.current = null;
-      onShowToast('Session started. Open Zashi to continue.', 'success');
+      onShowToast('Session started. Open zkpf to continue.', 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start session';
       setPollError(message);
@@ -116,7 +116,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
         ) {
           deliveredBundleSession.current = current.session_id;
           onBundleReady(current.bundle);
-          onShowToast('Received bundle from Zashi session', 'success');
+          onShowToast('Received bundle from zkpf session', 'success');
         }
         if (TERMINAL_STATUSES.includes(current.status)) {
           if (interval) {
@@ -167,9 +167,9 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
     <section className="card zashi-session-card">
       <header>
         <p className="eyebrow">Provider session</p>
-        <h3>Zashi proof of funds</h3>
+        <h3>zkpf proof of funds</h3>
         <p className="muted small">
-          Launch a provider-backed session. Zashi signs the attestation and calls zkpf to generate a proof bundle for the
+          Launch a provider-backed session. The provider signs the attestation and generates a proof bundle for the
           selected policy. When the bundle is ready it will appear here and in the Verify console automatically.
         </p>
       </header>
@@ -182,7 +182,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
       {!policy && (
         <p className="error-message inline">
           <span className="error-icon">⚠️</span>
-          <span>Choose a Zashi policy in the selector above to enable this flow.</span>
+          <span>Choose a zkpf policy in the selector above to enable this flow.</span>
         </p>
       )}
 
@@ -223,7 +223,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
             {canOpenDeepLink ? (
               <div className="session-link-group">
                 <a href={session.deep_link} className="tiny-button" target="_blank" rel="noreferrer">
-                  Open Zashi
+                  Open Provider
                 </a>
                 <button
                   type="button"
@@ -257,7 +257,7 @@ export function ZashiSessionConnector({ client, policy, onBundleReady, onShowToa
           )}
           {!isTerminal && session && (
             <p className="muted small">
-              {isPolling ? 'Polling Zashi session for updates…' : 'Waiting for Zashi to submit the proof bundle.'}
+              {isPolling ? 'Polling provider session for updates…' : 'Waiting for provider to submit the proof bundle.'}
             </p>
           )}
         </div>

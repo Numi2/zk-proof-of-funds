@@ -19,8 +19,14 @@ use zkpf_common::{
     // Poseidon parameters imported from canonical source (zkpf-circuit via zkpf-common)
     POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE, POSEIDON_T,
 };
-use zkpf_prover::{prove, prove_bundle, prove_with_public_inputs};
+use zkpf_prover::{prove, prove_bundle_result, prove_with_public_inputs};
 use zkpf_verifier::verify;
+
+// Initialize panic hook at WASM module load time for better error messages
+#[wasm_bindgen(start)]
+pub fn wasm_start() {
+    console_error_panic_hook::set_once();
+}
 
 #[wasm_bindgen]
 pub struct VerifyingKeyWasm {
@@ -469,7 +475,18 @@ fn prove_bundle_with_structs(
     pk: &ProvingKeyWasm,
 ) -> Result<ProofBundle, JsValue> {
     let input = parse_input(attestation_json)?;
-    Ok(prove_bundle(params.inner(), pk.inner(), input))
+    // Use the error-returning API instead of catch_unwind.
+    // In WASM, panic = "abort" is the default, so catch_unwind doesn't work and
+    // panics become opaque "unreachable" traps. By using prove_bundle_result,
+    // we get proper error messages instead of aborts.
+    prove_bundle_result(params.inner(), pk.inner(), input).map_err(|e| {
+        js_error(format!(
+            "Proof generation failed: {}. This may indicate: (1) circuit parameters/proving key \
+             mismatch, (2) invalid attestation values that violate constraints, or (3) insufficient \
+             memory. Try refreshing and re-downloading artifacts.",
+            e
+        ))
+    })
 }
 
 fn verify_bundle(
@@ -551,7 +568,15 @@ fn with_cached_prover<R>(
 }
 
 fn parse_input(attestation_json: &str) -> Result<ZkpfCircuitInput, JsValue> {
-    serde_json::from_str(attestation_json).map_err(js_error)
+    serde_json::from_str(attestation_json).map_err(|e| {
+        js_error(format!(
+            "Failed to parse attestation JSON: {}. \
+             Ensure the JSON has 'attestation' and 'public' objects with all required fields. \
+             Common issues: nullifier/custodian_pubkey_hash must be 64-character hex strings, \
+             pubkey x/y and signature r/s must be 32-element number arrays.",
+            e
+        ))
+    })
 }
 
 fn js_error(err: impl ToString) -> JsValue {

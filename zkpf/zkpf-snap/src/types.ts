@@ -150,7 +150,7 @@ export const CURRENCY_META: Record<number, CurrencyMeta> = {
   840: { code: 'USD', label: 'United States Dollar', decimals: 2 },
   978: { code: 'EUR', label: 'Euro', decimals: 2 },
   999001: { code: 'ZEC', label: 'Zcash (Orchard)', decimals: 8 },
-  5915971: { code: 'ZEC', label: 'Zashi (custodial)', decimals: 8 },
+  5915971: { code: 'ZEC', label: 'Zcash (custodial)', decimals: 8 },
 };
 
 /**
@@ -160,7 +160,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   FIAT: 'Fiat proof',
   ONCHAIN: 'On-chain proof',
   ZCASH_ORCHARD: 'Zcash Orchard PoF',
-  ZASHI: 'Zashi provider session',
+  CUSTODIAL: 'Custodial provider session',
 };
 
 /**

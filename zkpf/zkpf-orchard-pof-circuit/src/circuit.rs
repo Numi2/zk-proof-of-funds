@@ -55,6 +55,7 @@ pub const MERKLE_DEPTH: usize = 32;
 /// - sum (1)
 /// - ufvk_commitment (1)
 /// - binding (1)
+#[allow(dead_code)]
 pub const NUM_PUBLIC_INPUTS: usize = 5;
 
 /// Maximum number of notes supported by the circuit.
@@ -72,6 +73,7 @@ pub struct OrchardPofConfig {
     /// Advice columns for the circuit.
     advices: [Column<Advice>; 10],
     /// Fixed columns for Lagrange coefficients.
+    #[allow(dead_code)]
     lagrange_coeffs: [Column<Fixed>; 8],
     /// Selector for value accumulation.
     q_add: Selector,
@@ -723,6 +725,7 @@ pub fn warm_cache() {
 ///
 /// This struct holds concrete values (not `Value<T>` wrappers) for use
 /// in verification functions outside the circuit.
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ConcreteNoteWitness {
     /// Note commitment (cmx).
@@ -735,6 +738,7 @@ pub struct ConcreteNoteWitness {
 
 impl ConcreteNoteWitness {
     /// Create from known values.
+    #[allow(dead_code)]
     pub fn new(cmx: pallas::Base, position: u32, merkle_path: [pallas::Base; MERKLE_DEPTH]) -> Self {
         Self { cmx, position, merkle_path }
     }
@@ -744,6 +748,7 @@ impl ConcreteNoteWitness {
 ///
 /// This function verifies that all note commitments have valid Merkle paths
 /// to the anchor, using the same Sinsemilla hash as the Orchard protocol.
+#[allow(dead_code)]
 pub fn verify_merkle_paths_sinsemilla(
     notes: &[ConcreteNoteWitness],
     anchor: pallas::Base,

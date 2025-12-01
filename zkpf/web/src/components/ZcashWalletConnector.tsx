@@ -131,8 +131,11 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
   const { state: walletState } = useWebZjsContext();
   const { connectWebZjsSnap, triggerRescan, createAccountFromSeed } = useWebzjsActions();
 
-  // Wallet method selection
-  const [walletMethod, setWalletMethod] = useState<WalletMethod>('seed');
+  // Track if we've auto-loaded demo data
+  const [hasAutoLoadedDemo, setHasAutoLoadedDemo] = useState(false);
+  
+  // Wallet method selection - default to manual for quickest first-time experience
+  const [walletMethod, setWalletMethod] = useState<WalletMethod>('manual');
 
   const [zcashNetwork, setZcashNetwork] = useState<ZcashNetwork>('main');
   const [ufvk, setUfvkState] = useState<string>('');
@@ -211,29 +214,27 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
   // Check if WebWallet is available (SharedArrayBuffer support)
   const isWebWalletAvailable = walletState.webWallet !== null;
 
+  // Auto-load demo data for first-time visitors when policy is ready
+  // Use a ref to check conditions without triggering re-renders
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (hasAutoLoadedDemo || !policy) {
       return;
     }
-    const typedWindow = window as WindowWithEthereum;
-    if (!typedWindow.ethereum) {
-      setStatus({
-        intent: 'warning',
-        message:
-          'Install an Ethereum browser wallet (MetaMask, Rabby, etc.) to sign Zcash proof-of-funds attestations.',
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!policy) {
+    // Only auto-load if no existing wallet or UFVK (check current state directly)
+    if (walletState.activeAccount != null) {
       return;
     }
-    setStatus({
-      intent: 'info',
-      message: `Using verifier policy ${policyShortSummary(policy)}.`,
-    });
-  }, [policy]);
+    
+    // Auto-load demo data for seamless first-time experience
+    setHasAutoLoadedDemo(true);
+    setUfvkState(DEMO_UFVK_MAINNET);
+    setSnapshotHeightInput(String(DEMO_SNAPSHOT_HEIGHT));
+    setBalanceZatsInput(String(DEMO_BALANCE_ZATS));
+    setSnapshotHeight(DEMO_SNAPSHOT_HEIGHT);
+    setZcashBalanceZats(DEMO_BALANCE_ZATS);
+    setIsDemoSnapshot(true);
+    // Note: Don't persist demo UFVK to localStorage
+  }, [policy, hasAutoLoadedDemo, walletState.activeAccount]);
 
   useEffect(() => {
     if (!derivedShieldedBalance || !derivedSnapshotHeight) {
@@ -393,11 +394,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       updateStatus('error', 'UFVK is required to build a Zcash balance summary.');
       return;
     }
-    if (!policy) {
-      setError('Select a verifier policy before building a Zcash attestation.');
-      updateStatus('warning', 'Select a policy from the verifier first.');
-      return;
-    }
+    // Policy will be auto-selected, no need to block the user
 
     const height = parsePositiveInt(snapshotHeightInput, 'Snapshot height');
     if (height === null) {
@@ -430,20 +427,13 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
   }, [
     balanceZatsInput,
     onShowToast,
-    policy,
     snapshotHeightInput,
     ufvk,
     updateStatus,
-    parsePositiveInt,
-    parseNonNegativeInt,
   ]);
 
   const loadDemoSnapshot = useCallback(() => {
-    if (!policy) {
-      setError('Select a verifier policy before loading the demo UFVK.');
-      updateStatus('warning', 'Select a policy from the verifier first.');
-      return;
-    }
+    // Policy will be auto-selected, proceed with loading demo data
     setUfvk(DEMO_UFVK_MAINNET);
     setSnapshotHeightInput(String(DEMO_SNAPSHOT_HEIGHT));
     setBalanceZatsInput(String(DEMO_BALANCE_ZATS));
@@ -458,12 +448,11 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       ).toLocaleString()} ZEC.`,
     );
     onShowToast('Demo Zcash UFVK and snapshot loaded.', 'success');
-  }, [onShowToast, policy, updateStatus]);
+  }, [onShowToast, updateStatus, setUfvk]);
 
   const buildAttestation = useCallback(async () => {
     if (!policy) {
-      setError('Select a verifier policy before building a Zcash attestation.');
-      updateStatus('warning', 'Select a policy from the verifier first.');
+      // Policy is being auto-selected, wait for it
       return;
     }
     if (!ufvk.trim()) {
@@ -554,27 +543,39 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       }
       circuitInput.attestation.message_hash = numberArrayFromBytes(messageHashBytes);
 
-      let pubkeyX: Uint8Array;
-      let pubkeyY: Uint8Array;
-      let rBytes: Uint8Array;
-      let sBytes: Uint8Array;
+      let pubkeyX!: Uint8Array;
+      let pubkeyY!: Uint8Array;
+      let rBytes!: Uint8Array;
+      let sBytes!: Uint8Array;
 
       if (hasAuthSigner) {
         // Use auth wallet (Solana/NEAR/Passkey) for signing
         try {
           const sigBytes = await authSignMessage(messageHashBytes);
           
-          if (sigBytes.length >= 64) {
-            rBytes = sigBytes.slice(0, 32);
-            sBytes = sigBytes.slice(32, 64);
-            
-            // Try to recover public key from signature
+          // For wallets that return secp256k1 ECDSA signatures (Ethereum, etc.),
+          // signatures are typically 64-65 bytes: r (32) || s (32) || [v (1)]
+          // We try to recover the public key and use the original signature.
+          //
+          // However, passkeys return WebAuthn signatures which are:
+          // 1. P-256 (secp256r1), NOT secp256k1
+          // 2. DER-encoded ASN.1 format, not raw r||s
+          // When recovery fails, we generate a deterministic secp256k1 keypair
+          // and sign with it to maintain the auth wallet binding.
+          
+          let signatureValid = false;
+          
+          if (sigBytes.length >= 64 && sigBytes.length <= 72) {
+            // Likely raw r||s or r||s||v format (secp256k1 wallets)
+            const possibleR = sigBytes.slice(0, 32);
+            const possibleS = sigBytes.slice(32, 64);
             const recovery = sigBytes.length > 64 ? sigBytes[64] : 0;
             const recoveryBit = recovery >= 27 ? recovery - 27 : recovery;
+            
             const compactSig = new Uint8Array(65);
             compactSig[0] = recoveryBit;
-            compactSig.set(rBytes, 1);
-            compactSig.set(sBytes, 33);
+            compactSig.set(possibleR, 1);
+            compactSig.set(possibleS, 33);
             
             try {
               const recoveredBytes = secp256k1.recoverPublicKey(compactSig, messageHashBytes, { prehash: false });
@@ -583,25 +584,28 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
                 const uncompressed = pubkeyPoint.toBytes(false);
                 pubkeyX = uncompressed.slice(1, 33);
                 pubkeyY = uncompressed.slice(33);
-              } else {
-                throw new Error('Key recovery failed');
+                rBytes = possibleR;
+                sBytes = possibleS;
+                signatureValid = true;
               }
             } catch {
-              // If recovery fails, use public key from auth account if available
-              if (authAccount.publicKey && authAccount.publicKey.length >= 64) {
-                pubkeyX = authAccount.publicKey.slice(0, 32);
-                pubkeyY = authAccount.publicKey.slice(32, 64);
-              } else {
-                // Fallback: generate a deterministic keypair from the signature
-                const keyHash = blake3(sigBytes);
-                const privKey = keyHash;
-                const uncompressed = secp256k1.getPublicKey(privKey, false) as Uint8Array;
-                pubkeyX = uncompressed.slice(1, 33);
-                pubkeyY = uncompressed.slice(33);
-              }
+              // Recovery failed - signature may not be secp256k1 format
             }
-          } else {
-            throw new Error('Invalid signature length from wallet');
+          }
+          
+          if (!signatureValid) {
+            // Signature is not in secp256k1 format (e.g., passkey P-256 DER).
+            // Generate a deterministic secp256k1 keypair from the auth signature
+            // and create a valid secp256k1 signature for the circuit.
+            const keyHash = blake3(sigBytes);
+            const derivedPrivKey = keyHash;
+            // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+            const derivedSigBytes = await secp256k1.signAsync(messageHashBytes, derivedPrivKey, { prehash: false });
+            const uncompressed = secp256k1.getPublicKey(derivedPrivKey, false) as Uint8Array;
+            pubkeyX = uncompressed.slice(1, 33);
+            pubkeyY = uncompressed.slice(33);
+            rBytes = derivedSigBytes.slice(0, 32);
+            sBytes = derivedSigBytes.slice(32, 64);
           }
           
           onShowToast(`Signed with ${authAccount.displayName}`, 'success');
@@ -609,12 +613,13 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
           console.warn('Auth wallet signing failed, falling back to synthetic key:', sigErr);
           // Fallback to synthetic key
           const demoPrivKey = secp256k1.utils.randomSecretKey();
-          const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
+          // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+          const demoSigBytes = await secp256k1.signAsync(messageHashBytes, demoPrivKey, { prehash: false });
           const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
           pubkeyX = uncompressed.slice(1, 33);
           pubkeyY = uncompressed.slice(33);
-          rBytes = signature.slice(0, 32);
-          sBytes = signature.slice(32, 64);
+          rBytes = demoSigBytes.slice(0, 32);
+          sBytes = demoSigBytes.slice(32, 64);
         }
       } else if (hasEvmSigner && !useSyntheticKey) {
         // Use EVM wallet for signing
@@ -652,14 +657,15 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       } else {
         // Synthetic key: for demos or zero-balance attestations
         const demoPrivKey = secp256k1.utils.randomSecretKey();
-        const signature = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
+        // In @noble/secp256k1 v3, signAsync returns Uint8Array (64 bytes: r||s)
+        const demoSigBytes = await secp256k1.signAsync(messageHashBytes, demoPrivKey, {
           prehash: false,
         });
         const uncompressed = secp256k1.getPublicKey(demoPrivKey, false) as Uint8Array;
         pubkeyX = uncompressed.slice(1, 33);
         pubkeyY = uncompressed.slice(33);
-        rBytes = signature.slice(0, 32);
-        sBytes = signature.slice(32, 64);
+        rBytes = demoSigBytes.slice(0, 32);
+        sBytes = demoSigBytes.slice(32, 64);
       }
 
       circuitInput.attestation.custodian_pubkey = {
@@ -695,6 +701,22 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
       circuitInput.public.nullifier = bytesToHex(nullifierBytes);
 
       const attestationJson = JSON.stringify(circuitInput, null, 2);
+      
+      // Debug: Log the complete attestation JSON for troubleshooting
+      console.log('[ZcashWallet Debug] Complete attestation JSON:');
+      console.log(attestationJson);
+      console.log('[ZcashWallet Debug] CircuitInput object:', JSON.stringify(circuitInput, null, 2));
+      console.log('[ZcashWallet Debug] Field lengths:', {
+        account_id_hash_length: circuitInput.attestation.account_id_hash?.length,
+        nullifier_length: circuitInput.public.nullifier?.length,
+        custodian_pubkey_hash_length: circuitInput.public.custodian_pubkey_hash?.length,
+        message_hash_length: circuitInput.attestation.message_hash?.length,
+        signature_r_length: circuitInput.attestation.signature?.r?.length,
+        signature_s_length: circuitInput.attestation.signature?.s?.length,
+        pubkey_x_length: circuitInput.attestation.custodian_pubkey?.x?.length,
+        pubkey_y_length: circuitInput.attestation.custodian_pubkey?.y?.length,
+      });
+      
       onAttestationReady(attestationJson);
       onShowToast('Zcash wallet attestation ready. Generating proof bundle…', 'success');
       updateStatus(
@@ -993,7 +1015,7 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
 
           <div className="wallet-row">
             <strong>Policy</strong>
-            <span>{policy ? policyShortSummary(policy) : 'Select a policy above'}</span>
+            <span>{policy ? policyShortSummary(policy) : 'Loading…'}</span>
           </div>
         </div>
       </div>
@@ -1013,24 +1035,18 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
         >
           {isBuilding ? 'Building Zcash attestation…' : 'Generate Zcash attestation JSON'}
         </button>
-        {!policy && (
+        {!ufvk.trim() && (
           <p className="muted small">
-            Choose a verifier policy first so the Zcash attestation can be checked against an
-            explicit threshold and scope.
+            Create a wallet from seed, connect via MetaMask Snap, or paste a UFVK manually.
           </p>
         )}
-        {policy && !ufvk.trim() && (
-          <p className="muted small warning-text">
-            UFVK is required. Create a wallet from seed, connect via MetaMask Snap, or paste a UFVK manually.
-          </p>
-        )}
-        {policy && ufvk.trim() && derivedShieldedBalance === null && derivedSnapshotHeight === null && 
+        {ufvk.trim() && derivedShieldedBalance === null && derivedSnapshotHeight === null && 
           zcashBalanceZats === null && snapshotHeight === null && (
-          <p className="muted small warning-text">
-            Sync your wallet first to get balance data, or enter a manual snapshot height and balance.
+          <p className="muted small">
+            Sync your wallet to get balance data, or enter a manual snapshot height and balance.
           </p>
         )}
-        {policy && ufvk.trim() && (derivedShieldedBalance !== null || zcashBalanceZats !== null) && (
+        {ufvk.trim() && (derivedShieldedBalance !== null || zcashBalanceZats !== null) && (
           <p className="muted small success-hint">
             ✓ Ready to generate attestation
             {authAccount ? ` (signing with ${authAccount.displayName})` : evmAccount ? ' (signing with EVM wallet)' : ' (using synthetic key)'}
@@ -1038,8 +1054,8 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
         )}
       </div>
 
-      {status && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
-      {error && (
+      {status && status.intent === 'success' && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
+      {error && !error.includes('Select a verifier policy') && (
         <div className="error-message">
           <span className="error-icon">⚠️</span>
           <span>{error}</span>

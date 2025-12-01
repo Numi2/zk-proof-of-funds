@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::MinaRailError,
     types::{MinaAddress, MinaNetwork, MinaTxHash, ZkAppStateEntry},
-    ZkAppState,
 };
 
 /// Mina GraphQL client.
@@ -307,6 +306,7 @@ struct SendZkappResult {
 #[derive(Debug, Deserialize)]
 struct ZkappTxInfo {
     hash: String,
+    #[allow(dead_code)]
     id: String,
 }
 

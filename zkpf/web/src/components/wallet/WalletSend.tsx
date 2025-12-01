@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useWebZjsContext } from '../../context/WebzjsContext';
 import { usePcdContext } from '../../context/usePcdContext';
-import { TachyonStatePanel } from '../TachyonStatePanel';
 import { useMinaRailStatus } from '../../services/mina-rail/hooks';
 import type { TachyonMetadata } from '../../types/pcd';
 import type { SubmitTachystampResponse } from '../../types/mina-rail';
@@ -34,8 +33,6 @@ export function WalletSend() {
   const [isSending, setIsSending] = useState(false);
   const [signingPhase, setSigningPhase] = useState<SigningPhase>('idle');
   const [txResult, setTxResult] = useState<{ success: boolean; txid?: string; error?: string; tachyonMetadata?: TachyonMetadata } | null>(null);
-  const [showTachyonPanel, setShowTachyonPanel] = useState(false);
-  const [isPcdValid, setIsPcdValid] = useState<boolean | null>(null);
 
   const activeBalanceReport = useMemo(() => {
     if (!state.summary || state.activeAccount == null) return null;
@@ -81,7 +78,6 @@ export function WalletSend() {
       // Verify PCD state before proceeding if initialized
       if (pcdState.isInitialized) {
         const isValid = await verifyPcd();
-        setIsPcdValid(isValid);
         if (!isValid) {
           console.warn('PCD verification failed, proceeding with warning');
         }
@@ -387,39 +383,6 @@ export function WalletSend() {
                 <span className="wallet-confirm-value">~0.00001 ZEC</span>
               </div>
             </div>
-
-            {/* Tachyon (PCD) Status */}
-            {pcdState.isInitialized && (
-              <div className="wallet-tachyon-status" style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                backgroundColor: isPcdValid === true ? 'rgba(34, 197, 94, 0.1)' : isPcdValid === false ? 'rgba(251, 191, 36, 0.1)' : 'rgba(96, 165, 250, 0.1)',
-                borderRadius: '0.5rem',
-                border: `1px solid ${isPcdValid === true ? 'rgba(34, 197, 94, 0.3)' : isPcdValid === false ? 'rgba(251, 191, 36, 0.3)' : 'rgba(96, 165, 250, 0.3)'}`,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                    {isPcdValid === true ? '✓ Tachyon Verified' : isPcdValid === false ? '⚠️ Tachyon Warning' : '⏳ Tachyon State'}
-                  </span>
-                  <button 
-                    type="button"
-                    className="tiny-button ghost"
-                    onClick={() => setShowTachyonPanel(!showTachyonPanel)}
-                    style={{ fontSize: '0.75rem' }}
-                  >
-                    {showTachyonPanel ? 'Hide' : 'Details'}
-                  </button>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  Height: {pcdState.pcdState?.wallet_state.height ?? 'N/A'} | Chain: {pcdState.pcdState?.chain_length ?? 0}
-                </div>
-                {showTachyonPanel && (
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <TachyonStatePanel compact />
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="wallet-send-actions">
               <button className="ghost" onClick={handleBack}>

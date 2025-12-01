@@ -199,10 +199,10 @@ impl ZecCredential {
     /// Compute a unique credential ID
     pub fn credential_id(&self) -> [u8; 32] {
         let mut hasher = Keccak256::new();
-        hasher.update(&self.account_tag);
+        hasher.update(self.account_tag);
         hasher.update(self.tier.as_u8().to_be_bytes());
         hasher.update(self.policy_id.to_be_bytes());
-        hasher.update(&self.proof_commitment);
+        hasher.update(self.proof_commitment);
         hasher.update(self.issued_at.to_be_bytes());
         hasher.finalize().into()
     }
@@ -353,7 +353,7 @@ pub mod policy_ids {
     pub const ZEC_TIER_BASE: u64 = 400000;
 
     /// Policy ID for Tier 0.1+ ZEC
-    pub const ZEC_TIER_01: u64 = ZEC_TIER_BASE + 0;
+    pub const ZEC_TIER_01: u64 = ZEC_TIER_BASE;
     /// Policy ID for Tier 1+ ZEC
     pub const ZEC_TIER_1: u64 = ZEC_TIER_BASE + 1;
     /// Policy ID for Tier 10+ ZEC
@@ -369,7 +369,7 @@ pub mod policy_ids {
     pub const CREDIT_LINE_BASE: u64 = 410000;
 
     /// Standard credit line (50% LTV)
-    pub const CREDIT_LINE_STANDARD: u64 = CREDIT_LINE_BASE + 0;
+    pub const CREDIT_LINE_STANDARD: u64 = CREDIT_LINE_BASE;
     /// Conservative credit line (25% LTV)
     pub const CREDIT_LINE_CONSERVATIVE: u64 = CREDIT_LINE_BASE + 1;
     /// Aggressive credit line (75% LTV)
@@ -383,7 +383,7 @@ pub fn tier_to_policy_id(tier: ZecTier) -> u64 {
 
 /// Get the tier from a policy ID
 pub fn policy_id_to_tier(policy_id: u64) -> Option<ZecTier> {
-    if policy_id < policy_ids::ZEC_TIER_BASE || policy_id > policy_ids::ZEC_TIER_BASE + 5 {
+    if !(policy_ids::ZEC_TIER_BASE..=policy_ids::ZEC_TIER_BASE + 5).contains(&policy_id) {
         return None;
     }
     ZecTier::try_from((policy_id - policy_ids::ZEC_TIER_BASE) as u8).ok()

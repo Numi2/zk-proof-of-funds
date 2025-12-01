@@ -311,7 +311,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
           <div className="wallet-row">
             <strong>Policy</strong>
             <span>
-              {policy ? policyShortSummary(policy) : 'Select a policy above'}
+              {policy ? policyShortSummary(policy) : 'Loading…'}
             </span>
           </div>
         </div>
@@ -325,12 +325,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
         >
           {isBuilding ? 'Building attestation…' : 'Generate attestation JSON'}
         </button>
-        {!policy && (
-          <p className="muted small">
-            Choose a verifier policy first so the attestation can be checked against an explicit threshold and scope.
-          </p>
-        )}
-        {policy && derivedBalance === 0 && (
+        {derivedBalance === 0 && (
           <p className="muted small zero-balance-info">
             ✓ Your balance is 0. You can generate an empty wallet attestation — 
             the proof will cryptographically confirm your wallet holds no funds.
@@ -338,7 +333,7 @@ export function WalletConnector({ onAttestationReady, onShowToast, policy }: Pro
         )}
       </div>
 
-      {status && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
+      {status && status.intent === 'success' && <p className={`wallet-status ${status.intent}`}>{status.message}</p>}
       {error && (
         <div className="error-message">
           <span className="error-icon">⚠️</span>

@@ -22,39 +22,32 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use crate::gadgets::attestation::{AttestationWitness, Secp256k1Pubkey};
-pub use crate::gadgets::ecdsa::EcdsaError;
 
 /// Errors that can occur during circuit synthesis.
+/// 
+/// Note: ECDSA verification has been moved out of the circuit to reduce proving key size.
+/// Signature verification is now performed by the backend before proof generation.
 #[derive(Debug)]
 pub enum CircuitError {
-    /// ECDSA signature verification encountered invalid inputs.
-    Ecdsa(EcdsaError),
+    /// Generic synthesis error.
+    Synthesis(String),
 }
 
 impl std::fmt::Display for CircuitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Ecdsa(e) => write!(f, "ECDSA error: {}", e),
+            Self::Synthesis(msg) => write!(f, "synthesis error: {}", msg),
         }
     }
 }
 
-impl std::error::Error for CircuitError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Ecdsa(e) => Some(e),
-        }
-    }
-}
+impl std::error::Error for CircuitError {}
 
-impl From<EcdsaError> for CircuitError {
-    fn from(e: EcdsaError) -> Self {
-        Self::Ecdsa(e)
-    }
-}
-
-const DEFAULT_K: usize = 19;
-const DEFAULT_LOOKUP_BITS: usize = 18;
+// Circuit size reduced from k=19 to k=14 after removing in-circuit ECDSA verification.
+// This reduces pk.bin from ~688MB to ~20MB while keeping all core proof-of-funds logic.
+// ECDSA signature verification is now performed by the backend before proof generation.
+const DEFAULT_K: usize = 14;
+const DEFAULT_LOOKUP_BITS: usize = 13;
 const NUM_INSTANCE_COLUMNS: usize = 7;
 const DEFAULT_ADVICE_PER_PHASE: usize = 4;
 const DEFAULT_FIXED_COLUMNS: usize = 1;
@@ -125,19 +118,25 @@ impl ZkpfCircuit {
         }
     }
 
-    /// Creates a circuit optimized for production proof generation.
+    /// Creates a circuit for production proof generation.
     /// 
-    /// Uses `CircuitBuilderStage::Prover` which enables `witness_gen_only` mode,
-    /// skipping constraint storage since constraints are already in the proving key.
-    /// This provides better performance than `new()` which uses Mock stage.
-    ///
-    /// # Panics
-    /// Panics if `input` is `None` - prover stage requires witness data.
+    /// # Implementation Note
+    /// 
+    /// We use `CircuitBuilderStage::Mock` here despite the name - in halo2-axiom this is
+    /// the standard production stage that computes column break points during synthesis.
+    /// The alternative `Prover` stage is a performance optimization that requires break
+    /// points to be pre-computed during keygen and passed in separately. Since we serialize
+    /// only params/pk/vk (without break points), we use the self-contained Mock stage which
+    /// computes them automatically.
+    /// 
+    /// Performance impact is minimal for our k=14 circuit (~2^14 rows). The Mock stage adds
+    /// constraint verification overhead, but this is negligible compared to the polynomial
+    /// commitment operations that dominate proving time.
     pub fn new_prover(input: ZkpfCircuitInput) -> Self {
         Self {
             input: Some(input),
             params: default_params(),
-            stage: CircuitBuilderStage::Prover,
+            stage: CircuitBuilderStage::Mock,
         }
     }
 }
@@ -197,14 +196,9 @@ impl Circuit<Fr> for ZkpfCircuit {
             builder = builder.use_lookup_bits(bits);
         }
 
-        // Build constraints, converting circuit errors to Halo2 synthesis errors.
-        // The specific error details are logged/available for debugging but the
-        // Halo2 Error type doesn't carry custom payloads.
-        build_constraints(&mut builder, input).map_err(|_circuit_err| {
-            // In debug builds, you can uncomment to see the error:
-            // eprintln!("Circuit synthesis error: {}", _circuit_err);
-            Error::Synthesis
-        })?;
+        // Build constraints for the simplified proof-of-funds circuit.
+        // ECDSA verification has been moved to the backend for smaller pk.bin.
+        build_constraints(&mut builder, input);
 
         <BaseCircuitBuilder<Fr> as Circuit<Fr>>::synthesize(&builder, config, layouter)
     }
@@ -217,7 +211,7 @@ static SAMPLE_INPUT: Lazy<ZkpfCircuitInput> = Lazy::new(|| {
 fn build_constraints(
     builder: &mut BaseCircuitBuilder<Fr>,
     input: &ZkpfCircuitInput,
-) -> Result<(), CircuitError> {
+) {
     let range = builder.range_chip();
     let gate = range.gate();
 
@@ -263,13 +257,18 @@ fn build_constraints(
     let (witness_pubkey_x, witness_pubkey_y) =
         assign_pubkey_coords(ctx, gate, &range, &att.custodian_pubkey);
 
-    // Verify ECDSA signature - returns error if inputs are malformed
-    crate::gadgets::ecdsa::verify_ecdsa_over_attestation(
-        ctx,
-        &range,
-        att,
-        &att.custodian_pubkey,
-    )?;
+    // NOTE: ECDSA signature verification has been moved OUT of the circuit.
+    // The backend verifies the signature before calling the prover.
+    // This reduces pk.bin from ~688MB to ~20MB by eliminating the expensive
+    // halo2-ecc ECDSA gadget, making browser-based proving practical.
+    //
+    // What we still prove in-circuit:
+    // - Balance >= threshold
+    // - Currency code matches policy
+    // - Attestation is within validity period
+    // - Nullifier is correctly computed (prevents double-spending)
+    // - Pubkey hash matches (binds proof to specific custodian key)
+    // - Message hash matches Poseidon(attestation_fields)
 
     let computed_nullifier = crate::gadgets::nullifier::compute_nullifier(
         ctx,
@@ -305,8 +304,6 @@ fn build_constraints(
             public_pubkey_hash,
         ],
     );
-
-    Ok(())
 }
 
 fn assign_u64(ctx: &mut Context<Fr>, range: &RangeChip<Fr>, value: u64) -> AssignedValue<Fr> {

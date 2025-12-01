@@ -14,9 +14,9 @@ zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet" }
 zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }
 
 # Halo2 / circuit dependencies (reuse the same stack as zkpf-circuit).
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["circuit-params"] }
 halo2-base = { version = "0.5.1", default-features = false, features = ["halo2-axiom"] }
-halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", default-features = false, features = ["bn256-table"] }
 anyhow = "1"
 zkpf-circuit = { path = "../zkpf-circuit" }
 

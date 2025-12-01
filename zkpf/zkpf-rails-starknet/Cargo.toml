@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 # Core zkpf crates
 zkpf-common = { path = "../zkpf-common" }
-zkpf-starknet-l2 = { path = "../zkpf-starknet-l2", features = ["starknet-rpc"] }
+zkpf-starknet-l2 = { path = "./zkpf-starknet-l2", features = ["starknet-rpc"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros", "signal"] }

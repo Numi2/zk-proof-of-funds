@@ -10,7 +10,8 @@ use std::ops::RangeTo;
 
 use crate::multicore::IntoParallelIterator;
 // Direct rayon imports for trait methods (zip, map, etc.)
-// These are needed unconditionally because into_par_iter() returns rayon types
+// These are only needed when multicore feature is enabled
+#[cfg(feature = "multicore")]
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 use std::{collections::HashMap, iter};
 

@@ -36,6 +36,7 @@ default = [
 display = []
 halo2-pse = []
 halo2-axiom = ["halo2_proofs_axiom"]
+multicore = ["dep:rayon"]
 profile = ["halo2_proofs_axiom?/profile"]
 test-utils = [
     "dep:rand",
@@ -73,7 +74,7 @@ version = "0.1.2"
 version = "0.5"
 optional = true
 default-features = false
-features = ["batch", "circuit-params", "multicore"]
+features = ["batch", "circuit-params"]
 package = "halo2-axiom"
 
 [dependencies.itertools]
@@ -109,6 +110,7 @@ version = "0.3"
 
 [dependencies.rayon]
 version = "1.8"
+optional = true
 
 [dependencies.rustc-hash]
 version = "1.1"

@@ -162,9 +162,9 @@ fn validate_point_on_curve(x: &Fp, y: &Fp) -> Result<(), EcdsaError> {
 ///
 /// Note: The pre-circuit validation in `validate_point_on_curve` provides the
 /// user-friendly error. This constraint exists as a cryptographic backstop.
-fn constrain_pubkey_on_curve<'chip>(
+fn constrain_pubkey_on_curve(
     ctx: &mut Context<Fr>,
-    fp_chip: &SecpFpChip<'chip, Fr>,
+    fp_chip: &SecpFpChip<'_, Fr>,
     pk: &EcPoint<Fr, ProperCrtUint<Fr>>,
 ) {
     // Compute y² (left-hand side of curve equation)

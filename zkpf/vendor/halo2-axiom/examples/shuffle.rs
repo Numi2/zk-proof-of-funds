@@ -157,21 +157,19 @@ impl<F: Field, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W, H>
                 }
 
                 // First phase
-                for (_idx, (&column, values)) in config
+                for (&column, values) in config
                     .original
                     .iter()
                     .zip(self.original.transpose_array().iter())
-                    .enumerate()
                 {
                     for (offset, &value) in values.transpose_array().iter().enumerate() {
                         region.assign_advice(column, offset, value);
                     }
                 }
-                for (_idx, (&column, values)) in config
+                for (&column, values) in config
                     .shuffled
                     .iter()
                     .zip(self.shuffled.transpose_array().iter())
-                    .enumerate()
                 {
                     for (offset, &value) in values.transpose_array().iter().enumerate() {
                         region.assign_advice(column, offset, value);

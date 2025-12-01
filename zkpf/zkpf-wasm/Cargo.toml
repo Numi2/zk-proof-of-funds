@@ -8,8 +8,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
-halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false }
-halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", features = ["bn256-table"] }
+console_error_panic_hook = "0.1"
+# Ensure multicore is disabled for WASM builds, but enable circuit-params for proper key deserialization
+halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["circuit-params"] }
+halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", default-features = false, features = ["bn256-table"] }
 zkpf-circuit = { path = "../zkpf-circuit" }
 zkpf-prover = { path = "../zkpf-prover" }
 zkpf-verifier = { path = "../zkpf-verifier" }

@@ -19,6 +19,15 @@
       ]
     },
     {
+      "source": "/assets/(.*\\.js)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        }
+      ]
+    },
+    {
       "source": "/api/(.*)",
       "headers": [
         {
@@ -37,17 +46,16 @@
     }
   ],
   "rewrites": [
-    { "source": "/zkpf/params", "destination": "/api/zkpf/params" },
-    { "source": "/zkpf/epoch", "destination": "/api/zkpf/epoch" },
+    { "source": "/zkpf/params", "destination": "https://zkpf-backend.fly.dev/zkpf/params" },
+    { "source": "/zkpf/epoch", "destination": "https://zkpf-backend.fly.dev/zkpf/epoch" },
+    { "source": "/zkpf/artifacts/:path*", "destination": "https://zkpf-backend.fly.dev/zkpf/artifacts/:path*" },
     { "source": "/zkpf/policies", "destination": "https://zkpf-backend.fly.dev/zkpf/policies" },
-    { "source": "/zkpf/verify", "destination": "/api/zkpf/verify" },
-    { "source": "/zkpf/verify-bundle", "destination": "/api/zkpf/verify-bundle" },
-    { "source": "/zkpf/attest", "destination": "/api/zkpf/attest" },
+    { "source": "/zkpf/verify", "destination": "https://zkpf-backend.fly.dev/zkpf/verify" },
+    { "source": "/zkpf/verify-bundle", "destination": "https://zkpf-backend.fly.dev/zkpf/verify-bundle" },
+    { "source": "/zkpf/attest", "destination": "https://zkpf-backend.fly.dev/zkpf/attest" },
     { "source": "/zkpf/pcd/:path*", "destination": "https://zkpf-backend.fly.dev/zkpf/pcd/:path*" },
     { "source": "/zkpf/verify/wallet-state-transition", "destination": "https://zkpf-backend.fly.dev/zkpf/verify/wallet-state-transition" },
-    { "source": "/mina-rail/:path*", "destination": "https://zkpf-backend.fly.dev/mina-rail/:path*" },
     { "source": "/lightwalletd/:path*", "destination": "/api/lightwalletd" },
-    { "source": "/api/p2p/offers", "destination": "/api/p2p/offers" },
     { "source": "/api/personhood/:path*", "destination": "https://zkpf-backend.fly.dev/api/personhood/:path*" },
     { "source": "/api/rails/omni/:path*", "destination": "https://zkpf-backend.fly.dev/rails/omni/:path*" },
     { "source": "/rails/omni/:path*", "destination": "https://zkpf-backend.fly.dev/rails/omni/:path*" },

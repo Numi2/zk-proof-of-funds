@@ -8,10 +8,7 @@
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
 
-use crate::{
-    chains, encoding, AxelarGmpError, ChainSubscription, ChainType, GmpMessage, MessageType,
-    PoFReceipt,
-};
+use crate::{chains, AxelarGmpError, ChainSubscription, ChainType, GmpMessage, PoFReceipt};
 use crate::zcash::{
     CreditLineConfig, RevocationReason, ZcashBridgeMessage, ZecCredential, ZecTier,
     ZCASH_CHAIN_ID, ZCASH_MAINNET_ID,
@@ -510,8 +507,8 @@ impl ZcashBridge {
     /// Compute a unique broadcast ID
     fn compute_broadcast_id(&self, credential: &ZecCredential, targets: &[String]) -> [u8; 32] {
         let mut hasher = Keccak256::new();
-        hasher.update(&credential.account_tag);
-        hasher.update(&credential.proof_commitment);
+        hasher.update(credential.account_tag);
+        hasher.update(credential.proof_commitment);
         hasher.update(credential.issued_at.to_be_bytes());
         for target in targets {
             hasher.update(target.as_bytes());
@@ -675,8 +672,10 @@ mod tests {
 
     #[test]
     fn test_bridge_prepare_broadcast() {
-        let mut config = ZcashBridgeConfig::default();
-        config.min_broadcast_tier = ZecTier::Tier10;
+        let mut config = ZcashBridgeConfig {
+            min_broadcast_tier: ZecTier::Tier10,
+            ..Default::default()
+        };
         config.subscribe(chains::ARBITRUM, "0xreceiver");
 
         let mut bridge = ZcashBridge::new(config);

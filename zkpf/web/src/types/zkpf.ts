@@ -80,7 +80,7 @@ export interface PoliciesResponse {
   policies: PolicyDefinition[];
 }
 
-export type PolicyCategory = 'DEMO' | 'FIAT' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'ZASHI' | 'STARKNET' | 'STARKNET_DEFI' | 'USDC' | 'USDC_STARKNET' | 'BOUND_IDENTITY' | 'AXELAR_INTERCHAIN' | 'MINA_HUB' | 'MINA_AGGREGATED';
+export type PolicyCategory = 'DEMO' | 'ONCHAIN' | 'ZCASH_ORCHARD' | 'CUSTODIAL' | 'STARKNET' | 'STARKNET_DEFI' | 'USDC' | 'USDC_STARKNET' | 'BOUND_IDENTITY' | 'AXELAR_INTERCHAIN' | 'MINA_HUB' | 'MINA_AGGREGATED';
 
 export type ProviderSessionStatus = 'PENDING' | 'PROVING' | 'READY' | 'INVALID' | 'EXPIRED';
 

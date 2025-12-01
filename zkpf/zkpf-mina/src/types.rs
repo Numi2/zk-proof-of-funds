@@ -16,8 +16,10 @@ pub use zkpf_mina_kimchi_wrapper::{
 /// Mina network identifiers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MinaNetwork {
     Mainnet,
+    #[default]
     Testnet,
     Berkeley,
     Devnet,
@@ -45,11 +47,6 @@ impl MinaNetwork {
     }
 }
 
-impl Default for MinaNetwork {
-    fn default() -> Self {
-        MinaNetwork::Testnet
-    }
-}
 
 /// Mina account/zkApp address.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

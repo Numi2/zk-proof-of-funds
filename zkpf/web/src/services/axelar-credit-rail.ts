@@ -11,20 +11,22 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** ZEC balance threshold tiers */
-export enum ZecTier {
+export const ZecTier = {
   /** ≥ 0.1 ZEC */
-  TIER_01 = 0,
+  TIER_01: 0,
   /** ≥ 1 ZEC */
-  TIER_1 = 1,
+  TIER_1: 1,
   /** ≥ 10 ZEC */
-  TIER_10 = 2,
+  TIER_10: 2,
   /** ≥ 100 ZEC */
-  TIER_100 = 3,
+  TIER_100: 3,
   /** ≥ 1000 ZEC */
-  TIER_1000 = 4,
+  TIER_1000: 4,
   /** ≥ 10000 ZEC */
-  TIER_10000 = 5,
-}
+  TIER_10000: 5,
+} as const;
+
+export type ZecTier = typeof ZecTier[keyof typeof ZecTier];
 
 /** Tier metadata */
 export interface TierInfo {
@@ -35,22 +37,26 @@ export interface TierInfo {
 }
 
 /** Revocation reasons */
-export enum RevocationReason {
-  USER_REQUESTED = 0,
-  BALANCE_DROPPED = 1,
-  FRAUD_ATTEMPT = 2,
-  EXPIRED = 3,
-  POLICY_UPDATE = 4,
-}
+export const RevocationReason = {
+  USER_REQUESTED: 0,
+  BALANCE_DROPPED: 1,
+  FRAUD_ATTEMPT: 2,
+  EXPIRED: 3,
+  POLICY_UPDATE: 4,
+} as const;
+
+export type RevocationReason = typeof RevocationReason[keyof typeof RevocationReason];
 
 /** Broadcast status */
-export enum BroadcastStatus {
-  QUEUED = 'Queued',
-  SENT = 'Sent',
-  CONFIRMED = 'Confirmed',
-  FAILED = 'Failed',
-  EXPIRED = 'Expired',
-}
+export const BroadcastStatus = {
+  QUEUED: 'Queued',
+  SENT: 'Sent',
+  CONFIRMED: 'Confirmed',
+  FAILED: 'Failed',
+  EXPIRED: 'Expired',
+} as const;
+
+export type BroadcastStatus = typeof BroadcastStatus[keyof typeof BroadcastStatus];
 
 /** ZEC credential data */
 export interface ZecCredential {
@@ -676,13 +682,18 @@ export class AxelarCreditRailClient {
 
 /** Error from the Axelar Credit Rail service */
 export class AxelarCreditRailError extends Error {
+  public readonly code: string;
+  public readonly status?: number;
+
   constructor(
     message: string,
-    public readonly code: string,
-    public readonly status?: number
+    code: string,
+    status?: number
   ) {
     super(message);
     this.name = 'AxelarCreditRailError';
+    this.code = code;
+    this.status = status;
   }
 }
 

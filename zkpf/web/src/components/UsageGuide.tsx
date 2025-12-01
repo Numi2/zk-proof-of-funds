@@ -13,11 +13,11 @@ const steps = [
     title: 'Load a proof bundle',
     summary: 'Paste JSON or drag-and-drop the bundle exported by your custody system.',
     detail:
-      'Bundles stay in your browser unless you choose to send them to the verifier. Use the rail toggle to mark whether the proof covers on-chain crypto (including Zcash Orchard) or fiat bank accounts.',
+      'Bundles stay in your browser unless you choose to send them to the verifier. Use the rail toggle to mark whether the proof covers on-chain crypto or Zcash Orchard shielded funds.',
     checklist: [
       'Normalize byte arrays to the supported JSON encodings.',
       'You can clear the input at any time with the secondary (ghost) button.',
-      'Use the rail toggle to record whether funds are on-chain or fiat.',
+      'Use the rail toggle to record the asset rail used for the proof.',
     ],
   },
   {
@@ -34,7 +34,7 @@ const steps = [
     title: 'Send to verifier',
     summary: 'Submit the proof to the verifier from the UI (either /zkpf/verify-bundle or /zkpf/verify).',
     detail:
-      'For raw proofs, the console re-encodes public inputs to match the payload your automation would send. The verification banner clearly shows which rail (on-chain, fiat, or Orchard) was used.',
+      'For raw proofs, the console re-encodes public inputs to match the payload your automation would send. The verification banner clearly shows which rail (on-chain or Zcash Orchard) was used.',
     checklist: [
       'Treat the verification banner as your receipt.',
       'Retry only after resolving backend errors.',
@@ -83,7 +83,7 @@ const valuePillars = [
   {
     title: 'Multi-rail coverage',
     body:
-      'One workflow covers Zcash Orchard, other digital asset reserves, and fiat treasury balances, so finance, compliance, and crypto teams can share the same tool.',
+      'One workflow covers Zcash Orchard and other digital asset reserves, so finance, compliance, and crypto teams can share the same tool.',
     bullets: [
       'Rail toggle records where funds are held.',
       'Policy metadata handles ISO currency codes and custody IDs.',
@@ -123,10 +123,10 @@ export function UsageGuide() {
           </li>
         </ul>
         <p className="muted">
-          zkpf treats these as raw evidence objects that say “provider P claims balance B for account_tag A at time T.”
-          The zk circuit takes one or more signed attestations (from custodians, Zashi and other Zcash wallets, and
-          other supported rails) and proves that, given those inputs, your total balance meets or exceeds the chosen
-          policy threshold—without revealing which specific accounts you used or their exact balances.
+          zkpf treats these as raw evidence objects that say "provider P claims balance B for account_tag A at time T."
+          The zk circuit takes one or more signed attestations (from custodians, Zcash wallets, and other supported
+          rails) and proves that, given those inputs, your total balance meets or exceeds the chosen policy threshold—
+          without revealing which specific accounts you used or their exact balances.
         </p>
         <p className="muted">
           The proof you share is the compressed version of all those attestations: “total ≥ threshold, signatures
