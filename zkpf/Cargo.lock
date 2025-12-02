@@ -8904,6 +8904,7 @@ dependencies = [
  "zkpf-common",
  "zkpf-prover",
  "zkpf-starknet-l2",
+ "zkpf-zcash-orchard-circuit",
 ]
 
 [[package]]
@@ -8969,21 +8970,26 @@ dependencies = [
 name = "zkpf-wasm"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "console_error_panic_hook",
  "getrandom 0.2.16",
  "halo2-axiom",
  "halo2curves-axiom",
+ "hex",
  "poseidon-primitives",
+ "rand 0.8.5",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
+ "web-sys",
  "zkpf-circuit",
  "zkpf-common",
  "zkpf-prover",
  "zkpf-test-fixtures",
  "zkpf-verifier",
+ "zkpf-zcash-orchard-circuit",
 ]
 
 [[package]]
@@ -8998,6 +9004,7 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "zkpf-circuit",
  "zkpf-common",

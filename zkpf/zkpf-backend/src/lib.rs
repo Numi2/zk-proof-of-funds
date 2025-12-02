@@ -142,6 +142,8 @@ struct RailVerifier {
     circuit_version: u32,
     layout: PublicInputLayout,
     artifacts: RailArtifacts,
+    /// Path to the manifest file (for deriving artifact paths).
+    manifest_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -149,8 +151,76 @@ struct RailRegistry {
     rails: Arc<HashMap<String, RailVerifier>>,
 }
 
+impl RailArtifacts {
+    /// Compute a unique artifact key from params+vk hashes for debugging/verification.
+    fn artifact_key(&self) -> String {
+        match self {
+            RailArtifacts::Prover(a) => format!(
+                "params={:.8}+vk={:.8}",
+                &a.manifest.params.blake3,
+                &a.manifest.vk.blake3
+            ),
+            RailArtifacts::Verifier(a) => format!(
+                "params={:.8}+vk={:.8}",
+                &a.manifest.params.blake3,
+                &a.manifest.vk.blake3
+            ),
+        }
+    }
+
+    fn k(&self) -> u32 {
+        match self {
+            RailArtifacts::Prover(a) => a.manifest.k,
+            RailArtifacts::Verifier(a) => a.manifest.k,
+        }
+    }
+
+    /// Get the manifest for this rail's artifacts.
+    fn manifest(&self) -> &zkpf_common::ArtifactManifest {
+        match self {
+            RailArtifacts::Prover(a) => &a.manifest,
+            RailArtifacts::Verifier(a) => &a.manifest,
+        }
+    }
+}
+
+impl RailVerifier {
+    /// Get the directory containing artifacts based on manifest_path.
+    fn artifact_dir(&self) -> Option<std::path::PathBuf> {
+        self.manifest_path.as_ref().map(|p| {
+            let path = std::path::Path::new(p);
+            path.parent().unwrap_or(path).to_path_buf()
+        })
+    }
+
+    /// Get the path to a specific artifact (params, vk, pk).
+    fn artifact_path(&self, kind: &str) -> Option<std::path::PathBuf> {
+        let dir = self.artifact_dir()?;
+        let manifest = self.artifacts.manifest();
+        // Join the directory with the artifact's relative path from the manifest
+        match kind {
+            "params" => Some(dir.join(&manifest.params.path)),
+            "vk" => Some(dir.join(&manifest.vk.path)),
+            "pk" => Some(dir.join(&manifest.pk.path)),
+            _ => None,
+        }
+    }
+}
+
 impl RailRegistry {
     fn from_env() -> Self {
+        eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        eprintln!("[RailRegistry] Initializing rail registry");
+        eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        // Log the multi-rail manifest environment variable
+        let multi_rail_path = env::var(MULTIRAIL_MANIFEST_ENV);
+        eprintln!(
+            "[RailRegistry] {}={:?}",
+            MULTIRAIL_MANIFEST_ENV,
+            multi_rail_path
+        );
+
         // Start with the legacy custodial rail backed by the full prover artifacts.
         let mut map = HashMap::new();
 
@@ -158,6 +228,7 @@ impl RailRegistry {
             circuit_version: ARTIFACTS.manifest.circuit_version,
             layout: PublicInputLayout::V1,
             artifacts: RailArtifacts::Prover(ARTIFACTS.clone()),
+            manifest_path: Some(env::var(MANIFEST_ENV).unwrap_or_else(|_| DEFAULT_MANIFEST_PATH.to_string())),
         };
 
         // Empty rail_id is used for backward-compat bundles; DEFAULT_RAIL_ID is a
@@ -169,21 +240,45 @@ impl RailRegistry {
         map.insert(DEFAULT_RAIL_ID.to_string(), default.clone());
         map.insert(PROVIDER_BALANCE_RAIL_ID.to_string(), default.clone());
 
+        eprintln!(
+            "[RailRegistry] rail_id=CUSTODIAL_ATTESTATION cv={} layout={:?} k={} artifact_key={}",
+            default.circuit_version,
+            default.layout,
+            default.artifacts.k(),
+            default.artifacts.artifact_key()
+        );
+
         // Development mode: register common rail IDs so they are recognized even
         // without a full multi-rail manifest. This allows the verification flow
         // to proceed and return meaningful errors (e.g., public input layout
         // mismatch, cryptographic verification failure) instead of "unknown rail_id".
         //
-        // For production use with real Orchard proofs, configure ZKPF_MULTI_RAIL_MANIFEST_PATH
-        // to point to a manifest with proper Orchard circuit artifacts.
+        // IMPORTANT: In dev mode we use the custodial circuit artifacts (k=14, 7 public inputs).
+        // The V2Orchard layout expects 10 public inputs, which would cause a mismatch.
+        // Therefore we use V1 layout here to match the custodial artifacts.
+        //
+        // For production use with real Orchard proofs (k=19, 10 public inputs),
+        // configure ZKPF_MULTI_RAIL_MANIFEST_PATH to point to a manifest with
+        // proper Orchard circuit artifacts and V2_ORCHARD layout.
         let orchard_dev = RailVerifier {
             circuit_version: ARTIFACTS.manifest.circuit_version,
-            layout: PublicInputLayout::V2Orchard,
+            // V1 layout to match k=14 custodial artifacts (7 public inputs)
+            // Real Orchard proofs require V2Orchard layout with k=19 artifacts
+            layout: PublicInputLayout::V1,
             artifacts: RailArtifacts::Prover(ARTIFACTS.clone()),
+            manifest_path: Some(env::var(MANIFEST_ENV).unwrap_or_else(|_| DEFAULT_MANIFEST_PATH.to_string())),
         };
+        eprintln!(
+            "[RailRegistry] rail_id=ZCASH_ORCHARD (DEV FALLBACK) cv={} layout={:?} k={} artifact_key={}",
+            orchard_dev.circuit_version,
+            orchard_dev.layout,
+            orchard_dev.artifacts.k(),
+            orchard_dev.artifacts.artifact_key()
+        );
         map.insert(RAIL_ID_ZCASH_ORCHARD.to_string(), orchard_dev);
 
-        if let Ok(path) = env::var(MULTIRAIL_MANIFEST_ENV) {
+        if let Ok(path) = multi_rail_path {
+            eprintln!("[RailRegistry] Loading multi-rail manifest from: {}", path);
             let bytes = fs::read(&path).unwrap_or_else(|err| {
                 panic!("failed to read multi-rail manifest from {}: {}", path, err)
             });
@@ -192,11 +287,15 @@ impl RailRegistry {
                     panic!("failed to parse multi-rail manifest from {}: {}", path, err)
                 });
 
-            for rail in manifest.rails {
-                if map.contains_key(&rail.rail_id) {
-                    panic!("duplicate rail_id {} in multi-rail manifest", rail.rail_id);
-                }
+            eprintln!("[RailRegistry] Found {} rail entries in manifest", manifest.rails.len());
 
+            for rail in manifest.rails {
+                eprintln!(
+                    "[RailRegistry] Loading rail: id={} cv={} layout={} manifest={}",
+                    rail.rail_id, rail.circuit_version, rail.layout, rail.manifest_path
+                );
+
+                // For production rails, REPLACE the dev fallback entry
                 let layout = match rail.layout.as_str() {
                     "V1" => PublicInputLayout::V1,
                     "V2_ORCHARD" => PublicInputLayout::V2Orchard,
@@ -227,16 +326,34 @@ impl RailRegistry {
                     );
                 }
 
-                map.insert(
-                    rail.rail_id.clone(),
-                    RailVerifier {
-                        circuit_version: rail.circuit_version,
-                        layout,
-                        artifacts: RailArtifacts::Verifier(Arc::new(artifacts)),
-                    },
+                let rail_verifier = RailVerifier {
+                    circuit_version: rail.circuit_version,
+                    layout,
+                    artifacts: RailArtifacts::Verifier(Arc::new(artifacts)),
+                    manifest_path: Some(rail.manifest_path.clone()),
+                };
+
+                eprintln!(
+                    "[RailRegistry] ✓ rail_id={} cv={} layout={:?} k={} artifact_key={}",
+                    rail.rail_id,
+                    rail_verifier.circuit_version,
+                    rail_verifier.layout,
+                    rail_verifier.artifacts.k(),
+                    rail_verifier.artifacts.artifact_key()
                 );
+
+                // Insert (or replace dev fallback)
+                map.insert(rail.rail_id.clone(), rail_verifier);
             }
+        } else {
+            eprintln!(
+                "[RailRegistry] ⚠ {} not set - using dev fallback for ZCASH_ORCHARD",
+                MULTIRAIL_MANIFEST_ENV
+            );
         }
+
+        eprintln!("[RailRegistry] Registered {} rails total", map.len());
+        eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         RailRegistry {
             rails: Arc::new(map),
@@ -249,6 +366,14 @@ impl RailRegistry {
         } else {
             self.rails.get(rail_id)
         }
+    }
+
+    /// Get all registered rail IDs (excluding empty string and duplicates).
+    fn rail_ids(&self) -> Vec<&str> {
+        self.rails.keys()
+            .filter(|k| !k.is_empty())
+            .map(|s| s.as_str())
+            .collect()
     }
 }
 
@@ -516,6 +641,9 @@ pub fn app_router(state: AppState) -> Router {
         .route("/zkpf/policies/compose", post(compose_policy_handler))
         .route("/zkpf/params", get(get_params))
         .route("/zkpf/artifacts/:kind", get(get_artifact))
+        // Rail-specific artifact endpoints for multi-rail support (e.g., Orchard k=19)
+        .route("/zkpf/rails/:rail_id/params", get(get_rail_params))
+        .route("/zkpf/rails/:rail_id/artifacts/:kind", get(get_rail_artifact))
         .route("/zkpf/epoch", get(get_epoch))
         .route("/zkpf/verify", post(verify_handler))
         .route("/zkpf/verify-bundle", post(verify_bundle_handler))
@@ -601,6 +729,201 @@ async fn get_artifact(
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("public, max-age=3600, must-revalidate"),
+    );
+
+    Ok(response)
+}
+
+/// Response structure for rail-specific params endpoint.
+#[derive(serde::Serialize)]
+struct RailParamsResponse {
+    rail_id: String,
+    circuit_version: u32,
+    manifest_version: u32,
+    k: u32,
+    layout: String,
+    params_hash: String,
+    vk_hash: String,
+    pk_hash: String,
+    /// Hash of break_points.json (only for halo2-base circuits like Orchard).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    break_points_hash: Option<String>,
+    artifact_urls: RailArtifactUrls,
+}
+
+/// Artifact URLs for a rail (includes optional break_points for halo2-base circuits).
+#[derive(serde::Serialize)]
+struct RailArtifactUrls {
+    params: String,
+    vk: String,
+    pk: String,
+    /// URL for break_points.json (required for Orchard and other halo2-base circuits).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    break_points: Option<String>,
+}
+
+/// GET /zkpf/rails/:rail_id/params - Returns manifest info for a specific rail.
+async fn get_rail_params(
+    AxumPath(rail_id): AxumPath<String>,
+) -> Result<Json<RailParamsResponse>, ApiError> {
+    let rail = RAILS.get(&rail_id).ok_or_else(|| {
+        ApiError::not_found(format!("rail '{}' not found", rail_id))
+    })?;
+
+    let manifest = rail.artifacts.manifest();
+    let layout_str = match rail.layout {
+        PublicInputLayout::V1 => "V1",
+        PublicInputLayout::V2Orchard => "V2_ORCHARD",
+        PublicInputLayout::V3Starknet => "V3_STARKNET",
+    };
+
+    // Check if break_points.json exists for halo2-base circuits (Orchard, etc.)
+    // Break points are REQUIRED for proof generation in these circuits.
+    let break_points_path = rail.artifact_dir().map(|dir| dir.join("break_points.json"));
+    let has_break_points = break_points_path.as_ref().map(|p| p.exists()).unwrap_or(false);
+    
+    // Compute break_points hash if the file exists
+    let break_points_hash = if has_break_points {
+        if let Some(ref path) = break_points_path {
+            match fs::read(path) {
+                Ok(bytes) => Some(zkpf_common::hash_bytes_hex(&bytes)),
+                Err(err) => {
+                    eprintln!(
+                        "zkpf-backend: failed to read break_points.json for rail '{}': {}",
+                        rail_id, err
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    // Check if artifacts are available on disk
+    let artifact_urls = RailArtifactUrls {
+        params: format!("/zkpf/rails/{}/artifacts/params", rail_id),
+        vk: format!("/zkpf/rails/{}/artifacts/vk", rail_id),
+        pk: format!("/zkpf/rails/{}/artifacts/pk", rail_id),
+        break_points: if has_break_points {
+            Some(format!("/zkpf/rails/{}/artifacts/break_points", rail_id))
+        } else {
+            None
+        },
+    };
+
+    // Verify at least params exists (pk might not be present in verifier-only deployments)
+    if let Some(params_path) = rail.artifact_path("params") {
+        if !params_path.exists() {
+            eprintln!(
+                "zkpf-backend: rail '{}' params not found at {} - artifacts may not be deployed",
+                rail_id, params_path.display()
+            );
+            return Err(ApiError::not_found(format!(
+                "artifacts for rail '{}' not available on this deployment",
+                rail_id
+            )));
+        }
+    }
+    
+    // For halo2-base circuits (V2_ORCHARD), log if break_points is missing
+    if rail.layout == PublicInputLayout::V2Orchard && !has_break_points {
+        eprintln!(
+            "zkpf-backend: ⚠️ rail '{}' (V2_ORCHARD) is missing break_points.json - \
+             client-side proof generation will fail. Regenerate artifacts with zkpf-tools.",
+            rail_id
+        );
+    }
+
+    Ok(Json(RailParamsResponse {
+        rail_id: rail_id.clone(),
+        circuit_version: rail.circuit_version,
+        manifest_version: manifest.manifest_version,
+        k: manifest.k,
+        layout: layout_str.to_string(),
+        params_hash: manifest.params.blake3.clone(),
+        vk_hash: manifest.vk.blake3.clone(),
+        pk_hash: manifest.pk.blake3.clone(),
+        break_points_hash,
+        artifact_urls,
+    }))
+}
+
+/// GET /zkpf/rails/:rail_id/artifacts/:kind - Streams a rail-specific artifact file.
+async fn get_rail_artifact(
+    AxumPath((rail_id, kind)): AxumPath<(String, String)>,
+) -> Result<Response, ApiError> {
+    let rail = RAILS.get(&rail_id).ok_or_else(|| {
+        ApiError::not_found(format!("rail '{}' not found", rail_id))
+    })?;
+
+    // Handle break_points specially since it's not in the manifest
+    let path = if kind == "break_points" {
+        rail.artifact_dir()
+            .map(|dir| dir.join("break_points.json"))
+            .ok_or_else(|| {
+                ApiError::bad_request(CODE_ARTIFACT_NOT_FOUND, "artifact directory not configured")
+            })?
+    } else {
+        rail.artifact_path(&kind).ok_or_else(|| {
+            ApiError::bad_request(CODE_ARTIFACT_NOT_FOUND, "unknown artifact kind")
+        })?
+    };
+
+    let file = File::open(&path).await.map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            eprintln!(
+                "rail '{}' artifact '{}' not found at {}",
+                rail_id, kind, path.display()
+            );
+            ApiError::not_found(format!(
+                "artifact '{}' for rail '{}' not available on this deployment",
+                kind, rail_id
+            ))
+        } else {
+            eprintln!(
+                "failed to open rail '{}' artifact '{}': {}",
+                rail_id, kind, err
+            );
+            ApiError::internal("failed to load artifact")
+        }
+    })?;
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    // For break_points, compute hash on-the-fly since it's not in manifest
+    let (etag, content_type) = if kind == "break_points" {
+        // Read file to compute hash (this is small - just JSON)
+        let bytes = fs::read(&path).unwrap_or_default();
+        let hash = zkpf_common::hash_bytes_hex(&bytes);
+        (hash, "application/json")
+    } else {
+        let manifest = rail.artifacts.manifest();
+        let hash = match kind.as_str() {
+            "params" => manifest.params.blake3.clone(),
+            "vk" => manifest.vk.blake3.clone(),
+            "pk" => manifest.pk.blake3.clone(),
+            _ => manifest.params.blake3.clone(),
+        };
+        (hash, "application/octet-stream")
+    };
+
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(content_type),
+    );
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{}\"", etag))
+            .unwrap_or_else(|_| HeaderValue::from_static("\"unknown\"")),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400, must-revalidate"),
     );
 
     Ok(response)
@@ -2126,16 +2449,40 @@ fn process_verification(
             )
         })?;
 
-    let (params, vk) = match &rail.artifacts {
-        RailArtifacts::Prover(a) => (&a.params, &a.vk),
-        RailArtifacts::Verifier(a) => (&a.params, &a.vk),
+    let (params, vk, artifact_k, vk_hash) = match &rail.artifacts {
+        RailArtifacts::Prover(a) => (
+            &a.params,
+            &a.vk,
+            a.manifest.k,
+            a.manifest.vk.blake3.clone(),
+        ),
+        RailArtifacts::Verifier(a) => (
+            &a.params,
+            &a.vk,
+            a.manifest.k,
+            a.manifest.vk.blake3.clone(),
+        ),
     };
 
-    // Diagnostic logging for proof verification failures
+    // Comprehensive diagnostic logging for proof verification
+    let artifact_key = rail.artifacts.artifact_key();
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    eprintln!("[ZKPF Debug] VERIFICATION REQUEST");
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     eprintln!(
-        "[ZKPF Debug] Verifying proof: circuit_version={}, layout={:?}, proof_len={}, instances_cols={}",
-        rail.circuit_version,
-        rail.layout,
+        "[ZKPF Debug] Rail: circuit_version={}, layout={:?}, artifact_k={}",
+        rail.circuit_version, rail.layout, artifact_k
+    );
+    eprintln!(
+        "[ZKPF Debug] *** ARTIFACT_KEY={} ***",
+        artifact_key
+    );
+    eprintln!(
+        "[ZKPF Debug] VK hash (first 16 chars): {}...",
+        &vk_hash[..16.min(vk_hash.len())]
+    );
+    eprintln!(
+        "[ZKPF Debug] Proof length: {} bytes, Instance columns: {}",
         proof.len(),
         instances.len()
     );
@@ -2147,24 +2494,65 @@ fn process_verification(
         public_inputs.verifier_scope_id,
         public_inputs.policy_id
     );
+    // Log 8-byte prefixes as hex for easy frontend comparison
     eprintln!(
-        "[ZKPF Debug] Nullifier (first 8 bytes): {:?}",
-        &public_inputs.nullifier[..8]
+        "[ZKPF Debug] Nullifier (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        public_inputs.nullifier[0], public_inputs.nullifier[1],
+        public_inputs.nullifier[2], public_inputs.nullifier[3],
+        public_inputs.nullifier[4], public_inputs.nullifier[5],
+        public_inputs.nullifier[6], public_inputs.nullifier[7]
     );
     eprintln!(
-        "[ZKPF Debug] Custodian pubkey hash (first 8 bytes): {:?}",
-        &public_inputs.custodian_pubkey_hash[..8]
+        "[ZKPF Debug] Custodian hash (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        public_inputs.custodian_pubkey_hash[0], public_inputs.custodian_pubkey_hash[1],
+        public_inputs.custodian_pubkey_hash[2], public_inputs.custodian_pubkey_hash[3],
+        public_inputs.custodian_pubkey_hash[4], public_inputs.custodian_pubkey_hash[5],
+        public_inputs.custodian_pubkey_hash[6], public_inputs.custodian_pubkey_hash[7]
     );
+    // Log Orchard-specific fields if present
+    if let Some(height) = public_inputs.snapshot_block_height {
+        eprintln!("[ZKPF Debug] Orchard snapshot_block_height: {}", height);
+    }
+    if let Some(anchor) = &public_inputs.snapshot_anchor_orchard {
+        eprintln!(
+            "[ZKPF Debug] Orchard anchor (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            anchor[0], anchor[1], anchor[2], anchor[3],
+            anchor[4], anchor[5], anchor[6], anchor[7]
+        );
+    }
+    // Log flattened instance array column layout for comparison with prover
+    eprintln!("[ZKPF Debug] Instance columns layout ({} columns):", instances.len());
+    for (i, col) in instances.iter().enumerate() {
+        let label = match i {
+            0 => "threshold_raw",
+            1 => "required_currency_code",
+            2 => "current_epoch",
+            3 => "verifier_scope_id",
+            4 => "policy_id",
+            5 => "nullifier",
+            6 => "custodian_pubkey_hash",
+            7 => "snapshot_block_height",
+            8 => "snapshot_anchor_orchard",
+            9 => "holder_binding",
+            _ => "unknown",
+        };
+        eprintln!("[ZKPF Debug]   col[{}]: {} (rows={})", i, label, col.len());
+    }
+    eprintln!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     if !verify(params, vk, proof, &instances) {
-        eprintln!("[ZKPF Debug] VERIFICATION FAILED!");
+        eprintln!("[ZKPF Debug] ❌ VERIFICATION FAILED!");
+        eprintln!(
+            "[ZKPF Debug] Possible causes: VK mismatch, instance count mismatch (expected {} for k={}), proof corruption",
+            instances.len(), artifact_k
+        );
         return Ok(VerifyResponse::failure(
             rail.circuit_version,
             CODE_PROOF_INVALID,
             "proof verification failed",
         ));
     }
-    eprintln!("[ZKPF Debug] Verification succeeded");
+    eprintln!("[ZKPF Debug] ✓ Verification succeeded");
 
     // Atomic nullifier recording using compare-and-swap.
     // This prevents race conditions where two concurrent requests could both
@@ -2558,3 +2946,4 @@ impl NullifierKey {
         buf
     }
 }
+

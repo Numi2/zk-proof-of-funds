@@ -9,6 +9,7 @@ clap = { version = "4.5", features = ["derive"] }
 zkpf-common = { path = "../zkpf-common" }
 zkpf-prover = { path = "../zkpf-prover" }
 zkpf-starknet-l2 = { path = "../zkpf-rails-starknet/zkpf-starknet-l2" }
+zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

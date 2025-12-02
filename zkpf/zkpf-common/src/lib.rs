@@ -69,7 +69,7 @@ pub struct VerifierPublicInputs {
 /// - `V1` – legacy custodial attestation rail (8 public inputs).
 /// - `V2Orchard` – Orchard rail layout: V1 prefix plus Orchard snapshot fields.
 /// - `V3Starknet` – Starknet L2 rail layout: V1 prefix plus Starknet-specific fields.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicInputLayout {
     #[serde(rename = "V1")]
     V1,

@@ -13,14 +13,36 @@ import type {
 import { formatPolicyThreshold, policyCategoryLabel, policyDisplayName, policyRailLabel } from '../utils/policy';
 import type { ConnectionState } from './ProofWorkbench';
 import type { AssetRail } from '../types/ui';
-import { ZkpfClient } from '../api/zkpf';
+import { ZkpfClient, type RailParamsResponse } from '../api/zkpf';
 import { BundleSummary } from './BundleSummary';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
 import { AuthButton } from './auth/AuthButton';
 import { useAuth } from '../context/AuthContext';
-import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
+import { 
+  prepareProverArtifacts, 
+  generateBundle, 
+  wasmComputeAttestationMessageHash, 
+  wasmComputeCustodianPubkeyHash, 
+  wasmComputeNullifier,
+  // Orchard-specific prover functions
+  prepareOrchardProverArtifacts,
+  generateOrchardBundle,
+  isOrchardArtifactsInitialized,
+  getOrchardArtifactsKey,
+  type OrchardPublicInputs,
+} from '../wasm/prover';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
+
+// Helper to convert hex string to number array for Orchard public inputs
+function hexToBytes(hex: string): number[] {
+  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+  const bytes: number[] = [];
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    bytes.push(parseInt(cleanHex.slice(i, i + 2), 16));
+  }
+  return bytes;
+}
 
 interface WalletNavigationState {
   customPolicy?: PolicyDefinition;
@@ -85,6 +107,11 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const [showCancelPending, setShowCancelPending] = useState(false);
   const cancelRequestedRef = useRef(false);
   
+  // Orchard-specific artifacts state (k=19, V2_ORCHARD layout)
+  const [orchardParams, setOrchardParams] = useState<RailParamsResponse | null>(null);
+  const [orchardPreparedKey, setOrchardPreparedKey] = useState<string | null>(null);
+  const [_orchardStatus, setOrchardStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  
   // Check if user has a Zcash wallet ready
   const hasZcashWallet = walletState.activeAccount != null;
   
@@ -136,8 +163,12 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
   const policies = useMemo<PolicyDefinition[]>(() => {
     const fetchedPolicies = policiesQuery.data ?? [];
     if (customPolicy) {
-      // Put custom policy at the start of the list
-      return [customPolicy, ...fetchedPolicies];
+      // Put custom policy at the start of the list, filtering out duplicates
+      // to avoid React key conflicts
+      const filteredPolicies = fetchedPolicies.filter(
+        (policy) => policy.policy_id !== customPolicy.policy_id
+      );
+      return [customPolicy, ...filteredPolicies];
     }
     return fetchedPolicies;
   }, [policiesQuery.data, customPolicy]);
@@ -329,6 +360,89 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     }
   }, [client, manifestMeta, preparedKey, wasmStatus]);
 
+  // Ensure Orchard-specific artifacts are loaded (k=19, V2_ORCHARD layout)
+  const ensureOrchardArtifacts = useCallback(async () => {
+    const ORCHARD_RAIL_ID = 'ZCASH_ORCHARD';
+    
+    // Check if already prepared with current params
+    if (orchardParams && orchardPreparedKey) {
+      const expectedKey = `${orchardParams.params_hash}:${orchardParams.pk_hash}`;
+      if (orchardPreparedKey === expectedKey && isOrchardArtifactsInitialized()) {
+        console.log('[ProofBuilder] Orchard artifacts already prepared:', expectedKey);
+        return;
+      }
+    }
+    
+    setOrchardStatus('loading');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[ProofBuilder] Fetching Orchard rail params...');
+    
+    try {
+      // Fetch Orchard rail params from backend
+      const railParams = await client.getRailParams(ORCHARD_RAIL_ID);
+      setOrchardParams(railParams);
+      
+      console.log('[ProofBuilder] Orchard params received:');
+      console.log('[ProofBuilder]   k:', railParams.k);
+      console.log('[ProofBuilder]   layout:', railParams.layout);
+      console.log('[ProofBuilder]   circuit_version:', railParams.circuit_version);
+      console.log('[ProofBuilder]   params_hash:', railParams.params_hash.slice(0, 16) + '...');
+      console.log('[ProofBuilder]   pk_hash:', railParams.pk_hash.slice(0, 16) + '...');
+      
+      const artifactKey = `${railParams.params_hash}:${railParams.pk_hash}`;
+      
+      // Skip if already initialized with same key
+      if (orchardPreparedKey === artifactKey && isOrchardArtifactsInitialized()) {
+        console.log('[ProofBuilder] Orchard artifacts already initialized with key:', artifactKey);
+        setOrchardStatus('ready');
+        return;
+      }
+      
+      console.log('[ProofBuilder] Loading Orchard artifacts (this may take a while)...');
+      console.log('[ProofBuilder] ⚠️ Orchard pk.bin is ~750MB - please wait...');
+      
+      // Load Orchard-specific artifacts (including break_points)
+      const { params, pk, breakPoints } = await client.loadRailArtifacts(ORCHARD_RAIL_ID, railParams);
+      
+      // Verify break_points was loaded - it's REQUIRED for proof generation
+      if (!breakPoints) {
+        throw new Error(
+          'Orchard break_points not available. The artifacts may be outdated. ' +
+          'Break points are required for proof generation in halo2-base circuits.'
+        );
+      }
+      
+      console.log('[ProofBuilder] Initializing Orchard WASM prover...');
+      console.log('[ProofBuilder]   params:', params.length, 'bytes');
+      console.log('[ProofBuilder]   pk:', pk.length, 'bytes');
+      console.log('[ProofBuilder]   break_points:', breakPoints.length, 'bytes');
+      
+      // Initialize Orchard prover in WASM (with break points)
+      await prepareOrchardProverArtifacts({
+        params,
+        pk,
+        breakPoints,
+        key: artifactKey,
+      });
+      
+      setOrchardPreparedKey(artifactKey);
+      setOrchardStatus('ready');
+      
+      console.log('[ProofBuilder] ✓ Orchard prover ready');
+      console.log('[ProofBuilder]   Artifact key:', artifactKey);
+      console.log('[ProofBuilder]   WASM initialized:', isOrchardArtifactsInitialized());
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Release from JS memory (WASM has its own copy)
+      client.releaseRailArtifacts(ORCHARD_RAIL_ID, railParams);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      console.error('[ProofBuilder] Failed to load Orchard artifacts:', message);
+      setOrchardStatus('error');
+      throw new Error(`Failed to initialize Orchard prover: ${message}`);
+    }
+  }, [client, orchardParams, orchardPreparedKey]);
+
   const applySelectedPolicy = useCallback(
     (input: CircuitInput): CircuitInput => {
       // Only apply policy overrides when we have the full policy object.
@@ -359,24 +473,103 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       setError(null);
       setBundle(null);
       
+      // Determine which rail we're targeting
+      const targetRailId = customPolicy?.rail_id || selectedPolicy?.rail_id || 'CUSTODIAL_ATTESTATION';
+      const isOrchardRail = targetRailId === 'ZCASH_ORCHARD';
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[ProofBuilder] PROOF GENERATION REQUEST');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[ProofBuilder] Target rail_id:', targetRailId);
+      console.log('[ProofBuilder] Is Orchard rail:', isOrchardRail);
+      
       try {
         // Yield to allow UI to update before heavy computation
         await yieldToMain();
         
-        await ensureArtifacts();
+        let proofBundle;
         
-        // Check if cancelled during initialization
-        if (cancelRequestedRef.current) {
-          showToast('Proof generation cancelled', 'error');
-          return;
+        // Check if this is an Orchard proof request
+        if (isOrchardRail) {
+          console.log('[ProofBuilder] ⚠️ ZCASH_ORCHARD rail selected - using Orchard prover path');
+          
+          // Initialize Orchard artifacts (k=19, V2_ORCHARD layout)
+          await ensureOrchardArtifacts();
+          
+          // Check if cancelled during initialization
+          if (cancelRequestedRef.current) {
+            showToast('Proof generation cancelled', 'error');
+            return;
+          }
+          
+          console.log('[ProofBuilder] Orchard artifacts ready:');
+          console.log('[ProofBuilder]   initialized:', isOrchardArtifactsInitialized());
+          console.log('[ProofBuilder]   artifact_key:', getOrchardArtifactsKey());
+          
+          // Update progress and yield before proof generation
+          setProofProgress('generating');
+          await yieldToMain();
+          
+          // Parse the attestation JSON to extract public inputs for Orchard
+          const parsed = JSON.parse(normalizedJson);
+          const pubInputs = parsed.public;
+          
+          // Build Orchard-specific public inputs (V2_ORCHARD layout: 10 columns)
+          // Note: For true Orchard proofs, we'd need note values from the wallet.
+          // For now, we use the attestation balance as a single note.
+          const orchardPublicInputs: OrchardPublicInputs = {
+            threshold_raw: pubInputs.threshold_raw || 0,
+            required_currency_code: pubInputs.required_currency_code || 999001,
+            current_epoch: pubInputs.current_epoch || Math.floor(Date.now() / 1000),
+            verifier_scope_id: pubInputs.verifier_scope_id || 0,
+            policy_id: pubInputs.policy_id || 0,
+            nullifier: hexToBytes(pubInputs.nullifier || ''.padEnd(64, '0')),
+            custodian_pubkey_hash: hexToBytes(pubInputs.custodian_pubkey_hash || ''.padEnd(64, '0')),
+            // Orchard-specific fields (V2_ORCHARD layout additions)
+            snapshot_block_height: pubInputs.snapshot_block_height || 0,
+            snapshot_anchor_orchard: hexToBytes(pubInputs.snapshot_anchor_orchard || ''.padEnd(64, '0')),
+            holder_binding: hexToBytes(pubInputs.holder_binding || ''.padEnd(64, '0')),
+          };
+          
+          // Extract note values from attestation (for Orchard circuit witness)
+          const noteValues = parsed.attestation?.balance_raw != null 
+            ? [parsed.attestation.balance_raw] 
+            : [0];
+          
+          console.log('[ProofBuilder] Calling generateOrchardBundle (k=19, V2_ORCHARD layout)...');
+          console.log('[ProofBuilder] Public inputs:', {
+            threshold_raw: orchardPublicInputs.threshold_raw,
+            required_currency_code: orchardPublicInputs.required_currency_code,
+            current_epoch: orchardPublicInputs.current_epoch,
+            verifier_scope_id: orchardPublicInputs.verifier_scope_id,
+            policy_id: orchardPublicInputs.policy_id,
+          });
+          console.log('[ProofBuilder] Note values:', noteValues);
+          
+          proofBundle = await generateOrchardBundle(orchardPublicInputs, noteValues);
+          
+          // Orchard bundle already has rail_id set to ZCASH_ORCHARD
+          console.log('[ProofBuilder] ✓ Orchard proof generated');
+        } else {
+          // Non-Orchard rail: use custodial prover (k=14, V1 layout)
+          await ensureArtifacts();
+          
+          // Check if cancelled during initialization
+          if (cancelRequestedRef.current) {
+            showToast('Proof generation cancelled', 'error');
+            return;
+          }
+          
+          // Update progress and yield before proof generation
+          setProofProgress('generating');
+          await yieldToMain();
+          
+          console.log('[ProofBuilder] Calling generateBundle (custodial prover, k=14, V1 layout)...');
+          proofBundle = await generateBundle(normalizedJson);
+          
+          // Set the rail_id on the bundle based on the policy
+          proofBundle.rail_id = targetRailId;
         }
-        
-        // Update progress and yield before proof generation
-        setProofProgress('generating');
-        await yieldToMain();
-        
-        // The actual proof generation - this is the CPU-intensive part
-        const proofBundle = await generateBundle(normalizedJson);
         
         // Check if cancelled during generation (checked after blocking call completes)
         if (cancelRequestedRef.current) {
@@ -384,11 +577,10 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           return;
         }
         
-        // Set the rail_id on the bundle based on the policy or default to custodial attestation.
-        // The WASM prover creates bundles with empty rail_id for backward compatibility,
-        // so we set it explicitly here to ensure proper rail routing and UI display.
-        const railId = customPolicy?.rail_id || selectedPolicy?.rail_id || 'CUSTODIAL_ATTESTATION';
-        proofBundle.rail_id = railId;
+        console.log('[ProofBuilder] ✓ Proof generated successfully');
+        console.log('[ProofBuilder] Bundle rail_id:', proofBundle.rail_id);
+        console.log('[ProofBuilder] Proof length:', proofBundle.proof.length, 'bytes');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         // Finalize
         setProofProgress('finalizing');
@@ -416,7 +608,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         setShowCancelPending(false);
       }
     },
-    [ensureArtifacts, onBundleReady, customPolicy],
+    [ensureArtifacts, onBundleReady, customPolicy, selectedPolicy],
   );
 
   const handleGenerate = useCallback(async () => {

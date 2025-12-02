@@ -16,6 +16,26 @@ import type {
   ProviderSessionSnapshot,
   ZashiSessionStartResponse,
 } from '../types/zkpf';
+
+export interface RailParamsResponse {
+  rail_id: string;
+  circuit_version: number;
+  manifest_version: number;
+  k: number;
+  layout: string;
+  params_hash: string;
+  vk_hash: string;
+  pk_hash: string;
+  /** Hash of break_points.json (optional, only for halo2-base circuits like Orchard) */
+  break_points_hash?: string;
+  artifact_urls: {
+    params: string;
+    vk: string;
+    pk: string;
+    /** URL for break_points.json (required for Orchard and other halo2-base circuits) */
+    break_points?: string;
+  };
+}
 import type {
   PcdInitRequest,
   PcdInitResponse,
@@ -45,7 +65,13 @@ export class ZkpfClient {
   private readonly base: string;
   private readonly artifactCache = new Map<
     string,
-    { params: ByteArray | Uint8Array; vk: ByteArray | Uint8Array; pk: ByteArray | Uint8Array }
+    { 
+      params: ByteArray | Uint8Array; 
+      vk: ByteArray | Uint8Array; 
+      pk: ByteArray | Uint8Array;
+      /** Break points for halo2-base circuits (optional, required for Orchard) */
+      breakPoints?: ByteArray | Uint8Array;
+    }
   >();
 
   constructor(baseUrl: string) {
@@ -200,6 +226,113 @@ export class ZkpfClient {
 
   async getEpoch(): Promise<EpochResponse> {
     return this.request<EpochResponse>('/zkpf/epoch');
+  }
+
+  /**
+   * Get params/manifest info for a specific rail (e.g., ZCASH_ORCHARD).
+   * Returns artifact URLs and hashes for the rail's specific circuit parameters.
+   */
+  async getRailParams(railId: string): Promise<RailParamsResponse> {
+    return this.request<RailParamsResponse>(`/zkpf/rails/${encodeURIComponent(railId)}/params`);
+  }
+
+  /**
+   * Load artifacts for a specific rail (e.g., ZCASH_ORCHARD k=19).
+   * This is separate from the default custodial artifacts.
+   * 
+   * For halo2-base circuits (like Orchard), this also loads the break_points.json file
+   * which is REQUIRED for proof generation. Without break_points, the prover will panic.
+   */
+  async loadRailArtifacts(
+    railId: string,
+    railParams: RailParamsResponse,
+  ): Promise<{ params: Uint8Array; pk: Uint8Array; breakPoints?: Uint8Array }> {
+    const cacheKey = `rail:${railId}:${railParams.params_hash}:${railParams.pk_hash}`;
+    const cached = this.artifactCache.get(cacheKey);
+    if (cached?.params && cached?.pk) {
+      return {
+        params: toUint8Array(cached.params),
+        pk: toUint8Array(cached.pk),
+        breakPoints: cached.breakPoints ? toUint8Array(cached.breakPoints) : undefined,
+      };
+    }
+
+    console.log(`[ZKPF API] Loading ${railId} artifacts (k=${railParams.k})...`);
+    
+    // Add hash as cache-buster query param to bypass stale browser cache
+    const paramsUrl = `${railParams.artifact_urls.params}?h=${railParams.params_hash.slice(0, 8)}`;
+    const pkUrl = `${railParams.artifact_urls.pk}?h=${railParams.pk_hash.slice(0, 8)}`;
+    
+    console.log(`[ZKPF API] params URL: ${paramsUrl}`);
+    console.log(`[ZKPF API] pk URL: ${pkUrl}`);
+
+    // Build download promises - always include params and pk
+    const downloadPromises: Promise<Uint8Array>[] = [
+      this.downloadArtifact(paramsUrl),
+      this.downloadArtifact(pkUrl),
+    ];
+
+    // If break_points URL is available, also download it
+    const hasBreakPoints = !!railParams.artifact_urls.break_points;
+    if (hasBreakPoints) {
+      const bpUrl = railParams.break_points_hash 
+        ? `${railParams.artifact_urls.break_points}?h=${railParams.break_points_hash.slice(0, 8)}`
+        : railParams.artifact_urls.break_points!;
+      console.log(`[ZKPF API] break_points URL: ${bpUrl}`);
+      downloadPromises.push(this.downloadArtifact(bpUrl));
+    }
+
+    const downloadResults = await Promise.all(downloadPromises);
+    const [paramsBytes, pkBytes] = downloadResults;
+    const breakPointsBytes = hasBreakPoints ? downloadResults[2] : undefined;
+
+    // Verify hashes
+    const actualParamsHash = computeBlake3Hex(paramsBytes);
+    if (actualParamsHash !== railParams.params_hash) {
+      throw new Error(
+        `${railId} params hash mismatch. Expected: ${railParams.params_hash.slice(0, 16)}..., ` +
+        `Got: ${actualParamsHash.slice(0, 16)}... The download may be corrupted.`
+      );
+    }
+    const actualPkHash = computeBlake3Hex(pkBytes);
+    if (actualPkHash !== railParams.pk_hash) {
+      throw new Error(
+        `${railId} pk hash mismatch. Expected: ${railParams.pk_hash.slice(0, 16)}..., ` +
+        `Got: ${actualPkHash.slice(0, 16)}... The download may be corrupted.`
+      );
+    }
+    
+    // Verify break_points hash if present
+    if (breakPointsBytes && railParams.break_points_hash) {
+      const actualBreakPointsHash = computeBlake3Hex(breakPointsBytes);
+      if (actualBreakPointsHash !== railParams.break_points_hash) {
+        throw new Error(
+          `${railId} break_points hash mismatch. Expected: ${railParams.break_points_hash.slice(0, 16)}..., ` +
+          `Got: ${actualBreakPointsHash.slice(0, 16)}... The download may be corrupted.`
+        );
+      }
+    }
+
+    console.log(`[ZKPF API] ✓ ${railId} artifacts loaded and verified`);
+    console.log(`[ZKPF API]   params: ${paramsBytes.length} bytes`);
+    console.log(`[ZKPF API]   pk: ${pkBytes.length} bytes`);
+    if (breakPointsBytes) {
+      console.log(`[ZKPF API]   break_points: ${breakPointsBytes.length} bytes`);
+    }
+
+    this.artifactCache.set(cacheKey, {
+      params: paramsBytes,
+      pk: pkBytes,
+      vk: new Uint8Array(),
+      breakPoints: breakPointsBytes,
+    });
+
+    return { params: paramsBytes, pk: pkBytes, breakPoints: breakPointsBytes };
+  }
+
+  releaseRailArtifacts(railId: string, railParams: RailParamsResponse) {
+    const cacheKey = `rail:${railId}:${railParams.params_hash}:${railParams.pk_hash}`;
+    this.artifactCache.delete(cacheKey);
   }
 
   async getPolicies(): Promise<PolicyDefinition[]> {

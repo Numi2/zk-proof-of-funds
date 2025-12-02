@@ -1,6 +1,13 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export class OrchardProvingKeyWasm {
+  free(): void;
+  [Symbol.dispose](): void;
+  constructor(bytes: Uint8Array);
+  toBytes(): Uint8Array;
+}
+
 export class ParamsWasm {
   free(): void;
   [Symbol.dispose](): void;
@@ -45,6 +52,11 @@ export function computeCustodianPubkeyHash(pubkey_x: Uint8Array, pubkey_y: Uint8
 
 export function computeNullifier(account_id_hash_bytes: Uint8Array, verifier_scope_id: bigint, policy_id: bigint, current_epoch: bigint): Uint8Array;
 
+/**
+ * Generate an Orchard proof bundle using the cached Orchard artifacts.
+ */
+export function generateOrchardProofBundleCached(public_inputs_json: string, note_values_json: string): any;
+
 export function generateProofBundle(attestation_json: string, params_bytes: Uint8Array, pk_bytes: Uint8Array): any;
 
 export function generateProofBundleCached(attestation_json: string): any;
@@ -56,6 +68,22 @@ export function generateProofCached(attestation_json: string): Uint8Array;
 export function generateProofWithCache(attestation_json: string, params: ParamsWasm, pk: ProvingKeyWasm): Uint8Array;
 
 export function generate_proof(attestation_json: string, params_bytes: Uint8Array, pk_bytes: Uint8Array): Uint8Array;
+
+/**
+ * Initialize Orchard prover artifacts (k=19, 10 instance columns).
+ * These are separate from the custodial artifacts.
+ *
+ * # Arguments
+ * * `params_bytes` - Serialized KZG parameters
+ * * `pk_bytes` - Serialized proving key
+ * * `break_points_bytes` - Serialized break points (REQUIRED for proof generation)
+ *
+ * # Important
+ * The `break_points_bytes` parameter is **required**. Without it, proof generation will
+ * panic with "break points not set". Break points are computed during keygen and must
+ * be loaded from the `break_points.json` artifact file.
+ */
+export function initOrchardProverArtifacts(params_bytes: Uint8Array, pk_bytes: Uint8Array, break_points_bytes: Uint8Array): void;
 
 export function initProverArtifacts(params_bytes: Uint8Array, pk_bytes: Uint8Array): void;
 

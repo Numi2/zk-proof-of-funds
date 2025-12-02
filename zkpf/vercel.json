@@ -49,6 +49,8 @@
     { "source": "/zkpf/params", "destination": "https://zkpf-backend.fly.dev/zkpf/params" },
     { "source": "/zkpf/epoch", "destination": "https://zkpf-backend.fly.dev/zkpf/epoch" },
     { "source": "/zkpf/artifacts/:path*", "destination": "https://zkpf-backend.fly.dev/zkpf/artifacts/:path*" },
+    { "source": "/zkpf/rails/:rail_id/params", "destination": "https://zkpf-backend.fly.dev/zkpf/rails/:rail_id/params" },
+    { "source": "/zkpf/rails/:rail_id/artifacts/:kind", "destination": "https://zkpf-backend.fly.dev/zkpf/rails/:rail_id/artifacts/:kind" },
     { "source": "/zkpf/policies", "destination": "https://zkpf-backend.fly.dev/zkpf/policies" },
     { "source": "/zkpf/verify", "destination": "https://zkpf-backend.fly.dev/zkpf/verify" },
     { "source": "/zkpf/verify-bundle", "destination": "https://zkpf-backend.fly.dev/zkpf/verify-bundle" },

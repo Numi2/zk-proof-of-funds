@@ -185,7 +185,7 @@ export function WebZjsProvider({ children }: ProviderProps) {
         }
       } else {
         wallet = await createWebWallet('main', lightwalletdUrl, 1);
-        console.info('Created new wallet (no saved state found)');
+        console.debug('Initializing new wallet instance (no saved state found - this is normal for first-time setup)');
       }
 
       dispatch({ type: 'set-web-wallet', payload: wallet });

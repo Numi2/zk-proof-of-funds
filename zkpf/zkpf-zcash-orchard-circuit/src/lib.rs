@@ -17,6 +17,7 @@
 //! compatibility.
 
 use std::{
+    cell::RefCell,
     fs,
     io::Cursor,
     path::{Path, PathBuf},
@@ -30,11 +31,15 @@ use halo2_base::{
     gates::{
         circuit::builder::BaseCircuitBuilder,
         circuit::{BaseCircuitParams, BaseConfig, CircuitBuilderStage},
+        flex_gate::MultiPhaseThreadBreakPoints,
         range::RangeChip,
         GateInstructions, RangeInstructions,
     },
     AssignedValue, Context as Halo2Context,
 };
+
+/// Re-export breakpoints type for use by callers (keygen tools, WASM layer).
+pub type OrchardBreakPoints = MultiPhaseThreadBreakPoints;
 use halo2_proofs_axiom::transcript::TranscriptWriterBuffer;
 use halo2_proofs_axiom::{
     circuit::{Layouter, SimpleFloorPlanner},
@@ -118,7 +123,8 @@ pub struct PublicMetaInputs {
 
 // === Orchard PoF Halo2 circuit ================================================================
 
-const ORCHARD_DEFAULT_K: usize = 19;
+/// Circuit size parameter k for the Orchard PoF circuit (2^k rows).
+pub const ORCHARD_DEFAULT_K: usize = 19;
 const ORCHARD_DEFAULT_LOOKUP_BITS: usize = 18;
 const ORCHARD_DEFAULT_ADVICE_PER_PHASE: usize = 4;
 const ORCHARD_DEFAULT_FIXED_COLUMNS: usize = 1;
@@ -154,6 +160,13 @@ pub struct OrchardPofCircuit {
     /// - `Prover`: Optimized for real proof generation (witness-gen only, skips constraints)
     /// - `Mock`: For MockProver tests (stores constraints for verification)
     stage: CircuitBuilderStage,
+    /// Break points from keygen, required for Prover stage.
+    /// These are computed during keygen and must be reused during proving
+    /// for halo2-base circuits to correctly assign witnesses.
+    break_points: Option<MultiPhaseThreadBreakPoints>,
+    /// Break points computed during synthesize (for keygen/mock stages).
+    /// Used with interior mutability so we can capture break_points from synthesize.
+    computed_break_points: RefCell<Option<MultiPhaseThreadBreakPoints>>,
 }
 
 impl Default for OrchardPofCircuit {
@@ -162,6 +175,8 @@ impl Default for OrchardPofCircuit {
             input: None,
             params: orchard_default_params(),
             stage: CircuitBuilderStage::Keygen,
+            break_points: None,
+            computed_break_points: RefCell::new(None),
         }
     }
 }
@@ -179,23 +194,58 @@ impl OrchardPofCircuit {
             input,
             params: orchard_default_params(),
             stage,
+            break_points: None,
+            computed_break_points: RefCell::new(None),
         }
     }
 
-    /// Creates a circuit optimized for production proof generation.
+    /// Creates a circuit optimized for production proof generation with break points.
     /// 
     /// Uses `CircuitBuilderStage::Prover` which enables `witness_gen_only` mode,
     /// skipping constraint storage since constraints are already in the proving key.
     /// This provides better performance than `new()` which uses Mock stage.
     ///
-    /// # Panics
-    /// Panics if `input` is `None` - prover stage requires witness data.
-    pub fn new_prover(input: OrchardPofCircuitInput) -> Self {
+    /// # Arguments
+    /// * `input` - The circuit input with witness data
+    /// * `break_points` - Break points from keygen (obtained via `extract_break_points_after_keygen`)
+    ///
+    /// # Important
+    /// The `break_points` **must** be obtained from the keygen circuit after key generation.
+    /// Without break points, the prover will panic with "break points not set".
+    pub fn new_prover(input: OrchardPofCircuitInput, break_points: MultiPhaseThreadBreakPoints) -> Self {
         Self {
             input: Some(input),
             params: orchard_default_params(),
             stage: CircuitBuilderStage::Prover,
+            break_points: Some(break_points),
+            computed_break_points: RefCell::new(None),
         }
+    }
+
+    /// Extract break points after keygen for use in prover circuits.
+    ///
+    /// This runs a MockProver pass to compute the break_points that are needed
+    /// for witness assignment in Prover mode. The break_points are determined by
+    /// the circuit's thread layout during synthesis.
+    ///
+    /// # Returns
+    /// Break points needed for proof generation.
+    ///
+    /// # Panics
+    /// Panics if the circuit doesn't have sample input.
+    pub fn extract_break_points_after_keygen(&self) -> MultiPhaseThreadBreakPoints {
+        // First check if we already computed break_points (e.g., from a previous call)
+        if let Some(bp) = self.computed_break_points.borrow().as_ref() {
+            if !bp.is_empty() && !bp.iter().all(|v| v.is_empty()) {
+                return bp.clone();
+            }
+        }
+        
+        // Need to compute break_points by running MockProver
+        let input = self.input.as_ref().expect(
+            "extract_break_points_after_keygen requires circuit to have sample input"
+        );
+        extract_break_points_from_synthesis(input, &self.params)
     }
 }
 
@@ -213,6 +263,8 @@ impl Circuit<Fr> for OrchardPofCircuit {
             input: None,
             params: self.params.clone(),
             stage: CircuitBuilderStage::Keygen,
+            break_points: None,
+            computed_break_points: RefCell::new(None),
         }
     }
 
@@ -237,16 +289,37 @@ impl Circuit<Fr> for OrchardPofCircuit {
             .as_ref()
             .expect("OrchardPofCircuit requires concrete input for synthesis");
 
-        let mut builder = BaseCircuitBuilder::<Fr>::from_stage(self.stage)
-            .use_params(self.params.clone())
-            .use_instance_columns(self.params.num_instance_columns);
+        // Create builder based on whether we have break points
+        let mut builder = if let Some(ref bp) = self.break_points {
+            // Prover stage with cached break points - this is the critical path
+            // that requires break points to be set for witness assignment
+            BaseCircuitBuilder::<Fr>::prover(self.params.clone(), bp.clone())
+                .use_instance_columns(self.params.num_instance_columns)
+        } else {
+            // Keygen or Mock stage - break points will be computed during assign_raw
+            BaseCircuitBuilder::<Fr>::from_stage(self.stage)
+                .use_params(self.params.clone())
+                .use_instance_columns(self.params.num_instance_columns)
+        };
 
+        // Set lookup bits for both paths
         if let Some(bits) = self.params.lookup_bits {
             builder = builder.use_lookup_bits(bits);
         }
 
         build_orchard_constraints(&mut builder, input)?;
-        <BaseCircuitBuilder<Fr> as Circuit<Fr>>::synthesize(&builder, config, layouter)
+        
+        // Run the inner synthesize which handles actual cell assignment.
+        // For keygen/mock stages, this calculates break_points during assign_raw.
+        let result = <BaseCircuitBuilder<Fr> as Circuit<Fr>>::synthesize(&builder, config, layouter);
+        
+        // After successful synthesis in keygen/mock mode, capture break_points.
+        // These are needed for prover mode later.
+        if result.is_ok() && self.break_points.is_none() {
+            *self.computed_break_points.borrow_mut() = Some(builder.break_points());
+        }
+        
+        result
     }
 }
 
@@ -342,6 +415,132 @@ fn expose_orchard_public_inputs(
     for (idx, value) in values.into_iter().enumerate() {
         builder.assigned_instances[idx].push(value);
     }
+}
+
+/// Compute break points for a given circuit size k.
+///
+/// This is a public API for tools that need to regenerate break_points.json
+/// without regenerating the full keygen artifacts.
+///
+/// For the Orchard circuit, break_points are deterministic based on the
+/// circuit structure. The circuit has ~136 advice cells in phase 0, which
+/// fits in a single column for any k >= 10.
+///
+/// # Arguments
+/// * `k` - Circuit size parameter (2^k rows). Should match the k used for keygen.
+///
+/// # Returns
+/// Break points needed for proof generation.
+pub fn compute_break_points_for_k(k: u32) -> Result<MultiPhaseThreadBreakPoints> {
+    use zkpf_common::VerifierPublicInputs;
+    
+    // Create sample input for computing break points
+    let sample_input = OrchardPofCircuitInput {
+        public_inputs: VerifierPublicInputs {
+            threshold_raw: 0,
+            required_currency_code: 0,
+            current_epoch: 0,
+            verifier_scope_id: 0,
+            policy_id: 0,
+            nullifier: [0u8; 32],
+            custodian_pubkey_hash: [0u8; 32],
+            snapshot_block_height: Some(0),
+            snapshot_anchor_orchard: Some([0u8; 32]),
+            holder_binding: Some([0u8; 32]),
+            proven_sum: None,
+        },
+        note_values: vec![100u64],
+    };
+    
+    // Create circuit params with the specified k
+    let mut params = orchard_default_params();
+    params.k = k as usize;
+    
+    // Build constraints in a fresh builder to compute thread layout
+    let mut builder = BaseCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen)
+        .use_params(params.clone())
+        .use_instance_columns(params.num_instance_columns);
+    
+    if let Some(bits) = params.lookup_bits {
+        builder = builder.use_lookup_bits(bits);
+    }
+    
+    // Build the circuit constraints - this populates the thread layout
+    build_orchard_constraints(&mut builder, &sample_input)
+        .context("failed to build orchard constraints for break_points computation")?;
+    
+    // Calculate params to get accurate circuit statistics
+    builder.calculate_params(Some(10)); // 10 reserved rows for blinding
+    
+    // Get thread statistics to compute break_points
+    let stats = builder.statistics();
+    
+    // For the Orchard circuit, the thread layout is simple:
+    // - Phase 0: One main thread with all the constraint operations
+    // - The thread ends at the total number of advice cells
+    // 
+    // Since we have ~136 cells and 2^k rows (k >= 10), everything fits
+    // in a single column. The break_point is where the thread ends.
+    //
+    // Format: Vec<Vec<usize>> where break_points[phase][column] = end_row
+    // For single column: [[end_row]]
+    let phase0_cells = stats.gate.total_advice_per_phase.first().copied().unwrap_or(0);
+    
+    // Break points indicate where each thread ends in each column.
+    // For this simple circuit with one thread per phase, it's just the cell count.
+    let break_points: MultiPhaseThreadBreakPoints = vec![vec![phase0_cells]];
+    
+    println!("Computed break_points from thread statistics: {:?}", break_points);
+    
+    Ok(break_points)
+}
+
+/// Extract break points by building circuit constraints.
+///
+/// This function builds the circuit in Keygen mode and computes break_points
+/// based on the thread layout without running the full MockProver.
+///
+/// This is a fallback for when break_points.json is not available.
+/// Production deployments should always use pre-computed break_points.
+fn extract_break_points_from_synthesis(
+    input: &OrchardPofCircuitInput,
+    params: &BaseCircuitParams,
+) -> MultiPhaseThreadBreakPoints {
+    // Build constraints in a fresh builder to compute thread layout
+    let mut builder = BaseCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen)
+        .use_params(params.clone())
+        .use_instance_columns(params.num_instance_columns);
+    
+    if let Some(bits) = params.lookup_bits {
+        builder = builder.use_lookup_bits(bits);
+    }
+    
+    // Build the circuit constraints - this populates the thread layout
+    build_orchard_constraints(&mut builder, input)
+        .expect("failed to build orchard constraints for break_points extraction");
+    
+    // Calculate params to get accurate circuit statistics
+    builder.calculate_params(Some(10)); // 10 reserved rows for blinding
+    
+    // Get thread statistics to compute break_points
+    let stats = builder.statistics();
+    let phase0_cells = stats.gate.total_advice_per_phase.first().copied().unwrap_or(0);
+    
+    // Break points indicate where each thread ends.
+    // For this simple circuit with one thread per phase, it's just the cell count.
+    vec![vec![phase0_cells]]
+}
+
+/// Serialize break points to bytes for storage.
+///
+/// The format is JSON for simplicity and debuggability.
+pub fn serialize_break_points(break_points: &MultiPhaseThreadBreakPoints) -> Result<Vec<u8>> {
+    serde_json::to_vec(break_points).context("failed to serialize break points")
+}
+
+/// Deserialize break points from bytes.
+pub fn deserialize_break_points(bytes: &[u8]) -> Result<MultiPhaseThreadBreakPoints> {
+    serde_json::from_slice(bytes).context("failed to deserialize break points")
 }
 
 /// Convenience function for computing the canonical `VerifierPublicInputs` for an Orchard
@@ -503,6 +702,73 @@ pub fn prove_orchard_pof(
     Ok(bundle)
 }
 
+// === Orchard keygen for artifact generation ====================================================
+
+use halo2_proofs_axiom::poly::kzg::commitment::ParamsKZG;
+
+/// Result of Orchard circuit key generation.
+pub struct OrchardKeygenResult {
+    /// KZG parameters (shared across circuits of the same k).
+    pub params: ParamsKZG<Bn256>,
+    /// Verifying key for the Orchard PoF circuit.
+    pub vk: plonk::VerifyingKey<G1Affine>,
+    /// Proving key for the Orchard PoF circuit.
+    pub pk: plonk::ProvingKey<G1Affine>,
+    /// Break points computed during keygen - MUST be saved and reused during proving.
+    /// Without these, the prover will panic with "break points not set".
+    pub break_points: MultiPhaseThreadBreakPoints,
+}
+
+/// Generate proving and verifying keys for the Orchard PoF circuit.
+///
+/// This function creates new KZG parameters and keys for the OrchardPofCircuit.
+/// The resulting artifacts can be serialized and used for production proving/verification.
+///
+/// # Arguments
+/// * `k` - Circuit size parameter (2^k rows). Default is 19.
+///
+/// # Important
+/// The returned `break_points` MUST be serialized and stored alongside the proving key.
+/// They are required for proof generation - without them, the prover will panic.
+pub fn orchard_keygen(k: u32) -> OrchardKeygenResult {
+    // Generate KZG parameters
+    let params = ParamsKZG::<Bn256>::setup(k, OsRng);
+    
+    // Create a sample circuit input for keygen (values don't matter, just structure)
+    let sample_input = OrchardPofCircuitInput {
+        public_inputs: VerifierPublicInputs {
+            threshold_raw: 0,
+            required_currency_code: 0,
+            current_epoch: 0,
+            verifier_scope_id: 0,
+            policy_id: 0,
+            nullifier: [0u8; 32],
+            custodian_pubkey_hash: [0u8; 32],
+            snapshot_block_height: Some(0),
+            snapshot_anchor_orchard: Some([0u8; 32]),
+            holder_binding: Some([0u8; 32]),
+            proven_sum: None,
+        },
+        note_values: vec![100u64], // At least one note for the circuit
+    };
+    
+    // Create circuit in keygen mode
+    let circuit = OrchardPofCircuit::new(Some(sample_input.clone()));
+    
+    // Generate verifying key
+    let vk = plonk::keygen_vk_custom(&params, &circuit, false)
+        .expect("failed to generate Orchard verifying key");
+    
+    // Generate proving key
+    let pk = plonk::keygen_pk(&params, vk.clone(), &circuit)
+        .expect("failed to generate Orchard proving key");
+    
+    // Extract break points from the keygen circuit - these are critical for proving
+    let break_points = circuit.extract_break_points_after_keygen();
+    
+    OrchardKeygenResult { params, vk, pk, break_points }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -598,8 +864,15 @@ fn compute_pof_nullifier(
 
 const ORCHARD_MANIFEST_ENV: &str = "ZKPF_ORCHARD_MANIFEST_PATH";
 const ORCHARD_DEFAULT_MANIFEST_PATH: &str = "artifacts/zcash-orchard/manifest.json";
+const BREAK_POINTS_FILENAME: &str = "break_points.json";
 
-static ORCHARD_PROVER_ARTIFACTS: Lazy<Arc<ProverArtifacts>> =
+/// Native Orchard prover artifacts including break points.
+struct OrchardNativeArtifacts {
+    prover: ProverArtifacts,
+    break_points: MultiPhaseThreadBreakPoints,
+}
+
+static ORCHARD_PROVER_ARTIFACTS: Lazy<Arc<OrchardNativeArtifacts>> =
     Lazy::new(|| Arc::new(load_orchard_prover_artifacts().expect("load Orchard prover artifacts")));
 
 fn orchard_manifest_path() -> PathBuf {
@@ -608,20 +881,54 @@ fn orchard_manifest_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(ORCHARD_DEFAULT_MANIFEST_PATH))
 }
 
-fn load_orchard_prover_artifacts() -> Result<ProverArtifacts> {
+fn load_orchard_prover_artifacts() -> Result<OrchardNativeArtifacts> {
     let manifest_path = orchard_manifest_path();
     let (manifest, params_bytes, vk_bytes, pk_bytes) = load_orchard_artifact_bytes(&manifest_path)?;
     let params = deserialize_params(&params_bytes)?;
     let vk = deserialize_orchard_verifying_key(&vk_bytes)?;
     let pk = deserialize_orchard_proving_key(&pk_bytes)?;
 
-    Ok(ProverArtifacts::from_parts(
+    // Load break points from break_points.json alongside the manifest
+    let break_points_path = orchard_manifest_dir(&manifest_path).join(BREAK_POINTS_FILENAME);
+    let break_points = if break_points_path.exists() {
+        let bp_bytes = fs::read(&break_points_path)
+            .with_context(|| format!("failed to read break_points from {}", break_points_path.display()))?;
+        deserialize_break_points(&bp_bytes)?
+    } else {
+        // If break_points.json doesn't exist, compute them from the circuit
+        // This is a fallback for older artifacts - production should always have the file
+        eprintln!(
+            "⚠️ break_points.json not found at {}, computing from circuit (this may take a while)...",
+            break_points_path.display()
+        );
+        let sample_input = OrchardPofCircuitInput {
+            public_inputs: VerifierPublicInputs {
+                threshold_raw: 0,
+                required_currency_code: 0,
+                current_epoch: 0,
+                verifier_scope_id: 0,
+                policy_id: 0,
+                nullifier: [0u8; 32],
+                custodian_pubkey_hash: [0u8; 32],
+                snapshot_block_height: Some(0),
+                snapshot_anchor_orchard: Some([0u8; 32]),
+                holder_binding: Some([0u8; 32]),
+                proven_sum: None,
+            },
+            note_values: vec![100u64],
+        };
+        extract_break_points_from_synthesis(&sample_input, &orchard_default_params())
+    };
+
+    let prover = ProverArtifacts::from_parts(
         manifest,
         orchard_manifest_dir(&manifest_path),
         params,
         vk,
         Some(pk),
-    ))
+    );
+
+    Ok(OrchardNativeArtifacts { prover, break_points })
 }
 
 pub fn load_orchard_verifier_artifacts(
@@ -736,9 +1043,10 @@ fn create_orchard_proof_with_public_inputs(
 
     let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
     
-    // Use new_prover for optimized production proof generation.
+    // Use new_prover for optimized production proof generation WITH break points.
     // This uses CircuitBuilderStage::Prover which enables witness_gen_only mode.
-    let circuit = OrchardPofCircuit::new_prover(input.clone());
+    // Without break points, this will panic with "break points not set".
+    let circuit = OrchardPofCircuit::new_prover(input.clone(), artifacts.break_points.clone());
 
     let mut transcript =
         halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);
@@ -751,8 +1059,8 @@ fn create_orchard_proof_with_public_inputs(
         _,
         _,
     >(
-        &artifacts.params,
-        artifacts
+        &artifacts.prover.params,
+        artifacts.prover
             .proving_key()
             .map_err(|err| OrchardRailError::InvalidInput(err.to_string()))?
             .as_ref(),
@@ -769,17 +1077,24 @@ fn create_orchard_proof_with_public_inputs(
 
 // === WASM-friendly proving helpers ==============================================================
 
-/// In-browser Orchard proving artifacts (params, verifying key, proving key) as
+/// In-browser Orchard proving artifacts (params, verifying key, proving key, break points) as
 /// raw byte blobs.
 ///
 /// These are deserialized on-demand under `wasm32` targets without touching the
 /// filesystem or reading environment variables.
+///
+/// # Important
+/// The `break_points_bytes` field is **required** for proof generation. Without it,
+/// the prover will panic with "break points not set". Break points are computed during
+/// keygen and must be loaded alongside the proving key.
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Debug)]
 pub struct OrchardWasmArtifacts {
     pub params_bytes: Vec<u8>,
     pub vk_bytes: Vec<u8>,
     pub pk_bytes: Vec<u8>,
+    /// Break points computed during keygen - required for proof generation.
+    pub break_points_bytes: Vec<u8>,
 }
 
 /// Create a Orchard PoF proof using in-memory artifacts, suitable for WASM.
@@ -794,6 +1109,10 @@ pub fn create_orchard_proof_with_public_inputs_from_bytes(
     // included in `vk_bytes` for completeness and potential future use.
     let pk = deserialize_orchard_proving_key(&artifacts.pk_bytes)
         .map_err(|e| OrchardRailError::InvalidInput(e.to_string()))?;
+    
+    // Deserialize break points - these are REQUIRED for proof generation
+    let break_points = deserialize_break_points(&artifacts.break_points_bytes)
+        .map_err(|e| OrchardRailError::InvalidInput(format!("failed to deserialize break points: {e}")))?;
 
     let public_inputs = input.public_inputs.clone();
 
@@ -803,8 +1122,9 @@ pub fn create_orchard_proof_with_public_inputs_from_bytes(
 
     let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
     
-    // Use new_prover for optimized production proof generation.
-    let circuit = OrchardPofCircuit::new_prover(input.clone());
+    // Use new_prover for optimized production proof generation WITH break points.
+    // Without break points, this will panic with "break points not set".
+    let circuit = OrchardPofCircuit::new_prover(input.clone(), break_points);
 
     let mut transcript =
         halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);

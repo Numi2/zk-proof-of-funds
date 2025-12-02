@@ -40,6 +40,7 @@ export default defineConfig({
     proxy: {
       // Proxy zkpf API requests to the Rust backend
       // Use '/zkpf/' (with trailing slash) to avoid proxying /zkpf.png and other static assets
+      // This includes /zkpf/rails/ for rail-specific artifact endpoints (e.g., Orchard k=19)
       '/zkpf/': {
         target: 'http://localhost:3000',
         changeOrigin: true,

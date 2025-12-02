@@ -1,0 +1,11 @@
+{
+  "rails": [
+    {
+      "rail_id": "ZCASH_ORCHARD",
+      "circuit_version": 5,
+      "manifest_path": "artifacts/zcash-orchard/manifest.json",
+      "layout": "V2_ORCHARD"
+    }
+  ]
+}
+

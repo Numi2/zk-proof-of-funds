@@ -1,109 +1,151 @@
 [
   {
-    "policy_id": 0,
-    "threshold_raw": 0,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 0,
-    "rail_id": "CUSTODIAL_ATTESTATION",
-    "label": "Zero ZEC (testing)",
     "category": "DEMO",
     "description": "Policy for testing with 0 ZEC threshold",
+    "label": "Zero ZEC (testing)",
+    "policy_id": 0,
     "purpose": "Testing and development",
-    "useCases": ["Testing"]
-  },
-
-  {
-    "policy_id": 202,
-    "threshold_raw": 100000000,
+    "rail_id": "CUSTODIAL_ATTESTATION",
     "required_currency_code": 999001,
-    "verifier_scope_id": 202,
-    "rail_id": "ZCASH_ORCHARD",
-    "label": "Orchard: Standard holder (1+ ZEC)",
+    "threshold_raw": 0,
+    "useCases": [
+      "Testing"
+    ],
+    "verifier_scope_id": 0
+  },
+  {
     "category": "ZCASH_ORCHARD",
     "description": "Prove you hold at least 1 ZEC in shielded Orchard funds.",
+    "label": "Orchard: Standard holder (1+ ZEC)",
+    "policy_id": 202,
     "purpose": "Standard Zcash holder verification",
-    "useCases": ["DAO voting eligibility", "Premium features access", "Staking requirements"]
+    "rail_id": "ZCASH_ORCHARD",
+    "required_currency_code": 999001,
+    "threshold_raw": 100000000,
+    "useCases": [
+      "DAO voting eligibility",
+      "Premium features access",
+      "Staking requirements"
+    ],
+    "verifier_scope_id": 202
   },
-
   {
-    "policy_id": 402,
-    "threshold_raw": 1000000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 402,
-    "rail_id": "STARKNET_L2",
-    "label": "Starknet: Standard (1+ ETH)",
     "category": "STARKNET",
     "description": "Prove you hold at least 1 ETH on Starknet L2.",
+    "label": "Starknet: Standard (1+ ETH)",
+    "policy_id": 402,
     "purpose": "Standard Starknet holder verification",
-    "useCases": ["Lending platforms", "Premium DeFi features"]
+    "rail_id": "STARKNET_L2",
+    "required_currency_code": 1027,
+    "threshold_raw": 1000000000000000000,
+    "useCases": [
+      "Lending platforms",
+      "Premium DeFi features"
+    ],
+    "verifier_scope_id": 402
   },
-
   {
-    "policy_id": 500,
-    "threshold_raw": 100000000,
-    "required_currency_code": 2001,
-    "verifier_scope_id": 500,
-    "rail_id": "ONCHAIN_WALLET",
-    "label": "USDC: Basic ($100+)",
     "category": "USDC",
     "description": "Prove you hold at least $100 USDC across supported chains.",
+    "label": "USDC: Basic ($100+)",
+    "policy_id": 500,
     "purpose": "Basic stablecoin holder verification",
-    "useCases": ["DeFi access", "Payment verification"],
-    "usdc_config": {
-      "allowed_chains": ["ethereum", "base", "arbitrum", "optimism", "polygon"],
-      "aggregate_cross_chain": true
-    }
-  },
-
-  {
-    "policy_id": 700,
+    "rail_id": "ONCHAIN_WALLET",
+    "required_currency_code": 2001,
     "threshold_raw": 100000000,
-    "required_currency_code": 999001,
-    "verifier_scope_id": 700,
-    "rail_id": "BOUND_IDENTITY",
-    "label": "Identity-bound: Basic KYC (1+ ZEC)",
+    "usdc_config": {
+      "aggregate_cross_chain": true,
+      "allowed_chains": [
+        "ethereum",
+        "base",
+        "arbitrum",
+        "optimism",
+        "polygon"
+      ]
+    },
+    "useCases": [
+      "DeFi access",
+      "Payment verification"
+    ],
+    "verifier_scope_id": 500
+  },
+  {
+    "bound_identity_config": {
+      "identity_requirements": {
+        "age_gte": 18
+      },
+      "scope": "bound-identity:basic-kyc",
+      "validity_days": 30
+    },
     "category": "BOUND_IDENTITY",
     "description": "Prove funds are bound to a verified identity (18+ age verification).",
+    "label": "Identity-bound: Basic KYC (1+ ZEC)",
+    "policy_id": 700,
     "purpose": "KYC-compliant proof of funds",
-    "useCases": ["Regulated DeFi", "Compliant exchanges", "Age-gated services"],
-    "bound_identity_config": {
-      "identity_requirements": { "age_gte": 18 },
-      "validity_days": 30,
-      "scope": "bound-identity:basic-kyc"
-    }
+    "rail_id": "BOUND_IDENTITY",
+    "required_currency_code": 999001,
+    "threshold_raw": 100000000,
+    "useCases": [
+      "Regulated DeFi",
+      "Compliant exchanges",
+      "Age-gated services"
+    ],
+    "verifier_scope_id": 700
   },
-
   {
-    "policy_id": 800,
-    "threshold_raw": 1000000000000000000,
-    "required_currency_code": 1027,
-    "verifier_scope_id": 800,
-    "rail_id": "AXELAR_GMP",
-    "label": "Interchain: Basic broadcast (1+ ETH)",
+    "axelar_config": {
+      "broadcast_chains": [
+        "osmosis",
+        "arbitrum",
+        "optimism"
+      ],
+      "validity_window_secs": 86400
+    },
     "category": "AXELAR_INTERCHAIN",
     "description": "Prove funds and broadcast proof across multiple chains via Axelar.",
+    "label": "Interchain: Basic broadcast (1+ ETH)",
+    "policy_id": 800,
     "purpose": "Cross-chain proof of funds",
-    "useCases": ["Multi-chain DeFi", "Cross-chain lending", "Interoperability proofs"],
-    "axelar_config": {
-      "broadcast_chains": ["osmosis", "arbitrum", "optimism"],
-      "validity_window_secs": 86400
-    }
-  },
-
-  {
-    "policy_id": 900,
-    "threshold_raw": 1000000000000000000,
+    "rail_id": "AXELAR_GMP",
     "required_currency_code": 1027,
-    "verifier_scope_id": 900,
-    "rail_id": "MINA_RECURSIVE",
-    "label": "Mina recursive: Cross-chain (1+ ETH)",
+    "threshold_raw": 1000000000000000000,
+    "useCases": [
+      "Multi-chain DeFi",
+      "Cross-chain lending",
+      "Interoperability proofs"
+    ],
+    "verifier_scope_id": 800
+  },
+  {
     "category": "MINA_HUB",
     "description": "Cross-chain proof aggregation via Mina's recursive ZK proofs.",
-    "purpose": "Recursive proof aggregation across chains",
-    "useCases": ["Multi-chain aggregation", "Recursive verification"],
+    "label": "Mina recursive: Cross-chain (1+ ETH)",
     "mina_config": {
       "network": "testnet",
       "validity_window_slots": 7200
-    }
+    },
+    "policy_id": 900,
+    "purpose": "Recursive proof aggregation across chains",
+    "rail_id": "MINA_RECURSIVE",
+    "required_currency_code": 1027,
+    "threshold_raw": 1000000000000000000,
+    "useCases": [
+      "Multi-chain aggregation",
+      "Recursive verification"
+    ],
+    "verifier_scope_id": 900
+  },
+  {
+    "category": "ZCASH_ORCHARD",
+    "label": "Prove exactly 0.00 ZEC",
+    "options": {
+      "auto": true,
+      "source": "wallet"
+    },
+    "policy_id": 901,
+    "rail_id": "ZCASH_ORCHARD",
+    "required_currency_code": 999001,
+    "threshold_raw": 0,
+    "verifier_scope_id": 999001000
   }
 ]

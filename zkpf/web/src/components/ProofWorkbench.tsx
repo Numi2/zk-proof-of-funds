@@ -524,23 +524,34 @@ export function ProofWorkbench({
         console.warn('Policy compose warning (may be expected if policy exists):', composeErr);
       }
       
-      // Debug logging for verification
-      console.log('[ZKPF Debug] Sending verification request:', {
-        mode,
-        policyId: policyIdForVerify,
-        circuitVersion: bundle.circuit_version,
-        railId: bundle.rail_id,
-        proofLength: bundle.proof.length,
-        publicInputs: {
-          threshold_raw: bundle.public_inputs.threshold_raw,
-          required_currency_code: bundle.public_inputs.required_currency_code,
-          current_epoch: bundle.public_inputs.current_epoch,
-          verifier_scope_id: bundle.public_inputs.verifier_scope_id,
-          policy_id: bundle.public_inputs.policy_id,
-          nullifier_first8: bundle.public_inputs.nullifier.slice(0, 8),
-          custodian_pubkey_hash_first8: bundle.public_inputs.custodian_pubkey_hash.slice(0, 8),
-        },
-      });
+      // Debug logging for verification - format matching backend for easy comparison
+      const nullifierHex = bundle.public_inputs.nullifier.slice(0, 8)
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      const custodianHex = bundle.public_inputs.custodian_pubkey_hash.slice(0, 8)
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[ZKPF Debug] VERIFICATION REQUEST (Frontend)');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`[ZKPF Debug] mode=${mode}, policy_id=${policyIdForVerify}`);
+      console.log(`[ZKPF Debug] rail_id=${bundle.rail_id}, circuit_version=${bundle.circuit_version}`);
+      console.log(`[ZKPF Debug] Proof length: ${bundle.proof.length} bytes`);
+      console.log(`[ZKPF Debug] Public inputs:
+  threshold_raw: ${bundle.public_inputs.threshold_raw}
+  currency_code: ${bundle.public_inputs.required_currency_code}
+  epoch: ${bundle.public_inputs.current_epoch}
+  scope_id: ${bundle.public_inputs.verifier_scope_id}
+  policy_id: ${bundle.public_inputs.policy_id}`);
+      console.log(`[ZKPF Debug] Nullifier (first 8 bytes): ${nullifierHex}`);
+      console.log(`[ZKPF Debug] Custodian hash (first 8 bytes): ${custodianHex}`);
+      if (bundle.public_inputs.snapshot_block_height !== undefined) {
+        console.log(`[ZKPF Debug] Orchard snapshot_block_height: ${bundle.public_inputs.snapshot_block_height}`);
+      }
+      if (bundle.public_inputs.snapshot_anchor_orchard) {
+        const anchorHex = bundle.public_inputs.snapshot_anchor_orchard.slice(0, 8)
+          .map((b: number) => b.toString(16).padStart(2, '0')).join('');
+        console.log(`[ZKPF Debug] Orchard anchor (first 8 bytes): ${anchorHex}`);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       const response =
         mode === 'bundle'

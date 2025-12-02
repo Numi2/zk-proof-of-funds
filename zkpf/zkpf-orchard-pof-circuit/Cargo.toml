@@ -15,9 +15,10 @@ tracing = "0.1"
 once_cell = "1"
 
 # Orchard protocol dependencies (zcash versions)
+# IMPORTANT: Disable default-features for wasm32 compatibility (multicore is not supported on wasm without atomics)
 orchard = { version = "0.11", default-features = false, features = ["circuit", "std"] }
-halo2_proofs = "0.3"
-halo2_gadgets = "0.3"
+halo2_proofs = { version = "0.3", default-features = false }
+halo2_gadgets = { version = "0.3", default-features = false }
 pasta_curves = { version = "0.5", features = ["repr-c"] }
 ff = "0.13"
 group = "0.13"
@@ -26,7 +27,7 @@ zkpf-orchard-inner = { path = "../zkpf-orchard-inner" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 orchard = { version = "0.11", default-features = false, features = ["circuit", "multicore", "std"] }
-halo2_proofs = { version = "0.3", features = ["multicore"] }
+halo2_proofs = { version = "0.3", default-features = false, features = ["multicore"] }
 
 [dev-dependencies]
 proptest = "1"

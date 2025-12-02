@@ -1,0 +1,17 @@
+{
+  "rails": [
+    {
+      "rail_id": "ZCASH_ORCHARD",
+      "circuit_version": 5,
+      "manifest_path": "artifacts/zcash-orchard/manifest.json",
+      "layout": "V2_ORCHARD"
+    },
+    {
+      "rail_id": "STARKNET_L2",
+      "circuit_version": 5,
+      "manifest_path": "artifacts/starknet/manifest.json",
+      "layout": "V3_STARKNET"
+    }
+  ]
+}
+

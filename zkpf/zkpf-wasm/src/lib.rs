@@ -3,7 +3,12 @@
 
 use std::cell::RefCell;
 
-use halo2_proofs_axiom::{plonk, poly::kzg::commitment::ParamsKZG};
+use halo2_proofs_axiom::{
+    plonk,
+    plonk::Circuit as _,
+    poly::kzg::commitment::ParamsKZG,
+    transcript::TranscriptWriterBuffer as _,
+};
 use halo2curves_axiom::{
     bn256::{Bn256, Fr, G1Affine},
     ff::{Field, PrimeField},
@@ -15,12 +20,17 @@ use zkpf_circuit::ZkpfCircuitInput;
 use zkpf_common::{
     custodian_pubkey_hash, deserialize_params, deserialize_proving_key,
     deserialize_verifier_public_inputs, deserialize_verifying_key, public_inputs_to_instances,
-    serialize_verifier_public_inputs, ProofBundle, VerifierPublicInputs, CIRCUIT_VERSION,
+    public_inputs_to_instances_with_layout, serialize_verifier_public_inputs,
+    ProofBundle, PublicInputLayout, VerifierPublicInputs, CIRCUIT_VERSION,
     // Poseidon parameters imported from canonical source (zkpf-circuit via zkpf-common)
     POSEIDON_FULL_ROUNDS, POSEIDON_PARTIAL_ROUNDS, POSEIDON_RATE, POSEIDON_T,
 };
 use zkpf_prover::{prove, prove_bundle_result, prove_with_public_inputs};
 use zkpf_verifier::verify;
+use zkpf_zcash_orchard_circuit::{
+    deserialize_break_points, OrchardBreakPoints, OrchardPofCircuit, OrchardPofCircuitInput,
+    ORCHARD_DEFAULT_K, RAIL_ID_ZCASH_ORCHARD,
+};
 
 // Initialize panic hook at WASM module load time for better error messages
 #[wasm_bindgen(start)]
@@ -55,6 +65,11 @@ thread_local! {
     static CACHED_PARAMS: RefCell<Option<ParamsWasm>> = const { RefCell::new(None) };
     static CACHED_VK: RefCell<Option<VerifyingKeyWasm>> = const { RefCell::new(None) };
     static CACHED_PK: RefCell<Option<ProvingKeyWasm>> = const { RefCell::new(None) };
+    // Orchard-specific artifacts (k=19, 10 instance columns)
+    static CACHED_ORCHARD_PARAMS: RefCell<Option<ParamsWasm>> = const { RefCell::new(None) };
+    static CACHED_ORCHARD_PK: RefCell<Option<OrchardProvingKeyWasm>> = const { RefCell::new(None) };
+    // Orchard break points - REQUIRED for proof generation
+    static CACHED_ORCHARD_BREAK_POINTS: RefCell<Option<OrchardBreakPoints>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen]
@@ -210,10 +225,28 @@ pub fn init_verifier_artifacts(params_bytes: &[u8], vk_bytes: &[u8]) -> Result<(
 
 #[wasm_bindgen(js_name = initProverArtifacts)]
 pub fn init_prover_artifacts(params_bytes: &[u8], pk_bytes: &[u8]) -> Result<(), JsValue> {
+    let artifact_key = compute_artifact_key(params_bytes, pk_bytes);
+    
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&"[ZKPF Custodial WASM] initProverArtifacts called".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Custodial WASM] params={} bytes, pk={} bytes",
+        params_bytes.len(),
+        pk_bytes.len()
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Custodial WASM] *** ARTIFACT_KEY={} ***",
+        artifact_key
+    ).into());
+    
     let params = ParamsWasm::new(params_bytes)?;
     let pk = ProvingKeyWasm::new(pk_bytes)?;
     cache_params(params);
     cache_pk(pk);
+    
+    web_sys::console::log_1(&"[ZKPF Custodial WASM] ✓ Custodial prover artifacts initialized successfully".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
     Ok(())
 }
 
@@ -475,18 +508,60 @@ fn prove_bundle_with_structs(
     pk: &ProvingKeyWasm,
 ) -> Result<ProofBundle, JsValue> {
     let input = parse_input(attestation_json)?;
+    
+    // Log public inputs for debugging (matches backend verifier logging)
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&"[ZKPF WASM] PROOF GENERATION REQUEST".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] Public inputs:\n  threshold_raw: {}\n  currency_code: {}\n  epoch: {}\n  scope_id: {}\n  policy_id: {}",
+        input.public.threshold_raw,
+        input.public.required_currency_code,
+        input.public.current_epoch,
+        input.public.verifier_scope_id,
+        input.public.policy_id
+    ).into());
+    
+    // Log nullifier and custodian hash first 8 bytes as hex
+    let nullifier_bytes = fr_to_le_bytes(&input.public.nullifier);
+    let custodian_bytes = fr_to_le_bytes(&input.public.custodian_pubkey_hash);
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] Nullifier (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        nullifier_bytes[0], nullifier_bytes[1], nullifier_bytes[2], nullifier_bytes[3],
+        nullifier_bytes[4], nullifier_bytes[5], nullifier_bytes[6], nullifier_bytes[7]
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] Custodian hash (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        custodian_bytes[0], custodian_bytes[1], custodian_bytes[2], custodian_bytes[3],
+        custodian_bytes[4], custodian_bytes[5], custodian_bytes[6], custodian_bytes[7]
+    ).into());
+    
+    // Log instance column layout (V1: 7 public inputs)
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] Circuit: ZkpfCircuit (custodial), k=14, instance_columns=7, circuit_version={}",
+        CIRCUIT_VERSION
+    ).into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    
     // Use the error-returning API instead of catch_unwind.
     // In WASM, panic = "abort" is the default, so catch_unwind doesn't work and
     // panics become opaque "unreachable" traps. By using prove_bundle_result,
     // we get proper error messages instead of aborts.
-    prove_bundle_result(params.inner(), pk.inner(), input).map_err(|e| {
+    let bundle = prove_bundle_result(params.inner(), pk.inner(), input).map_err(|e| {
         js_error(format!(
             "Proof generation failed: {}. This may indicate: (1) circuit parameters/proving key \
              mismatch, (2) invalid attestation values that violate constraints, or (3) insufficient \
              memory. Try refreshing and re-downloading artifacts.",
             e
         ))
-    })
+    })?;
+    
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] ✓ Proof generated successfully, proof_len={} bytes",
+        bundle.proof.len()
+    ).into());
+    
+    Ok(bundle)
 }
 
 fn verify_bundle(
@@ -529,6 +604,343 @@ fn cache_pk(pk: ProvingKeyWasm) {
     CACHED_PK.with(|cell| {
         *cell.borrow_mut() = Some(pk);
     });
+}
+
+// === Orchard Proving Support ===
+// The Orchard circuit (k=19, 10 instance columns) uses a different proving key
+// than the custodial circuit (k=14, 7 instance columns).
+
+#[wasm_bindgen]
+pub struct OrchardProvingKeyWasm {
+    pk: plonk::ProvingKey<G1Affine>,
+    serialized: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl OrchardProvingKeyWasm {
+    #[wasm_bindgen(constructor)]
+    pub fn new(bytes: &[u8]) -> Result<OrchardProvingKeyWasm, JsValue> {
+        use halo2_proofs_axiom::SerdeFormat;
+        use std::io::Cursor;
+        
+        // Deserialize with Orchard circuit params
+        let params = OrchardPofCircuit::default().params();
+        let mut reader = Cursor::new(bytes);
+        let pk = plonk::ProvingKey::<G1Affine>::read::<_, OrchardPofCircuit>(
+            &mut reader,
+            SerdeFormat::Processed,
+            params,
+        )
+        .map_err(|e| js_error(format!("failed to deserialize Orchard proving key: {:?}", e)))?;
+        
+        Ok(Self {
+            pk,
+            serialized: bytes.to_vec(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = toBytes)]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.serialized.clone()
+    }
+}
+
+impl OrchardProvingKeyWasm {
+    fn inner(&self) -> &plonk::ProvingKey<G1Affine> {
+        &self.pk
+    }
+}
+
+fn cache_orchard_params(params: ParamsWasm) {
+    CACHED_ORCHARD_PARAMS.with(|cell| {
+        *cell.borrow_mut() = Some(params);
+    });
+}
+
+fn cache_orchard_pk(pk: OrchardProvingKeyWasm) {
+    CACHED_ORCHARD_PK.with(|cell| {
+        *cell.borrow_mut() = Some(pk);
+    });
+}
+
+fn cache_orchard_break_points(break_points: OrchardBreakPoints) {
+    CACHED_ORCHARD_BREAK_POINTS.with(|cell| {
+        *cell.borrow_mut() = Some(break_points);
+    });
+}
+
+/// Compute artifact key from raw bytes (blake3 hash prefix).
+fn compute_artifact_key(params_bytes: &[u8], pk_bytes: &[u8]) -> String {
+    let params_hash = blake3::hash(params_bytes);
+    let pk_hash = blake3::hash(pk_bytes);
+    format!(
+        "params={:.8}+pk={:.8}",
+        hex::encode(&params_hash.as_bytes()[..4]),
+        hex::encode(&pk_hash.as_bytes()[..4])
+    )
+}
+
+/// Initialize Orchard prover artifacts (k=19, 10 instance columns).
+/// These are separate from the custodial artifacts.
+///
+/// # Arguments
+/// * `params_bytes` - Serialized KZG parameters
+/// * `pk_bytes` - Serialized proving key
+/// * `break_points_bytes` - Serialized break points (REQUIRED for proof generation)
+///
+/// # Important
+/// The `break_points_bytes` parameter is **required**. Without it, proof generation will
+/// panic with "break points not set". Break points are computed during keygen and must
+/// be loaded from the `break_points.json` artifact file.
+#[wasm_bindgen(js_name = initOrchardProverArtifacts)]
+pub fn init_orchard_prover_artifacts(
+    params_bytes: &[u8],
+    pk_bytes: &[u8],
+    break_points_bytes: &[u8],
+) -> Result<(), JsValue> {
+    let artifact_key = compute_artifact_key(params_bytes, pk_bytes);
+    
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&"[ZKPF Orchard WASM] initOrchardProverArtifacts called".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM] params={} bytes, pk={} bytes, break_points={} bytes, k={}",
+        params_bytes.len(),
+        pk_bytes.len(),
+        break_points_bytes.len(),
+        ORCHARD_DEFAULT_K
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM] *** ARTIFACT_KEY={} ***",
+        artifact_key
+    ).into());
+    
+    let params = ParamsWasm::new(params_bytes)?;
+    let pk = OrchardProvingKeyWasm::new(pk_bytes)?;
+    
+    // Deserialize break points - these are REQUIRED for proof generation
+    let break_points = deserialize_break_points(break_points_bytes)
+        .map_err(|e| js_error(format!("failed to deserialize Orchard break points: {}", e)))?;
+    
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM] Break points loaded: {} phases",
+        break_points.len()
+    ).into());
+    
+    cache_orchard_params(params);
+    cache_orchard_pk(pk);
+    cache_orchard_break_points(break_points);
+    
+    web_sys::console::log_1(&"[ZKPF Orchard WASM] ✓ Orchard prover artifacts initialized successfully".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    Ok(())
+}
+
+/// Generate an Orchard proof bundle using the cached Orchard artifacts.
+#[wasm_bindgen(js_name = generateOrchardProofBundleCached)]
+pub fn generate_orchard_proof_bundle_cached(
+    public_inputs_json: &str,
+    note_values_json: &str,
+) -> Result<JsValue, JsValue> {
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    web_sys::console::log_1(&"[ZKPF Orchard WASM] generateOrchardProofBundleCached called".into());
+    web_sys::console::log_1(&"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".into());
+    
+    with_cached_orchard_prover(|params, pk, break_points| {
+        let public_inputs: VerifierPublicInputs =
+            serde_json::from_str(public_inputs_json).map_err(js_error)?;
+        let note_values: Vec<u64> =
+            serde_json::from_str(note_values_json).map_err(js_error)?;
+        
+        // Log artifact key from cached artifacts
+        let artifact_key = compute_artifact_key(&params.serialized, &pk.serialized);
+        web_sys::console::log_1(&format!(
+            "[ZKPF Orchard WASM] *** Using ARTIFACT_KEY={} ***",
+            artifact_key
+        ).into());
+        web_sys::console::log_1(&format!(
+            "[ZKPF Orchard WASM] Break points: {} phases",
+            break_points.len()
+        ).into());
+        
+        let bundle = prove_orchard_bundle_with_structs(
+            public_inputs,
+            note_values,
+            params,
+            pk,
+            break_points,
+        )?;
+        
+        to_value(&bundle).map_err(js_error)
+    })
+}
+
+fn with_cached_orchard_prover<R>(
+    f: impl FnOnce(&ParamsWasm, &OrchardProvingKeyWasm, &OrchardBreakPoints) -> Result<R, JsValue>,
+) -> Result<R, JsValue> {
+    CACHED_ORCHARD_PARAMS.with(|params_cell| {
+        let params = params_cell.borrow();
+        let params_ref = params
+            .as_ref()
+            .ok_or_else(|| js_error("Orchard params not initialized; call initOrchardProverArtifacts"))?;
+        CACHED_ORCHARD_PK.with(|pk_cell| {
+            let pk = pk_cell.borrow();
+            let pk_ref = pk
+                .as_ref()
+                .ok_or_else(|| js_error("Orchard proving key not initialized; call initOrchardProverArtifacts"))?;
+            CACHED_ORCHARD_BREAK_POINTS.with(|bp_cell| {
+                let bp = bp_cell.borrow();
+                let bp_ref = bp
+                    .as_ref()
+                    .ok_or_else(|| js_error("Orchard break points not initialized; call initOrchardProverArtifacts with break_points_bytes"))?;
+                f(params_ref, pk_ref, bp_ref)
+            })
+        })
+    })
+}
+
+fn prove_orchard_bundle_with_structs(
+    public_inputs: VerifierPublicInputs,
+    note_values: Vec<u64>,
+    params: &ParamsWasm,
+    pk: &OrchardProvingKeyWasm,
+    break_points: &OrchardBreakPoints,
+) -> Result<ProofBundle, JsValue> {
+    use halo2_proofs_axiom::poly::kzg::{
+        commitment::KZGCommitmentScheme,
+        multiopen::ProverGWC,
+    };
+    use rand::rngs::OsRng;
+    
+    // Log V2_ORCHARD public input fields
+    web_sys::console::log_1(&"[ZKPF Orchard WASM] V2_ORCHARD Public Input Fields (10 columns):".into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[0] threshold_raw: {}",
+        public_inputs.threshold_raw
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[1] required_currency_code: {}",
+        public_inputs.required_currency_code
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[2] current_epoch: {}",
+        public_inputs.current_epoch
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[3] verifier_scope_id: {}",
+        public_inputs.verifier_scope_id
+    ).into());
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[4] policy_id: {}",
+        public_inputs.policy_id
+    ).into());
+    
+    // Log nullifier first 8 bytes
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[5] nullifier: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}...",
+        public_inputs.nullifier[0], public_inputs.nullifier[1],
+        public_inputs.nullifier[2], public_inputs.nullifier[3],
+        public_inputs.nullifier[4], public_inputs.nullifier[5],
+        public_inputs.nullifier[6], public_inputs.nullifier[7]
+    ).into());
+    
+    // Log custodian hash first 8 bytes  
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[6] custodian_pubkey_hash: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}...",
+        public_inputs.custodian_pubkey_hash[0], public_inputs.custodian_pubkey_hash[1],
+        public_inputs.custodian_pubkey_hash[2], public_inputs.custodian_pubkey_hash[3],
+        public_inputs.custodian_pubkey_hash[4], public_inputs.custodian_pubkey_hash[5],
+        public_inputs.custodian_pubkey_hash[6], public_inputs.custodian_pubkey_hash[7]
+    ).into());
+    
+    // Log Orchard-specific fields
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM]   col[7] snapshot_block_height: {:?}",
+        public_inputs.snapshot_block_height
+    ).into());
+    
+    if let Some(anchor) = &public_inputs.snapshot_anchor_orchard {
+        web_sys::console::log_1(&format!(
+            "[ZKPF Orchard WASM]   col[8] snapshot_anchor_orchard: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}...",
+            anchor[0], anchor[1], anchor[2], anchor[3],
+            anchor[4], anchor[5], anchor[6], anchor[7]
+        ).into());
+    } else {
+        web_sys::console::log_1(&"[ZKPF Orchard WASM]   col[8] snapshot_anchor_orchard: None".into());
+    }
+    
+    if let Some(binding) = &public_inputs.holder_binding {
+        web_sys::console::log_1(&format!(
+            "[ZKPF Orchard WASM]   col[9] holder_binding: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}...",
+            binding[0], binding[1], binding[2], binding[3],
+            binding[4], binding[5], binding[6], binding[7]
+        ).into());
+    } else {
+        web_sys::console::log_1(&"[ZKPF Orchard WASM]   col[9] holder_binding: None".into());
+    }
+    
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM] note_values: {:?}",
+        note_values
+    ).into());
+    
+    web_sys::console::log_1(&format!(
+        "[ZKPF Orchard WASM] Circuit: OrchardPofCircuit, k={}, layout=V2_ORCHARD, circuit_version={}",
+        ORCHARD_DEFAULT_K, CIRCUIT_VERSION
+    ).into());
+    
+    // Build circuit input
+    let circuit_input = OrchardPofCircuitInput {
+        public_inputs: public_inputs.clone(),
+        note_values,
+    };
+    
+    // Create circuit in prover mode WITH break points - this is the critical fix
+    // Without break points, the prover panics with "break points not set"
+    let circuit = OrchardPofCircuit::new_prover(circuit_input, break_points.clone());
+    
+    // Convert public inputs to instances using V2Orchard layout
+    let instances = public_inputs_to_instances_with_layout(
+        PublicInputLayout::V2Orchard,
+        &public_inputs,
+    ).map_err(|e| js_error(format!("failed to convert public inputs: {}", e)))?;
+    
+    let instance_refs: Vec<&[Fr]> = instances.iter().map(|col| col.as_slice()).collect();
+    
+    // Generate the proof
+    let mut transcript =
+        halo2_proofs_axiom::transcript::Blake2bWrite::<_, G1Affine, _>::init(vec![]);
+    
+    halo2_proofs_axiom::plonk::create_proof::<
+        KZGCommitmentScheme<halo2curves_axiom::bn256::Bn256>,
+        ProverGWC<'_, halo2curves_axiom::bn256::Bn256>,
+        _,
+        _,
+        _,
+        _,
+    >(
+        params.inner(),
+        pk.inner(),
+        &[circuit],
+        &[instance_refs.as_slice()],
+        OsRng,
+        &mut transcript,
+    )
+    .map_err(|e| js_error(format!("Orchard proof generation failed: {:?}", e)))?;
+    
+    let proof = transcript.finalize();
+    
+    web_sys::console::log_1(&format!(
+        "[ZKPF WASM] ✓ Orchard proof generated successfully, proof_len={} bytes",
+        proof.len()
+    ).into());
+    
+    Ok(ProofBundle {
+        rail_id: RAIL_ID_ZCASH_ORCHARD.to_string(),
+        circuit_version: CIRCUIT_VERSION,
+        proof,
+        public_inputs,
+    })
 }
 
 fn with_cached_verifier<R>(
