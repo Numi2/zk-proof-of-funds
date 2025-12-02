@@ -18,7 +18,8 @@ import { BundleSummary } from './BundleSummary';
 import { ZcashWalletConnector } from './ZcashWalletConnector';
 import { AuthButton } from './auth/AuthButton';
 import { useAuth } from '../context/AuthContext';
-import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier } from '../wasm/prover';
+import { prepareProverArtifacts, generateBundle, wasmComputeAttestationMessageHash, wasmComputeCustodianPubkeyHash, wasmComputeNullifier, prepareOrchardProverArtifacts, generateOrchardBundle } from '../wasm/prover';
+import type { OrchardProofInput } from '../types/zkpf';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
 
@@ -65,6 +66,15 @@ const PROOF_PROGRESS_MESSAGES: Record<ProofProgress, string> = {
   generating: 'Computing zero-knowledge proof (this may take 30-60 seconds)…',
   finalizing: 'Packaging proof bundle…',
 };
+
+function computeHolderBinding(holderId: string, ufvk: string): Uint8Array {
+  const encoder = new TextEncoder();
+  const hasher = blake3.create();
+  hasher.update(encoder.encode(holderId));
+  hasher.update(encoder.encode('||'));
+  hasher.update(encoder.encode(ufvk));
+  return hasher.digest();
+}
 
 export function ProofBuilder({ client, connectionState, onBundleReady }: Props) {
   const location = useLocation();
@@ -299,6 +309,8 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
     setError(null);
   }, []);
 
+  const [orchardArtifactsKey, setOrchardArtifactsKey] = useState<string | null>(null);
+
   const ensureArtifacts = useCallback(async () => {
     if (!manifestMeta) {
       throw new Error('Verifier manifest not loaded yet.');
@@ -328,6 +340,79 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       client.releaseArtifacts(manifestMeta.key);
     }
   }, [client, manifestMeta, preparedKey, wasmStatus]);
+
+  // For Orchard, we need separate artifacts. For now, assume they're at similar endpoints.
+  // TODO: Backend should expose /zkpf/orchard-params endpoint
+  const ensureOrchardArtifacts = useCallback(async () => {
+    // For now, use the same artifact URLs but this should be a separate endpoint
+    // when the backend supports Orchard artifacts
+    if (!manifestMeta) {
+      throw new Error('Orchard artifacts manifest not loaded yet.');
+    }
+    const key = `orchard:${manifestMeta.key}`;
+    if (orchardArtifactsKey === key) {
+      return;
+    }
+    setWasmStatus('loading');
+    setWasmError(null);
+    
+    // TODO: Backend should provide Orchard-specific artifact URLs
+    // For now, we'll try to use the same endpoints (this may not work)
+    const artifactUrls = {
+      params: '/zkpf/artifacts/orchard-params',
+      vk: '/zkpf/artifacts/orchard-vk',
+      pk: '/zkpf/artifacts/orchard-pk',
+    };
+    
+    try {
+      // Download Orchard artifacts
+      // TODO: Backend should expose these via a dedicated endpoint
+      const downloadArtifact = async (path: string): Promise<Uint8Array> => {
+        const url = path.startsWith('http://') || path.startsWith('https://')
+          ? path
+          : `${client.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error(
+              `Orchard artifact not available: ${path}. ` +
+              'The backend may not support Orchard proofs yet. ' +
+              'Please check backend configuration or use the custodial prover.'
+            );
+          }
+          throw new Error(`Failed to download artifact from ${url} (HTTP ${response.status})`);
+        }
+        const contentType = response.headers.get('content-type') ?? '';
+        if (contentType.includes('text/html')) {
+          throw new Error(
+            `Artifact endpoint returned HTML instead of binary data: ${path}. ` +
+            'This usually means the artifact route is not properly proxied to the backend.'
+          );
+        }
+        const buffer = await response.arrayBuffer();
+        return new Uint8Array(buffer);
+      };
+      
+      const [params, vk, pk] = await Promise.all([
+        downloadArtifact(artifactUrls.params),
+        downloadArtifact(artifactUrls.vk),
+        downloadArtifact(artifactUrls.pk),
+      ]);
+      
+      await prepareOrchardProverArtifacts({
+        params,
+        vk,
+        pk,
+        key,
+      });
+      setOrchardArtifactsKey(key);
+      setWasmStatus('ready');
+    } catch (err) {
+      // If Orchard artifacts aren't available, fall back to custodial
+      console.warn('[ProofBuilder] Orchard artifacts not available, will use custodial prover:', err);
+      throw new Error('Orchard prover artifacts not available. The backend may not support Orchard proofs yet.');
+    }
+  }, [client, manifestMeta, orchardArtifactsKey]);
 
   const applySelectedPolicy = useCallback(
     (input: CircuitInput): CircuitInput => {
@@ -363,32 +448,183 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         // Yield to allow UI to update before heavy computation
         await yieldToMain();
         
-        await ensureArtifacts();
+        // Check if this is an Orchard policy
+        const policyRailId = customPolicy?.rail_id || selectedPolicy?.rail_id;
+        const isOrchardPolicy = policyRailId === 'ZCASH_ORCHARD';
         
-        // Check if cancelled during initialization
-        if (cancelRequestedRef.current) {
-          showToast('Proof generation cancelled', 'error');
-          return;
+        let proofBundle: ProofBundle;
+        
+        if (isOrchardPolicy) {
+          // Use Orchard prover for ZCASH_ORCHARD policies
+          // TODO: Build Orchard snapshot from wallet state
+          // For now, check if we have the necessary wallet data
+          // Get UFVK from localStorage
+          const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+          let ufvk = '';
+          try {
+            ufvk = localStorage.getItem(UFVK_STORAGE_KEY) || '';
+          } catch {
+            // localStorage might be unavailable
+          }
+          
+          if (!ufvk.trim()) {
+            throw new Error(
+              'Orchard full viewing key (UFVK) not found. ' +
+              'Please go to the Wallet page and create or restore your wallet to generate Orchard proofs.'
+            );
+          }
+          
+          // Ensure Orchard artifacts are loaded
+          await ensureOrchardArtifacts();
+          
+          const parsed = JSON.parse(normalizedJson) as CircuitInput;
+
+          if (!walletState.webWallet || walletState.activeAccount == null) {
+            throw new Error('Zcash web wallet is not connected. Please open the Wallet tab and connect/sync first.');
+          }
+
+          // Build a real Orchard snapshot (anchor + note witnesses) from the wallet.
+          const snapshot = await walletState.webWallet.build_orchard_snapshot(
+            walletState.activeAccount,
+            BigInt(parsed.public.threshold_raw),
+          );
+
+          const orchardValue = snapshot.notes.reduce((sum, note) => sum + note.value_zats, 0);
+
+          const snapshotHeight =
+            parsed.public.snapshot_block_height ??
+            snapshot.height ??
+            derivedSnapshotHeight ??
+            null;
+
+          const snapshotAnchor = parsed.public.snapshot_anchor_orchard ?? snapshot.anchor ?? null;
+
+          if (snapshotHeight === null || !snapshotAnchor) {
+            throw new Error(
+              'Orchard snapshot anchor/height missing from attestation. ' +
+              'Please sync your Zcash wallet and rebuild the attestation so it includes the Orchard anchor.'
+            );
+          }
+
+          if (snapshotAnchor.length !== 32) {
+            throw new Error(
+              `Invalid Orchard anchor length (${snapshotAnchor.length}); expected 32 bytes.`,
+            );
+          }
+
+          if (orchardValue === null) {
+            throw new Error('Orchard balance unavailable; sync your Zcash wallet and try again.');
+          }
+
+          if (orchardValue < parsed.public.threshold_raw) {
+            throw new Error(
+              `Orchard balance ${orchardValue} zats is below the policy threshold ${parsed.public.threshold_raw}.`
+            );
+          }
+
+          // Check if cancelled during initialization
+          if (cancelRequestedRef.current) {
+            showToast('Proof generation cancelled', 'error');
+            return;
+          }
+          
+          // Update progress and yield before proof generation
+          setProofProgress('generating');
+          await yieldToMain();
+          
+          const nowEpoch = Math.floor(Date.now() / 1000);
+          const holderId = parsed.attestation.account_id_hash || 'holder-default';
+
+          const holderBinding = computeHolderBinding(holderId, ufvk);
+          
+          // Build Orchard proof input
+          const orchardInput: OrchardProofInput = {
+            snapshot: {
+              height: snapshotHeight,
+              anchor: snapshotAnchor,
+              notes: snapshot.notes.map((note) => ({
+                value_zats: note.value_zats,
+                commitment: note.commitment,
+                merkle_path: {
+                  siblings: note.merkle_path.siblings,
+                  position: note.merkle_path.position,
+                },
+              })),
+            },
+            fvk_encoded: ufvk,
+            holder_id: holderId,
+            threshold_zats: BigInt(parsed.public.threshold_raw),
+            orchard_meta: {
+              chain_id: 'ZEC',
+              pool_id: 'ORCHARD',
+              block_height: snapshotHeight,
+              anchor_orchard: snapshotAnchor,
+              holder_binding: Array.from(holderBinding),
+            },
+            public_meta: {
+              policy_id: parsed.public.policy_id,
+              verifier_scope_id: parsed.public.verifier_scope_id,
+              current_epoch: parsed.public.current_epoch || nowEpoch,
+              required_currency_code: parsed.public.required_currency_code,
+            },
+          };
+          
+          // Generate Orchard proof
+          proofBundle = await generateOrchardBundle(orchardInput);
+          
+          // Orchard prover already sets rail_id correctly
+          if (!proofBundle.rail_id) {
+            proofBundle.rail_id = 'ZCASH_ORCHARD';
+          }
+        } else {
+          // Use custodial prover for non-Orchard policies
+          await ensureArtifacts();
+          
+          // Check if cancelled during initialization
+          if (cancelRequestedRef.current) {
+            showToast('Proof generation cancelled', 'error');
+            return;
+          }
+          
+          // Update progress and yield before proof generation
+          setProofProgress('generating');
+          await yieldToMain();
+          
+          // The actual proof generation - this is the CPU-intensive part
+          proofBundle = await generateBundle(normalizedJson);
+          
+          // Set the rail_id on the bundle based on the policy and actual bundle content.
+          // The WASM prover creates bundles with empty rail_id for backward compatibility,
+          // so we set it explicitly here to ensure proper rail routing and UI display.
+          const hasOrchardFields = proofBundle.public_inputs.snapshot_block_height != null 
+            && proofBundle.public_inputs.snapshot_anchor_orchard != null;
+          
+          let railId: string;
+          if (policyRailId === 'ZCASH_ORCHARD' && hasOrchardFields) {
+            // Bundle has Orchard fields, use ZCASH_ORCHARD rail
+            railId = 'ZCASH_ORCHARD';
+          } else if (policyRailId === 'ZCASH_ORCHARD' && !hasOrchardFields) {
+            // Policy wants ZCASH_ORCHARD but bundle lacks Orchard fields - use custodial
+            railId = 'CUSTODIAL_ATTESTATION';
+          } else {
+            // Use policy rail_id or default to custodial
+            railId = policyRailId || 'CUSTODIAL_ATTESTATION';
+          }
+          
+          proofBundle.rail_id = railId;
+          
+          console.log('[ProofBuilder] Bundle rail assignment:', {
+            policyRailId,
+            hasOrchardFields,
+            assignedRailId: railId,
+          });
         }
-        
-        // Update progress and yield before proof generation
-        setProofProgress('generating');
-        await yieldToMain();
-        
-        // The actual proof generation - this is the CPU-intensive part
-        const proofBundle = await generateBundle(normalizedJson);
         
         // Check if cancelled during generation (checked after blocking call completes)
         if (cancelRequestedRef.current) {
           showToast('Proof generation cancelled', 'error');
           return;
         }
-        
-        // Set the rail_id on the bundle based on the policy or default to custodial attestation.
-        // The WASM prover creates bundles with empty rail_id for backward compatibility,
-        // so we set it explicitly here to ensure proper rail routing and UI display.
-        const railId = customPolicy?.rail_id || selectedPolicy?.rail_id || 'CUSTODIAL_ATTESTATION';
-        proofBundle.rail_id = railId;
         
         // Finalize
         setProofProgress('finalizing');
@@ -416,7 +652,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
         setShowCancelPending(false);
       }
     },
-    [ensureArtifacts, onBundleReady, customPolicy],
+    [ensureArtifacts, ensureOrchardArtifacts, onBundleReady, customPolicy, selectedPolicy, derivedShieldedBalance, derivedSnapshotHeight, walletState.webWallet, walletState.activeAccount],
   );
 
   const handleGenerate = useCallback(async () => {

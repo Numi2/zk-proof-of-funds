@@ -27,6 +27,11 @@ use zcash_keys::encoding::AddressCodec;
 use zcash_keys::keys::UnifiedFullViewingKey;
 use zcash_primitives::transaction::TxId;
 use zip32::AccountId as Zip32AccountId;
+use zcash_primitives::consensus::BlockHeight;
+use zcash_protocol::value::Zatoshis;
+use zcash_protocol::ShieldedProtocol;
+use zcash_client_backend::data_api::WalletCommitmentTrees;
+use orchard::note::ExtractedNoteCommitment;
 
 pub type MemoryWallet<T> = Wallet<MemoryWalletDb<Network>, T>;
 pub type AccountId = <MemoryWalletDb<Network> as WalletRead>::AccountId;
@@ -584,7 +589,7 @@ impl WebWallet {
     pub async fn derive_transparent_address(
         &self,
         account_id: u32,
-        diversifier_index: u32,
+        _diversifier_index: u32,
     ) -> Result<String, Error> {
         let db = self.inner.db.read().await;
         
@@ -593,8 +598,8 @@ impl WebWallet {
             .get_account(account_id.into())?
             .ok_or(Error::AccountNotFound(account_id))?;
         
-        let ufvk = account.ufvk().ok_or_else(|| {
-            Error::Other("Account does not have a UFVK".to_string())
+        let _ufvk = account.ufvk().ok_or_else(|| {
+            Error::Generic("Account does not have a UFVK".to_string())
         })?;
         
         // Derive transparent address at the specified diversifier index
@@ -642,15 +647,16 @@ impl WebWallet {
             .ok_or(Error::AccountNotFound(account_id))?;
         
         let ufvk = account.ufvk().ok_or_else(|| {
-            Error::Other("Account does not have a UFVK".to_string())
+            Error::Generic("Account does not have a UFVK".to_string())
         })?;
         
         // Derive unified address at the specified diversifier index
         // The UFVK contains Orchard and Sapling FVKs that support diversified addresses
         let diversifier_index_bytes = zip32::DiversifierIndex::from(diversifier_index);
         
-        let (ua, _) = ufvk.find_address(diversifier_index_bytes, None)
-            .ok_or_else(|| Error::Other("Failed to derive address at diversifier index".to_string()))?;
+        let (ua, _) = ufvk
+            .find_address(diversifier_index_bytes, None)
+            .map_err(|e| Error::Generic(format!("Failed to derive address at diversifier index: {:?}", e)))?;
         
         Ok(ua.encode(&self.inner.network))
     }
@@ -770,7 +776,7 @@ impl WebWallet {
             pczt,
             usk,
             seed_fp,
-        ).await.map_err(|e| Error::Other(format!("PCZT sign failed: {:?}", e)))?;
+        ).await.map_err(|e| Error::Generic(format!("PCZT sign failed: {:?}", e)))?;
         
         // Prove the PCZT (no Sapling key needed for transparent → Orchard)
         let proven_pczt = self.inner.pczt_prove(signed_pczt, None).await?;
@@ -845,6 +851,119 @@ impl WebWallet {
             .await
             .map(|response| response.into_inner().height)
             .map_err(Error::from)
+    }
+
+    /// Build an Orchard snapshot (anchor + note witnesses) for the specified account.
+    ///
+    /// Returns an object with `height`, `anchor`, and `notes` (each note has value,
+    /// commitment, and Merkle path siblings/position). Requires the wallet to be
+    /// synced to at least `min_confirmations` and to have spendable Orchard notes.
+    #[wasm_bindgen]
+    pub async fn build_orchard_snapshot(
+        &self,
+        account_id: u32,
+        threshold_zats: u64,
+    ) -> Result<JsValue, Error> {
+        let mut db = self.inner.db.write().await;
+
+        let summary = db
+            .get_wallet_summary(self.inner.min_confirmations.into())?
+            .ok_or(Error::Generic(
+                "Wallet summary unavailable; sync the wallet first".to_string(),
+            ))?;
+
+        let height = summary.fully_scanned_height();
+        let anchor_height = BlockHeight::from(height);
+
+        // Select spendable Orchard notes that cover at least the threshold.
+        let target_value = Zatoshis::from_u64(threshold_zats.max(1))
+            .unwrap_or(Zatoshis::from_u64(1).expect("1 is valid"));
+
+        let spendable = db.select_spendable_notes(
+            account_id.into(),
+            target_value,
+            &[ShieldedProtocol::Orchard],
+            anchor_height,
+            &[],
+        )?;
+
+        let orchard_notes = spendable.orchard();
+
+        if orchard_notes.is_empty() {
+            return Err(Error::Generic(
+                "No spendable Orchard notes available for this account".to_string(),
+            ));
+        }
+
+        #[derive(serde::Serialize)]
+        struct JsMerklePath {
+            siblings: Vec<[u8; 32]>,
+            position: u32,
+        }
+
+        #[derive(serde::Serialize)]
+        struct JsOrchardNote {
+            value_zats: u64,
+            commitment: [u8; 32],
+            merkle_path: JsMerklePath,
+        }
+
+        #[derive(serde::Serialize)]
+        struct JsOrchardSnapshot {
+            height: u32,
+            anchor: [u8; 32],
+            notes: Vec<JsOrchardNote>,
+        }
+
+        let snapshot = db.with_orchard_tree_mut(|orchard_tree| -> Result<_, Error> {
+            let anchor = orchard_tree
+                .root_at_checkpoint_id(&anchor_height)
+                .map_err(Error::from)?
+                .ok_or_else(|| {
+                    Error::Generic("Orchard anchor not available at scanned height".to_string())
+                })?
+                .to_bytes();
+
+            let mut notes_out = Vec::with_capacity(orchard_notes.len());
+
+            for rn in orchard_notes.iter() {
+                let path = orchard_tree
+                    .witness_at_checkpoint_id_caching(
+                        rn.note_commitment_tree_position(),
+                        &anchor_height,
+                    )
+                    .map_err(Error::from)?
+                    .ok_or_else(|| {
+                        Error::Generic("Missing Orchard witness for spendable note".to_string())
+                    })?;
+
+                let siblings: Vec<[u8; 32]> =
+                    path.path_elems().iter().map(|h| h.to_bytes()).collect();
+
+                let position: u32 = u64::from(path.position()) as u32;
+
+                let cmx: [u8; 32] =
+                    ExtractedNoteCommitment::from(rn.note().commitment()).to_bytes();
+
+                let value_zats: u64 = rn.note().value().inner().into();
+
+                notes_out.push(JsOrchardNote {
+                    value_zats,
+                    commitment: cmx,
+                    merkle_path: JsMerklePath { siblings, position },
+                });
+            }
+
+            Ok(JsOrchardSnapshot {
+                height: height.into(),
+                anchor,
+                notes: notes_out,
+            })
+        })
+        ?;
+
+        serde_wasm_bindgen::to_value(&snapshot)
+            .map_err(|_| Error::Generic("Failed to serialize Orchard snapshot".to_string()))
     }
 }
 

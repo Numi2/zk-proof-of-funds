@@ -133,3 +133,15 @@ where
         Self::Sync(e.to_string())
     }
 }
+
+impl From<shardtree::error::ShardTreeError<std::convert::Infallible>> for Error {
+    fn from(e: shardtree::error::ShardTreeError<std::convert::Infallible>) -> Self {
+        Self::Generic(format!("ShardTree error: {}", e))
+    }
+}
+
+impl From<shardtree::error::ShardTreeError<zcash_client_memory::Error>> for Error {
+    fn from(e: shardtree::error::ShardTreeError<zcash_client_memory::Error>) -> Self {
+        Self::Generic(format!("ShardTree error: {}", e))
+    }
+}

@@ -17,7 +17,7 @@ let wasmModule: WasmModule | null = null;
 interface WasmModule {
   default: () => Promise<void>;
   initThreadPool?: (numThreads: number) => Promise<void>;
-  WebWallet: typeof WebWallet;
+  WebWallet: typeof WebWallet | any;
 }
 
 /**
@@ -92,7 +92,7 @@ export async function loadWalletWasm(): Promise<WasmModule> {
     try {
       // Dynamic import of threaded build
       // Note: Path is relative to the web app's module resolution
-      const wasm = await import('@chainsafe/webzjs-wallet') as WasmModule;
+      const wasm = await import('@chainsafe/webzjs-wallet') as unknown as WasmModule;
       
       // Initialize WASM
       await wasm.default();
@@ -124,7 +124,7 @@ export async function loadWalletWasm(): Promise<WasmModule> {
   try {
     // Try to load single-threaded variant
     // This path needs to be configured in vite.config.ts aliases
-    const wasm = await import('@chainsafe/webzjs-wallet-single') as WasmModule;
+    const wasm = await import('@chainsafe/webzjs-wallet-single') as unknown as WasmModule;
     
     // Initialize WASM (no thread pool needed)
     await wasm.default();
@@ -138,7 +138,7 @@ export async function loadWalletWasm(): Promise<WasmModule> {
     // (it will fail later if SAB is truly unavailable)
     console.warn('[WASM Loader] Single-threaded variant not found, trying main module:', err);
     
-    const wasm = await import('@chainsafe/webzjs-wallet') as WasmModule;
+    const wasm = await import('@chainsafe/webzjs-wallet') as unknown as WasmModule;
     await wasm.default();
     loadedVariant = 'single'; // Best effort
     wasmModule = wasm;
@@ -177,4 +177,3 @@ export function getLoadedVariant(): 'threads' | 'single' | null {
 export function isThreadedMode(): boolean {
   return loadedVariant === 'threads';
 }
-

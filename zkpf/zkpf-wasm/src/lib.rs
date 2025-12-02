@@ -21,6 +21,13 @@ use zkpf_common::{
 };
 use zkpf_prover::{prove, prove_bundle_result, prove_with_public_inputs};
 use zkpf_verifier::verify;
+#[cfg(target_arch = "wasm32")]
+use zkpf_zcash_orchard_circuit::{
+    prove_orchard_pof_wasm, OrchardPublicMeta, OrchardSnapshot, OrchardWasmArtifacts,
+    PublicMetaInputs, HolderId,
+};
+#[cfg(target_arch = "wasm32")]
+use zkpf_zcash_orchard_wallet::OrchardFvk;
 
 // Initialize panic hook at WASM module load time for better error messages
 #[wasm_bindgen(start)]
@@ -55,6 +62,8 @@ thread_local! {
     static CACHED_PARAMS: RefCell<Option<ParamsWasm>> = const { RefCell::new(None) };
     static CACHED_VK: RefCell<Option<VerifyingKeyWasm>> = const { RefCell::new(None) };
     static CACHED_PK: RefCell<Option<ProvingKeyWasm>> = const { RefCell::new(None) };
+    #[cfg(target_arch = "wasm32")]
+    static CACHED_ORCHARD_ARTIFACTS: RefCell<Option<OrchardWasmArtifacts>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen]
@@ -227,6 +236,138 @@ pub fn reset_cached_artifacts() {
     });
     CACHED_PK.with(|cell| {
         cell.borrow_mut().take();
+    });
+    #[cfg(target_arch = "wasm32")]
+    CACHED_ORCHARD_ARTIFACTS.with(|cell| {
+        cell.borrow_mut().take();
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub struct OrchardWasmArtifactsWasm {
+    artifacts: OrchardWasmArtifacts,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl OrchardWasmArtifactsWasm {
+    #[wasm_bindgen(constructor)]
+    pub fn new(params_bytes: &[u8], vk_bytes: &[u8], pk_bytes: &[u8]) -> Result<OrchardWasmArtifactsWasm, JsValue> {
+        Ok(Self {
+            artifacts: OrchardWasmArtifacts {
+                params_bytes: params_bytes.to_vec(),
+                vk_bytes: vk_bytes.to_vec(),
+                pk_bytes: pk_bytes.to_vec(),
+            },
+        })
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = initOrchardProverArtifacts)]
+pub fn init_orchard_prover_artifacts(
+    params_bytes: &[u8],
+    vk_bytes: &[u8],
+    pk_bytes: &[u8],
+) -> Result<(), JsValue> {
+    let artifacts = OrchardWasmArtifacts {
+        params_bytes: params_bytes.to_vec(),
+        vk_bytes: vk_bytes.to_vec(),
+        pk_bytes: pk_bytes.to_vec(),
+    };
+    cache_orchard_artifacts(artifacts);
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = hasOrchardArtifacts)]
+pub fn has_orchard_artifacts() -> bool {
+    CACHED_ORCHARD_ARTIFACTS.with(|cell| {
+        cell.borrow().is_some()
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = generateOrchardProofBundle)]
+pub fn generate_orchard_proof_bundle(
+    snapshot_json: &str,
+    fvk_encoded: &str,
+    holder_id: &str,
+    threshold_zats: u64,
+    orchard_meta_json: &str,
+    public_meta_json: &str,
+) -> Result<JsValue, JsValue> {
+    // Deserialize inputs
+    let snapshot: OrchardSnapshot = serde_json::from_str(snapshot_json)
+        .map_err(|e| js_error(format!("Failed to parse snapshot JSON: {}", e)))?;
+    
+    let fvk = OrchardFvk {
+        encoded: fvk_encoded.to_string(),
+    };
+    
+    let holder_id: HolderId = holder_id.to_string();
+    
+    let orchard_meta: OrchardPublicMeta = serde_json::from_str(orchard_meta_json)
+        .map_err(|e| js_error(format!("Failed to parse orchard_meta JSON: {}", e)))?;
+    
+    let public_meta: PublicMetaInputs = serde_json::from_str(public_meta_json)
+        .map_err(|e| js_error(format!("Failed to parse public_meta JSON: {}", e)))?;
+    
+    // Get cached artifacts
+    let artifacts = CACHED_ORCHARD_ARTIFACTS.with(|cell| {
+        cell.borrow().clone().ok_or_else(|| {
+            js_error("Orchard prover artifacts not initialized; call initOrchardProverArtifacts first")
+        })
+    })?;
+    
+    // Generate proof
+    let bundle = prove_orchard_pof_wasm(
+        &snapshot,
+        &fvk,
+        &holder_id,
+        threshold_zats,
+        &orchard_meta,
+        &public_meta,
+        &artifacts,
+    ).map_err(|e| js_error(format!("Orchard proof generation failed: {}", e)))?;
+    
+    to_value(&bundle).map_err(js_error)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = initOrchardProverArtifacts)]
+pub fn init_orchard_prover_artifacts(
+    _params_bytes: &[u8],
+    _vk_bytes: &[u8],
+    _pk_bytes: &[u8],
+) -> Result<(), JsValue> {
+    Err(js_error("Orchard prover is only available in WASM builds"))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = hasOrchardArtifacts)]
+pub fn has_orchard_artifacts() -> bool {
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[wasm_bindgen(js_name = generateOrchardProofBundle)]
+pub fn generate_orchard_proof_bundle(
+    _snapshot_json: &str,
+    _fvk_encoded: &str,
+    _holder_id: &str,
+    _threshold_zats: u64,
+    _orchard_meta_json: &str,
+    _public_meta_json: &str,
+) -> Result<JsValue, JsValue> {
+    Err(js_error("Orchard prover is only available in WASM builds"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn cache_orchard_artifacts(artifacts: OrchardWasmArtifacts) {
+    CACHED_ORCHARD_ARTIFACTS.with(|cell| {
+        *cell.borrow_mut() = Some(artifacts);
     });
 }
 

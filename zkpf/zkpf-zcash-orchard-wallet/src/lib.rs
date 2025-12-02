@@ -397,9 +397,13 @@ pub fn build_snapshot_for_fvk(
 /// - `anchor` is a valid Orchard anchor encoding, and
 /// - each `OrchardMerklePath.siblings` vector encodes a full Orchard Merkle
 ///   authentication path for the corresponding note commitment.
+#[cfg(feature = "orchard-pof-circuit")]
 pub fn snapshot_to_pof_snapshot(
     snapshot: &OrchardSnapshot,
 ) -> Result<zkpf_orchard_pof_circuit::OrchardPofSnapshot, WalletError> {
+    #[cfg(feature = "orchard-pof-circuit")]
+    use zkpf_orchard_pof_circuit;
+    
     let anchor = Anchor::from_bytes(snapshot.anchor)
         .into_option()
         .ok_or_else(|| WalletError::Backend("invalid Orchard anchor bytes".into()))?;

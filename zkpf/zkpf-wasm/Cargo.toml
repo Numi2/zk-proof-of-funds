@@ -9,13 +9,16 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1"
-# Ensure multicore is disabled for WASM builds, but enable circuit-params for proper key deserialization
+# For WASM builds, we don't enable multicore since rayon doesn't work in standard WASM.
+# The lookup prover code has fallbacks for single-threaded execution.
 halo2_proofs_axiom = { version = "0.5.1", package = "halo2-axiom", default-features = false, features = ["circuit-params"] }
 halo2curves-axiom = { version = "0.7", package = "halo2curves-axiom", default-features = false, features = ["bn256-table"] }
 zkpf-circuit = { path = "../zkpf-circuit" }
 zkpf-prover = { path = "../zkpf-prover" }
 zkpf-verifier = { path = "../zkpf-verifier" }
 zkpf-common = { path = "../zkpf-common" }
+zkpf-zcash-orchard-circuit = { path = "../zkpf-zcash-orchard-circuit" }
+zkpf-zcash-orchard-wallet = { path = "../zkpf-zcash-orchard-wallet", default-features = false }
 poseidon-primitives = "0.2"
 getrandom = { version = "0.2", features = ["js"] }
 serde = { version = "1", features = ["derive"] }

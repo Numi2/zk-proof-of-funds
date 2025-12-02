@@ -1,6 +1,12 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export class OrchardWasmArtifactsWasm {
+  free(): void;
+  [Symbol.dispose](): void;
+  constructor(params_bytes: Uint8Array, vk_bytes: Uint8Array, pk_bytes: Uint8Array);
+}
+
 export class ParamsWasm {
   free(): void;
   [Symbol.dispose](): void;
@@ -45,6 +51,8 @@ export function computeCustodianPubkeyHash(pubkey_x: Uint8Array, pubkey_y: Uint8
 
 export function computeNullifier(account_id_hash_bytes: Uint8Array, verifier_scope_id: bigint, policy_id: bigint, current_epoch: bigint): Uint8Array;
 
+export function generateOrchardProofBundle(snapshot_json: string, fvk_encoded: string, holder_id: string, threshold_zats: bigint, orchard_meta_json: string, public_meta_json: string): any;
+
 export function generateProofBundle(attestation_json: string, params_bytes: Uint8Array, pk_bytes: Uint8Array): any;
 
 export function generateProofBundleCached(attestation_json: string): any;
@@ -56,6 +64,10 @@ export function generateProofCached(attestation_json: string): Uint8Array;
 export function generateProofWithCache(attestation_json: string, params: ParamsWasm, pk: ProvingKeyWasm): Uint8Array;
 
 export function generate_proof(attestation_json: string, params_bytes: Uint8Array, pk_bytes: Uint8Array): Uint8Array;
+
+export function hasOrchardArtifacts(): boolean;
+
+export function initOrchardProverArtifacts(params_bytes: Uint8Array, vk_bytes: Uint8Array, pk_bytes: Uint8Array): void;
 
 export function initProverArtifacts(params_bytes: Uint8Array, pk_bytes: Uint8Array): void;
 

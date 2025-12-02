@@ -8984,6 +8984,8 @@ dependencies = [
  "zkpf-prover",
  "zkpf-test-fixtures",
  "zkpf-verifier",
+ "zkpf-zcash-orchard-circuit",
+ "zkpf-zcash-orchard-wallet",
 ]
 
 [[package]]

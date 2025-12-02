@@ -174,6 +174,8 @@ export interface CircuitPublicInputs {
   policy_id: number;
   nullifier: string;
   custodian_pubkey_hash: string;
+  snapshot_block_height?: number;
+  snapshot_anchor_orchard?: ByteArray;
 }
 
 export interface CircuitInput {
@@ -200,3 +202,33 @@ export interface AttestResponse {
   error_code: string | null;
 }
 
+export interface OrchardProofInput {
+  snapshot: {
+    height: number;
+    anchor: ByteArray; // [u8; 32]
+    notes: Array<{
+      value_zats: number;
+      commitment: ByteArray; // [u8; 32]
+      merkle_path: {
+        siblings: ByteArray[]; // Array of [u8; 32]
+        position: number;
+      };
+    }>;
+  };
+  fvk_encoded: string; // Orchard full viewing key
+  holder_id: string;
+  threshold_zats: bigint;
+  orchard_meta: {
+    chain_id: string;
+    pool_id: string;
+    block_height: number;
+    anchor_orchard: ByteArray; // [u8; 32]
+    holder_binding: ByteArray; // [u8; 32] - computed from holder_id + fvk
+  };
+  public_meta: {
+    policy_id: number;
+    verifier_scope_id: number;
+    current_epoch: number;
+    required_currency_code: number;
+  };
+}

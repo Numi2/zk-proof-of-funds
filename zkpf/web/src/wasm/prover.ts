@@ -6,8 +6,11 @@ import {
   generateProofBundleCached,
   initProverArtifacts,
   resetCachedArtifacts,
+  initOrchardProverArtifacts,
+  hasOrchardArtifacts,
+  generateOrchardProofBundle,
 } from './zkpf_wasm.js';
-import type { ProofBundle } from '../types/zkpf';
+import type { ProofBundle, OrchardProofInput } from '../types/zkpf';
 import { parseProofBundle } from '../utils/parse';
 
 interface ProverArtifacts {
@@ -16,7 +19,15 @@ interface ProverArtifacts {
   key: string;
 }
 
+interface OrchardProverArtifacts {
+  params: Uint8Array;
+  vk: Uint8Array;
+  pk: Uint8Array;
+  key: string;
+}
+
 let cachedArtifactsKey: string | null = null;
+let cachedOrchardArtifactsKey: string | null = null;
 
 // WASM is auto-initialized by the bundler, no async init needed
 async function ensureWasmLoaded(): Promise<void> {
@@ -123,7 +134,110 @@ export async function generateBundle(attestationJson: string): Promise<ProofBund
 
 export function resetProverArtifactsCache() {
   cachedArtifactsKey = null;
+  cachedOrchardArtifactsKey = null;
   resetCachedArtifacts();
+}
+
+export async function prepareOrchardProverArtifacts(artifacts: OrchardProverArtifacts) {
+  await ensureWasmLoaded();
+  if (cachedOrchardArtifactsKey === artifacts.key) {
+    return;
+  }
+  try {
+    initOrchardProverArtifacts(artifacts.params, artifacts.vk, artifacts.pk);
+  } catch (err) {
+    cachedOrchardArtifactsKey = null;
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'unknown WASM initialization error';
+    throw new Error(
+      [
+        'Failed to initialize zkpf WASM Orchard prover artifacts.',
+        'This usually means the params/verifying key/proving key bytes returned by the backend',
+        'do not match the zkpf_wasm build or are corrupted.',
+        `Underlying error: ${message}`,
+      ].join(' '),
+    );
+  }
+  cachedOrchardArtifactsKey = artifacts.key;
+}
+
+export async function generateOrchardBundle(input: OrchardProofInput): Promise<ProofBundle> {
+  await ensureWasmLoaded();
+  
+  // Check if artifacts are initialized
+  if (!hasOrchardArtifacts()) {
+    throw new Error('Orchard prover artifacts not initialized. Call prepareOrchardProverArtifacts first.');
+  }
+  
+  // Serialize inputs to JSON
+  const snapshotJson = JSON.stringify({
+    height: input.snapshot.height,
+    anchor: input.snapshot.anchor,
+    notes: input.snapshot.notes.map(note => ({
+      value_zats: note.value_zats,
+      commitment: note.commitment,
+      merkle_path: {
+        siblings: note.merkle_path.siblings,
+        position: note.merkle_path.position,
+      },
+    })),
+  });
+  
+  const orchardMetaJson = JSON.stringify({
+    chain_id: input.orchard_meta.chain_id,
+    pool_id: input.orchard_meta.pool_id,
+    block_height: input.orchard_meta.block_height,
+    anchor_orchard: input.orchard_meta.anchor_orchard,
+    holder_binding: input.orchard_meta.holder_binding,
+  });
+  
+  const publicMetaJson = JSON.stringify({
+    policy_id: input.public_meta.policy_id,
+    verifier_scope_id: input.public_meta.verifier_scope_id,
+    current_epoch: input.public_meta.current_epoch,
+    required_currency_code: input.public_meta.required_currency_code,
+  });
+  
+  let raw;
+  try {
+    const thresholdZats = BigInt(input.threshold_zats);
+    raw = generateOrchardProofBundle(
+      snapshotJson,
+      input.fvk_encoded,
+      input.holder_id,
+      thresholdZats,
+      orchardMetaJson,
+      publicMetaJson,
+    );
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : 'unknown error';
+    
+    if (message.includes('unreachable') || message.includes('Unreachable')) {
+      throw new Error(
+        [
+          'WASM Orchard proof generation failed with an internal error.',
+          'This can happen if: (1) the prover artifacts (params/vk/pk) are corrupted or truncated,',
+          '(2) the Orchard snapshot data is invalid, or (3) the browser ran out of memory.',
+          'Try refreshing the page to re-download artifacts. If the problem persists,',
+          'check that your Orchard snapshot data is properly formatted.',
+          `Technical details: ${message}`,
+        ].join(' '),
+      );
+    }
+    throw err;
+  }
+  
+  const normalized = normalizeForJson(raw);
+  return parseProofBundle(JSON.stringify(normalized));
 }
 
 export async function wasmComputeAttestationMessageHash(attestationJson: string): Promise<Uint8Array> {
@@ -165,4 +279,3 @@ function normalizeForJson(value: unknown): unknown {
   }
   return value;
 }
-

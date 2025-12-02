@@ -66,13 +66,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // WebWallet WASM bindings - THREADED variant (requires SharedArrayBuffer)
-      // Build with: cd zkpf/webwallet && ./build-wasm.sh
-      // The threaded build is the default for backwards compatibility
-      '@chainsafe/webzjs-wallet': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg-threads/webzjs_wallet_threads.js'),
-      // WebWallet WASM bindings - SINGLE-THREADED variant (works on all browsers)
-      // Used as fallback when SharedArrayBuffer is unavailable
-      '@chainsafe/webzjs-wallet-single': path.resolve(__dirname, '../webwallet/crates/webzjs-wallet/pkg-single/webzjs_wallet_single.js'),
+      // WebWallet WASM bindings - vendored single-threaded build (no worker bundling)
+      // Source: generated from `cd zkpf/webwallet && ./build-wasm.sh single`
+      // and copied into `web/src/wasm/webzjs-wallet-single/` for deployment.
+      '@chainsafe/webzjs-wallet': path.resolve(__dirname, './src/wasm/webzjs-wallet-single/webzjs_wallet_single.js'),
+      '@chainsafe/webzjs-wallet-single': path.resolve(__dirname, './src/wasm/webzjs-wallet-single/webzjs_wallet_single.js'),
       // WebKeys WASM bindings built from `zkpf/webwallet/crates/webzjs-keys`
       '@chainsafe/webzjs-keys': path.resolve(__dirname, '../webwallet/crates/webzjs-keys/pkg/webzjs_keys.js'),
       // Chat WASM bindings built from `zkpf/zkpf-chat/browser-wasm`
@@ -80,7 +78,9 @@ export default defineConfig({
       //   cd zkpf/zkpf-chat && CC_wasm32_unknown_unknown="/opt/homebrew/opt/llvm/bin/clang" \
       //     AR_wasm32_unknown_unknown="/opt/homebrew/opt/llvm/bin/llvm-ar" \
       //     wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
-      'chat-browser': path.resolve(__dirname, '../zkpf-chat/browser-wasm/pkg/chat_browser.js'),
+      // The generated npm package is checked in at zkpf/zkpf-chat/pkg so Vercel
+      // builds do not need to compile the WASM artifact.
+      'chat-browser': path.resolve(__dirname, '../zkpf-chat/pkg/chat_browser.js'),
     },
   },
   optimizeDeps: {

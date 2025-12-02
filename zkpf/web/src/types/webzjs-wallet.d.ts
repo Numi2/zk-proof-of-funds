@@ -10,6 +10,15 @@ declare module '@chainsafe/webzjs-wallet' {
     get_wallet_summary(): Promise<WalletSummary | undefined>;
     get_latest_block(): Promise<number>;
     db_to_bytes(): Promise<Uint8Array>;
+    /**
+     * Build an Orchard snapshot (anchor + note witnesses) for the specified account.
+     * Returns an object with height, anchor, and notes (each note has value,
+     * commitment, and Merkle path siblings/position).
+     */
+    build_orchard_snapshot(
+      account_id: number,
+      threshold_zats: bigint,
+    ): Promise<OrchardSnapshot>;
 
     create_account(
       account_name: string,
@@ -74,6 +83,23 @@ declare module '@chainsafe/webzjs-wallet' {
     sapling_balance: number;
     orchard_balance: number;
     unshielded_balance: number;
+  }
+
+  export interface OrchardMerklePath {
+    siblings: number[][];
+    position: number;
+  }
+
+  export interface OrchardNoteWitness {
+    value_zats: number;
+    commitment: number[];
+    merkle_path: OrchardMerklePath;
+  }
+
+  export interface OrchardSnapshot {
+    height: number;
+    anchor: number[];
+    notes: OrchardNoteWitness[];
   }
 
   export class SeedFingerprint {
@@ -173,5 +199,3 @@ declare module '@chainsafe/webzjs-wallet-single' {
 
   export default function init(module_or_path?: string | URL | Request | WebAssembly.Module): Promise<void>;
 }
-
-

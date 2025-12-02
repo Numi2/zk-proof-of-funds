@@ -53,11 +53,12 @@ use zkpf_common::{
     VerifierArtifacts, VerifierPublicInputs, CIRCUIT_VERSION, MANIFEST_VERSION,
 };
 use zkpf_orchard_inner::OrchardInnerPublicInputs;
-use zkpf_zcash_orchard_wallet::{OrchardFvk, OrchardSnapshot};
 
 // Re-export the shared `ProofBundle` type so downstream crates (e.g. WASM
 // wrappers) can depend only on this crate for Orchard PoF bundles.
 pub use zkpf_common::ProofBundle;
+// Re-export Orchard types needed by WASM bindings
+pub use zkpf_zcash_orchard_wallet::{OrchardFvk, OrchardSnapshot};
 
 /// Constant rail identifier for the Orchard rail.
 pub const RAIL_ID_ZCASH_ORCHARD: &str = "ZCASH_ORCHARD";
@@ -610,14 +611,23 @@ fn orchard_manifest_path() -> PathBuf {
 
 fn load_orchard_prover_artifacts() -> Result<ProverArtifacts> {
     let manifest_path = orchard_manifest_path();
-    let (manifest, params_bytes, vk_bytes, pk_bytes) = load_orchard_artifact_bytes(&manifest_path)?;
+    load_orchard_prover_artifacts_from_path(&manifest_path)
+}
+
+/// Load Orchard prover artifacts (params, vk, pk) from a manifest path.
+/// This is the public API for loading Orchard artifacts with proving key support.
+pub fn load_orchard_prover_artifacts_from_path(
+    manifest_path: impl AsRef<Path>,
+) -> Result<ProverArtifacts> {
+    let manifest_path = manifest_path.as_ref();
+    let (manifest, params_bytes, vk_bytes, pk_bytes) = load_orchard_artifact_bytes(manifest_path)?;
     let params = deserialize_params(&params_bytes)?;
     let vk = deserialize_orchard_verifying_key(&vk_bytes)?;
     let pk = deserialize_orchard_proving_key(&pk_bytes)?;
 
     Ok(ProverArtifacts::from_parts(
         manifest,
-        orchard_manifest_dir(&manifest_path),
+        orchard_manifest_dir(manifest_path),
         params,
         vk,
         Some(pk),

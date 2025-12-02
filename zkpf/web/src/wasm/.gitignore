@@ -1,0 +1,11 @@
+# Ignore everything by default
+*
+
+# Keep the wasm loader sources and embedded artifacts
+!.gitignore
+!package.json
+!prover.ts
+!wallet-loader.ts
+!zkpf_wasm*
+!webzjs-wallet-single/
+!webzjs-wallet-single/**

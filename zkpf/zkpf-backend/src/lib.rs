@@ -36,7 +36,9 @@ use zkpf_common::{
 };
 use zkpf_prover::prove_bundle;
 use zkpf_verifier::verify;
-use zkpf_zcash_orchard_circuit::{load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD};
+use zkpf_zcash_orchard_circuit::{
+    load_orchard_prover_artifacts_from_path, load_orchard_verifier_artifacts, RAIL_ID_ZCASH_ORCHARD,
+};
 
 // k256 for secp256k1 ECDSA signature verification
 use k256::ecdsa::{
@@ -87,6 +89,8 @@ const PROVIDER_BALANCE_RAIL_ID: &str = "PROVIDER_BALANCE_V2";
 const PROVIDER_SESSION_TTL_SECS: u64 = 15 * 60;
 const PROVIDER_SESSION_RETENTION_SECS: u64 = 60 * 60;
 const DEFAULT_DEEP_LINK_SCHEME: &str = "zashi";
+const ORCHARD_MANIFEST_ENV: &str = "ZKPF_ORCHARD_MANIFEST_PATH";
+const ORCHARD_DEFAULT_MANIFEST_PATH: &str = "artifacts/zcash-orchard/manifest.json";
 
 // ============================================================
 // Input Validation Constants
@@ -111,6 +115,8 @@ const MAX_POLICY_STRING_LEN: usize = 256;
 const MAX_ACCOUNT_TAG_LEN: usize = 66;
 
 static ARTIFACTS: Lazy<Arc<ProverArtifacts>> = Lazy::new(|| Arc::new(load_artifacts()));
+static ORCHARD_ARTIFACTS: Lazy<Option<Arc<ProverArtifacts>>> =
+    Lazy::new(|| load_orchard_artifacts().ok().map(Arc::new));
 static POLICIES: Lazy<PolicyStore> = Lazy::new(PolicyStore::from_env);
 static RAILS: Lazy<RailRegistry> = Lazy::new(RailRegistry::from_env);
 static ATTESTATION_SERVICE: Lazy<Option<OnchainAttestationService>> =
@@ -552,6 +558,12 @@ async fn get_artifact(
     State(state): State<AppState>,
     AxumPath(kind): AxumPath<String>,
 ) -> Result<Response, ApiError> {
+    // Check if this is an Orchard artifact request
+    if kind.starts_with("orchard-") {
+        return get_orchard_artifact(kind).await;
+    }
+
+    // Default to custodial artifacts
     let artifacts = state.artifacts();
     let path = match kind.as_str() {
         "params" => artifacts.params_path(),
@@ -598,6 +610,65 @@ async fn get_artifact(
         HeaderValue::from_str(&format!("\"{}\"", etag)).unwrap_or_else(|_| HeaderValue::from_static("\"unknown\"")),
     );
     // Allow caching but require revalidation to ensure clients get fresh artifacts after updates
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=3600, must-revalidate"),
+    );
+
+    Ok(response)
+}
+
+async fn get_orchard_artifact(kind: String) -> Result<Response, ApiError> {
+    let artifacts_opt = ORCHARD_ARTIFACTS.as_ref();
+    let artifacts = artifacts_opt
+        .ok_or_else(|| ApiError::not_found("Orchard artifacts not available on this deployment"))?;
+
+    let (path, etag) = match kind.as_str() {
+        "orchard-params" => {
+            let path = artifacts.params_path();
+            let etag = artifacts.manifest.params.blake3.clone();
+            (path, etag)
+        }
+        "orchard-vk" => {
+            let path = artifacts.vk_path();
+            let etag = artifacts.manifest.vk.blake3.clone();
+            (path, etag)
+        }
+        "orchard-pk" => {
+            let path = artifacts.pk_path();
+            let etag = artifacts.manifest.pk.blake3.clone();
+            (path, etag)
+        }
+        _ => {
+            return Err(ApiError::bad_request(
+                CODE_ARTIFACT_NOT_FOUND,
+                "unknown Orchard artifact kind",
+            ))
+        }
+    };
+
+    let file = File::open(&path).await.map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            eprintln!("Orchard artifact '{}' not found at {}", kind, path.display());
+            ApiError::not_found("Orchard artifact not available on this deployment")
+        } else {
+            eprintln!("failed to open Orchard artifact '{}': {}", kind, err);
+            ApiError::internal("failed to load Orchard artifact")
+        }
+    })?;
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    response.headers_mut().insert(
+        header::ETAG,
+        HeaderValue::from_str(&format!("\"{}\"", etag)).unwrap_or_else(|_| HeaderValue::from_static("\"unknown\"")),
+    );
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("public, max-age=3600, must-revalidate"),
@@ -2205,6 +2276,15 @@ fn load_artifacts() -> ProverArtifacts {
             "failed to load artifacts from {path} (prover_enabled={}): {err}",
             prover_enabled
         )
+    })
+}
+
+fn load_orchard_artifacts() -> Result<ProverArtifacts, String> {
+    let path = env::var(ORCHARD_MANIFEST_ENV)
+        .unwrap_or_else(|_| ORCHARD_DEFAULT_MANIFEST_PATH.to_string());
+    eprintln!("zkpf-backend: loading Orchard artifacts from {}", path);
+    load_orchard_prover_artifacts_from_path(&path).map_err(|e| {
+        format!("failed to load Orchard artifacts from {}: {}", path, e)
     })
 }
 
