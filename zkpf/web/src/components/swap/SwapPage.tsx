@@ -177,7 +177,7 @@ export function SwapPage() {
           className={`direction-button ai-button ${direction === 'ai_agent' ? 'active' : ''}`}
           onClick={() => setDirection('ai_agent')}
         >
-          <span className="direction-icon">🤖</span>
+          <span className="direction-icon">AI</span>
           <span>AI Agent</span>
         </button>
       </div>
@@ -201,7 +201,7 @@ export function SwapPage() {
           />
         ) : (
           <div className="swap-connect-prompt">
-            <div className="connect-icon">🔐</div>
+            <div className="connect-icon">🔒</div>
             <h3>Connect Wallet</h3>
             <p>Connect your Zcash wallet to spend shielded ZEC</p>
           </div>
@@ -290,8 +290,8 @@ export function SwapPage() {
         <div className="privacy-features">
           <h5>Privacy Features</h5>
           <ul>
-            <li>🔐 Fresh addresses for every swap (never reused)</li>
-            <li>🛡️ Swap metadata kept local (not on-chain)</li>
+            <li>Fresh addresses for every swap (never reused)</li>
+            <li>Swap metadata kept local (not on-chain)</li>
             <li>🔒 Network separation for swap queries</li>
             <li>⏱️ Timing randomization to prevent correlation</li>
           </ul>

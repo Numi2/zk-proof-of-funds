@@ -69,7 +69,7 @@ export function URIPaymentPage() {
         {/* P2P Trade Link */}
         <div className="link-p2p-promo">
           <div className="p2p-promo-content">
-            <span className="p2p-promo-icon">🤝</span>
+            <span className="p2p-promo-icon">↔</span>
             <div className="p2p-promo-text">
               <strong>Want to trade ZEC for cash?</strong>
               <span>Visit the P2P marketplace to buy or sell ZEC with other people.</span>

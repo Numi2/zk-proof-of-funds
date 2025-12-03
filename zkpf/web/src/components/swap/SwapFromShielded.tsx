@@ -332,7 +332,7 @@ export function SwapFromShielded({
 
       {/* Privacy Notice */}
       <div className="swap-privacy-notice">
-        <span className="privacy-icon">🛡️</span>
+        <span className="privacy-icon"></span>
         <span>
           Unshields to fresh t-addr • Swap data never on-chain
         </span>

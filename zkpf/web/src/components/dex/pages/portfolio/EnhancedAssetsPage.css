@@ -1,0 +1,450 @@
+/* Enhanced Assets Page Styles */
+
+.enhanced-assets-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.auth-section-wrapper {
+  margin: 24px 0;
+  padding: 0;
+}
+
+/* Page Header */
+.assets-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.header-content {
+  flex: 1;
+  min-width: 300px;
+}
+
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px 0;
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.title-icon {
+  font-size: 1.2em;
+}
+
+.page-description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1.05em;
+}
+
+/* Chain Selector */
+.chain-selector {
+  display: flex;
+  gap: 12px;
+  background: var(--background-tertiary);
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.chain-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chain-btn:hover {
+  background: var(--background-hover);
+  color: var(--text-primary);
+}
+
+.chain-btn.active {
+  background: var(--background-secondary);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(0, 192, 139, 0.15);
+}
+
+.chain-icon {
+  font-size: 1.8em;
+}
+
+.chain-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.chain-name {
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.chain-subtitle {
+  font-size: 0.75em;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+/* Connection Banner */
+.connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(0, 192, 139, 0.1), rgba(0, 150, 255, 0.1));
+  border: 2px solid rgba(0, 192, 139, 0.3);
+  border-radius: 12px;
+}
+
+.banner-icon {
+  font-size: 3em;
+  opacity: 0.8;
+}
+
+.banner-content {
+  flex: 1;
+}
+
+.banner-content h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.3em;
+  color: var(--text-primary);
+}
+
+.banner-content p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Faucet Section */
+.faucet-section {
+  margin: -8px 0;
+}
+
+/* Main Content */
+.assets-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Content Tabs */
+.content-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: var(--background-tertiary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  overflow-x: auto;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab-btn:hover:not(:disabled) {
+  background: var(--background-hover);
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--background-secondary);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 192, 139, 0.15);
+}
+
+.tab-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tab-icon {
+  font-size: 1.2em;
+}
+
+/* Tab Content */
+.tab-content {
+  min-height: 400px;
+}
+
+.overview-tab,
+.deposit-tab,
+.withdraw-tab,
+.storage-tab,
+.deposit-withdraw-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Section Headers */
+.section-header {
+  margin-bottom: 12px;
+}
+
+.section-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.5em;
+  color: var(--text-primary);
+}
+
+.section-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+}
+
+/* Content Sections */
+.content-section {
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.info-section {
+  background: var(--background-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.info-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.2em;
+  color: var(--text-primary);
+}
+
+.info-section ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+
+.info-section li {
+  margin-bottom: 12px;
+}
+
+.info-section strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Supported Chains Grid */
+.supported-chains-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.chain-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.chain-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.chain-logo {
+  font-size: 2.5em;
+}
+
+.chain-card strong {
+  font-size: 1em;
+  color: var(--text-primary);
+}
+
+.chain-badge {
+  font-size: 0.75em;
+  padding: 4px 8px;
+  background: rgba(0, 192, 139, 0.1);
+  color: var(--color-primary);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* NEAR Specific Styles */
+.near-connection-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.near-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.account-card {
+  padding: 24px;
+  background: var(--background-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.account-card h3 {
+  margin: 0 0 12px 0;
+  font-size: 1.2em;
+  color: var(--text-primary);
+}
+
+.account-id {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-primary);
+  word-break: break-all;
+}
+
+.near-info {
+  padding: 20px;
+  background: rgba(0, 192, 139, 0.05);
+  border: 1px solid rgba(0, 192, 139, 0.2);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.near-info p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95em;
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 4em;
+  opacity: 0.4;
+}
+
+.empty-state h3 {
+  margin: 0;
+  font-size: 1.5em;
+  color: var(--text-primary);
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .assets-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chain-selector {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chain-btn {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .enhanced-assets-page {
+    gap: 16px;
+  }
+
+  .page-title {
+    font-size: 1.5em;
+  }
+
+  .connection-banner {
+    flex-direction: column;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .banner-icon {
+    font-size: 2.5em;
+  }
+
+  .content-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+  }
+
+  .content-section,
+  .info-section {
+    padding: 16px;
+  }
+
+  .supported-chains-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+

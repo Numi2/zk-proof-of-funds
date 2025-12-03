@@ -15,8 +15,7 @@ import { useWebzjsActions } from '../../hooks/useWebzjsActions';
 import { PersonhoodSettings } from './PersonhoodSettings';
 import type { PolicyDefinition } from '../../types/zkpf';
 import { detectBrowser, type BrowserInfo } from '../../utils/browserCompat';
-
-const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+import { storeUfvkSecurely, getUfvkSecurely, clearUfvk } from '../../utils/secureUfvkStorage';
 
 /**
  * Derive UFVK from seed phrase using dynamically imported WASM functions.
@@ -136,12 +135,12 @@ export function WalletDashboard() {
 
   useEffect(() => {
     if (state.activeAccount != null) {
-      try {
-        const ufvk = localStorage.getItem(UFVK_STORAGE_KEY);
+      // Load UFVK from secure storage (async)
+      getUfvkSecurely().then(ufvk => {
         setStoredUfvk(ufvk);
-      } catch {
-        // localStorage might be unavailable
-      }
+      }).catch(err => {
+        console.error('Failed to load UFVK:', err);
+      });
     }
   }, [state.activeAccount]);
 
@@ -251,9 +250,9 @@ export function WalletDashboard() {
     try {
       const derivedUfvk = await deriveUfvkFromSeedPhrase(phrase, 'main');
       try {
-        localStorage.setItem(UFVK_STORAGE_KEY, derivedUfvk);
-      } catch {
-        console.warn('Could not store UFVK in localStorage');
+        await storeUfvkSecurely(derivedUfvk);
+      } catch (err) {
+        console.warn('Could not store UFVK securely:', err);
       }
       await createAccountFromSeed(phrase, birthday);
     } catch (err) {
@@ -342,9 +341,9 @@ export function WalletDashboard() {
     setIsLoggingOut(true);
     try {
       try {
-        localStorage.removeItem(UFVK_STORAGE_KEY);
+        await clearUfvk();
       } catch {
-        // localStorage might be unavailable
+        // Storage might be unavailable
       }
       try {
         await del('zkpf-webwallet-db');
@@ -565,7 +564,7 @@ export function WalletDashboard() {
     return (
       <div className="wallet-connect-prompt">
         <div className="card wallet-connect-card wallet-connect-card-wide">
-          <h3>Connect Wallet</h3>
+          <h3>Connect Zcash Wallet</h3>
           
           <div className="wallet-seed-form">
             {/* Create new wallet option */}
@@ -579,7 +578,7 @@ export function WalletDashboard() {
                 Create New Wallet
               </button>
               <p className="muted small" style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-                Generate a fresh wallet with a new seed phrase
+                Generate a fresh Zcash wallet with a new seed phrase
               </p>
             </div>
             
@@ -670,7 +669,7 @@ export function WalletDashboard() {
       <div className="wallet-balance-grid">
         <div className="wallet-balance-card wallet-balance-card-total">
           <div className="wallet-balance-header">
-            <span className="wallet-balance-icon">💰</span>
+            <span className="wallet-balance-icon">$</span>
             <span className="wallet-balance-label">Total Balance</span>
           </div>
           <div className="wallet-balance-value">
@@ -688,7 +687,7 @@ export function WalletDashboard() {
 
         <div className="wallet-balance-card wallet-balance-card-shielded">
           <div className="wallet-balance-header">
-            <span className="wallet-balance-icon">🛡️</span>
+            <span className="wallet-balance-icon"></span>
             <span className="wallet-balance-label">Shielded</span>
           </div>
           <div className="wallet-balance-value">
@@ -788,7 +787,7 @@ export function WalletDashboard() {
             navigate('/build', { state: { customPolicy, fromWallet: true, walletBalance: balances.shielded } });
           }}
         >
-          <span className="wallet-action-icon">🔐</span>
+          <span className="wallet-action-icon">🔒</span>
           <span className="wallet-action-title">Build Proof</span>
           <span className="wallet-action-description">
             Prove {zatsToZec(balances.shielded)} ZEC

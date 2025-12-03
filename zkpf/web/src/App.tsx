@@ -15,6 +15,10 @@ const BoundIdentityApp = lazy(() =>
   import('./components/BoundIdentityApp').then((module) => ({ default: module.BoundIdentityApp })),
 );
 
+const DexApp = lazy(() =>
+  import('./components/dex/DexApp').then((module) => ({ default: module.DexApp })),
+);
+
 function App() {
   return (
     <RouteErrorBoundary>
@@ -36,6 +40,10 @@ function App() {
           <Route
             path="/bound-identity/*"
             element={<BoundIdentityApp />}
+          />
+          <Route
+            path="/dex/*"
+            element={<DexApp />}
           />
           <Route
             path="/*"

@@ -1,0 +1,206 @@
+/**
+ * BaseLayout Styles
+ * Positions the faucet button in the header next to the connect button
+ * Hides all navbar buttons except the connect button
+ */
+
+/* Hide all buttons in navbar header except connect/wallet button - more aggressive */
+:global(header button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])),
+:global([class*="header"] button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])),
+:global([class*="Header"] button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])),
+:global([class*="toolbar"] button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])),
+:global([class*="oui-header"] button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])),
+:global([class*="scaffold"] [class*="header"] button:not([class*="wallet"]):not([class*="connect"]):not([data-testid*="wallet"]):not([data-testid*="connect"])) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Explicitly hide language/locale switcher buttons - override any show rules */
+:global(header button[class*="language"]),
+:global(header button[class*="locale"]),
+:global(header button[class*="lang"]),
+:global(header button[class*="i18n"]),
+:global(header button[aria-label*="language" i]),
+:global(header button[aria-label*="locale" i]),
+:global(header button[title*="language" i]),
+:global(header button[title*="locale" i]),
+:global([class*="header"] button[class*="language"]),
+:global([class*="header"] button[class*="locale"]),
+:global([class*="header"] button[class*="lang"]),
+:global([class*="header"] button[class*="i18n"]),
+:global([class*="Header"] button[class*="language"]),
+:global([class*="Header"] button[class*="locale"]),
+:global([class*="Header"] button[class*="lang"]),
+:global([class*="Header"] button[class*="i18n"]),
+:global([class*="oui-header"] button[class*="language"]),
+:global([class*="oui-header"] button[class*="locale"]),
+:global([class*="oui-header"] button[class*="lang"]),
+:global([class*="oui-header"] button[class*="i18n"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Explicitly hide QR code scanner buttons - override any show rules */
+:global(header button[class*="qr"]),
+:global(header button[class*="scan"]),
+:global(header button[class*="camera"]),
+:global(header button[class*="qrcode"]),
+:global(header button[aria-label*="qr" i]),
+:global(header button[aria-label*="scan" i]),
+:global(header button[title*="qr" i]),
+:global(header button[title*="scan" i]),
+:global(header button[data-testid*="qr" i]),
+:global(header button[data-testid*="scan" i]),
+:global([class*="header"] button[class*="qr"]),
+:global([class*="header"] button[class*="scan"]),
+:global([class*="header"] button[class*="camera"]),
+:global([class*="Header"] button[class*="qr"]),
+:global([class*="Header"] button[class*="scan"]),
+:global([class*="Header"] button[class*="camera"]),
+:global([class*="oui-header"] button[class*="qr"]),
+:global([class*="oui-header"] button[class*="scan"]),
+:global([class*="oui-header"] button[class*="camera"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Hide account info buttons/dropdowns (except connect) */
+:global([class*="oui-header"]) [class*="account"]:not([class*="wallet"]):not([class*="connect"]),
+:global([class*="scaffold"] [class*="header"]) [class*="account"]:not([class*="wallet"]):not([class*="connect"]),
+:global([class*="Header"]) [class*="account"]:not([class*="wallet"]):not([class*="connect"]),
+:global(header) [class*="account"]:not([class*="wallet"]):not([class*="connect"]) {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Ensure connect/wallet button remains visible */
+:global([class*="wallet-connector"]),
+:global([class*="connect-wallet"]),
+:global([class*="oui-button"][class*="wallet"]),
+:global(button[class*="wallet"]),
+:global([data-testid*="wallet"]),
+:global([data-testid*="connect"]) {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Ensure the faucet button appears in the header */
+#dex-faucet-button-container {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+/* Make sure the wrapper is visible */
+.dex-faucet-button-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Fallback: fixed position in top right if container injection fails */
+.dex-faucet-button-fallback {
+  position: fixed !important;
+  top: 80px !important; /* Below header */
+  right: 20px !important; /* Right side */
+  z-index: 100 !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Ensure button is visible */
+.dex-faucet-button-fallback .faucet-button-container {
+  display: block !important;
+  visibility: visible !important;
+}
+
+.dex-faucet-button-fallback .faucet-button {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+/* Target Orderly UI header patterns */
+:global([class*="oui-header"]) .dex-faucet-button-wrapper,
+:global([class*="scaffold"] [class*="header"]) .dex-faucet-button-wrapper,
+:global([class*="Header"]) .dex-faucet-button-wrapper,
+:global(header) .dex-faucet-button-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-left: 12px;
+  margin-right: 12px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .dex-faucet-button-wrapper {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+  
+  .dex-faucet-button-fallback {
+    right: 16px;
+    top: 80px; /* Below header on mobile */
+  }
+}
+
+/* Hide locale/language button everywhere in mobile view - moved to settings */
+:global([class*="locale"]),
+:global([class*="language-switcher"]),
+:global([class*="lang-select"]),
+:global([class*="i18n-selector"]),
+:global(button[class*="oui"][data-locale]),
+:global([data-testid*="locale"]),
+:global([data-testid*="language"]) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Keep locale settings visible only within the settings page */
+.locale-settings,
+.locale-settings * {
+  display: revert !important;
+  visibility: revert !important;
+  opacity: revert !important;
+  pointer-events: revert !important;
+  width: revert !important;
+  height: revert !important;
+  overflow: revert !important;
+}
+
+/* Settings page layout */
+.dex-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+

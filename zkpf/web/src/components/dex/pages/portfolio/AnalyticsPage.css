@@ -1,0 +1,85 @@
+.dex-analytics-page {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.dex-analytics-loading {
+  padding: 4rem;
+  text-align: center;
+  color: var(--dex-text-tertiary);
+}
+
+.dex-analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.dex-analytics-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--dex-text-primary);
+}
+
+.dex-analytics-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.dex-timeframe-select {
+  padding: 0.5rem 0.75rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.dex-export-button {
+  padding: 0.5rem 1rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-export-button:hover {
+  background: var(--dex-bg-tertiary);
+  border-color: var(--dex-border-focus);
+}
+
+.dex-analytics-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+}
+
+.dex-analytics-chart-section {
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.dex-analytics-metrics-section {
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .dex-analytics-content {
+    grid-template-columns: 1fr;
+  }
+}
+

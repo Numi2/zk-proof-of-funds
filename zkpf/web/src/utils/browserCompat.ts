@@ -331,7 +331,7 @@ export function testSharedArrayBuffer(): boolean {
  */
 export function getBrowserDownloadLinks(): Array<{ name: string; url: string; icon: string }> {
   return [
-    { name: 'Chrome', url: 'https://www.google.com/chrome/', icon: '🌐' },
+    { name: 'Chrome', url: 'https://www.google.com/chrome/', icon: 'Chrome' },
     { name: 'Firefox', url: 'https://www.mozilla.org/firefox/', icon: '🦊' },
     { name: 'Edge', url: 'https://www.microsoft.com/edge', icon: '🔷' },
   ];

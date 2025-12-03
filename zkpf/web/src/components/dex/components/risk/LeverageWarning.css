@@ -1,0 +1,90 @@
+.dex-leverage-warning {
+  padding: 1rem;
+  background: var(--dex-bg-elevated);
+  border: 2px solid var(--dex-warning, #f59e0b);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.dex-leverage-critical {
+  border-color: var(--dex-loss);
+  background: var(--dex-loss-light);
+}
+
+.dex-leverage-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.dex-leverage-icon {
+  font-size: 1.5rem;
+}
+
+.dex-leverage-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-leverage-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dex-leverage-content p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--dex-text-secondary);
+}
+
+.dex-leverage-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-leverage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.dex-leverage-item span:first-child {
+  color: var(--dex-text-secondary);
+}
+
+.dex-leverage-alert {
+  padding: 0.75rem;
+  background: var(--dex-loss-light);
+  border: 1px solid var(--dex-loss);
+  border-radius: 8px;
+  color: var(--dex-loss);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.dex-leverage-acknowledge {
+  padding: 0.625rem 1rem;
+  background: var(--dex-gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-leverage-acknowledge:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dex-shadow-md);
+}
+

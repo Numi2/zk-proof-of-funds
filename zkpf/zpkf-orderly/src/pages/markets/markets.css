@@ -1,0 +1,26 @@
+/* Container for the markets page */
+.markets-page-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom positioning for MarketsHomePage */
+.markets-home-page {
+  /* Add any custom positioning here */
+}
+
+/* Override DialogBody positioning if needed */
+.markets-home-page :global(.oui-h-full.oui-pb-0) {
+  /* Example: Move dialog to a specific position */
+  /* position: absolute;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%); */
+}
+
+/* Or target the dialog container directly */
+.markets-home-page :global([class*="DialogBody"]) {
+  /* Custom positioning styles */
+}
+

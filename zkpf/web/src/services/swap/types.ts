@@ -268,6 +268,8 @@ export interface SwapTrackingData {
   inboundAddress?: string;
   /** NEAR Intent ID */
   nearIntentId?: string;
+  /** NEAR resolver contract (e.g., defuse.near) */
+  resolverContract?: string;
   /** Tracking URL */
   trackingUrl?: string;
 }

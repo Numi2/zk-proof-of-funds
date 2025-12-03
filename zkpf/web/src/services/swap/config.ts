@@ -99,6 +99,12 @@ export const NEAR_INTENTS_CONFIG = {
     testnet: 'https://testnet-api.fastnear.com',
   },
   
+  /** NEAR Intents Verifier Contract */
+  verifierContract: {
+    mainnet: 'intents.near',
+    testnet: 'intents.testnet',
+  },
+  
   /** Known resolver contracts */
   resolvers: {
     /** Defuse Protocol - Primary intent resolver */
@@ -132,6 +138,22 @@ export const NEAR_INTENTS_CONFIG = {
     minDeadlineSeconds: 300,
     /** Maximum deadline (1 hour) */
     maxDeadlineSeconds: 3600,
+  },
+  
+  /** Intents SDK Configuration */
+  intentsSdk: {
+    /** Referral code for SDK (optional) */
+    referral: getEnv('VITE_INTENTS_REFERRAL', ''),
+    
+    /** RPC URLs for EVM chains (used by SDK) */
+    evmRpcUrls: {
+      ethereum: getEnv('VITE_ETHEREUM_RPC_URL', 'https://eth.llamarpc.com'),
+      arbitrum: getEnv('VITE_ARBITRUM_RPC_URL', 'https://arb1.arbitrum.io/rpc'),
+      optimism: getEnv('VITE_OPTIMISM_RPC_URL', 'https://mainnet.optimism.io'),
+      base: getEnv('VITE_BASE_RPC_URL', 'https://mainnet.base.org'),
+      polygon: getEnv('VITE_POLYGON_RPC_URL', 'https://polygon-rpc.com'),
+      bnb: getEnv('VITE_BNB_RPC_URL', 'https://bsc-dataseed.binance.org'),
+    },
   },
 } as const;
 
@@ -320,6 +342,27 @@ export function getNearIndexerUrl(): string {
  */
 export function hasSwapKitApiKey(): boolean {
   return !!SWAPKIT_CONFIG.apiKey;
+}
+
+/**
+ * Get Intents SDK configuration for initialization.
+ */
+export function getIntentsSdkConfig() {
+  const networkId = NEAR_INTENTS_CONFIG.networkId;
+  const nearChainId = networkId === 'mainnet' ? 'near:mainnet' : 'near:testnet';
+  
+  return {
+    referral: NEAR_INTENTS_CONFIG.intentsSdk.referral || undefined,
+    rpc: {
+      [nearChainId]: [NEAR_INTENTS_CONFIG.rpcUrls[networkId]],
+      'eip155:1': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.ethereum],
+      'eip155:42161': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.arbitrum],
+      'eip155:10': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.optimism],
+      'eip155:8453': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.base],
+      'eip155:137': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.polygon],
+      'eip155:56': [NEAR_INTENTS_CONFIG.intentsSdk.evmRpcUrls.bnb],
+    },
+  };
 }
 
 export default {

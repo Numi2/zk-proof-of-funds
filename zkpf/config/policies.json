@@ -147,5 +147,28 @@
     "required_currency_code": 999001,
     "threshold_raw": 0,
     "verifier_scope_id": 999001000
+  },
+  {
+    "category": "ZCASH_ORCHARD",
+    "label": "Prove ≥ 10 ZEC (from bundle)",
+    "options": {},
+    "policy_id": 100200,
+    "rail_id": "ZCASH_ORCHARD",
+    "required_currency_code": 999001,
+    "threshold_raw": 1000000000,
+    "verifier_scope_id": 300
+  },
+  {
+    "category": "ZCASH_ORCHARD",
+    "label": "Prove ≥ 0 ZEC",
+    "options": {
+      "auto": true,
+      "source": "wallet"
+    },
+    "policy_id": 100201,
+    "rail_id": "ZCASH_ORCHARD",
+    "required_currency_code": 999001,
+    "threshold_raw": 0,
+    "verifier_scope_id": 271964666
   }
 ]

@@ -1,0 +1,110 @@
+.dex-skeleton-container {
+  padding: 1rem;
+  background: var(--dex-bg-primary);
+  border-radius: 12px;
+}
+
+.dex-skeleton-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.dex-skeleton-line {
+  height: 16px;
+  background: var(--dex-bg-tertiary);
+  border-radius: 4px;
+  animation: dex-shimmer 2s infinite;
+}
+
+.dex-skeleton-orderbook {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dex-skeleton-orderbook-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  gap: 1rem;
+}
+
+.dex-skeleton-spread {
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  border-top: 1px solid var(--dex-border-primary);
+  border-bottom: 1px solid var(--dex-border-primary);
+}
+
+.dex-skeleton-chart {
+  width: 100%;
+  height: 500px;
+  background: var(--dex-bg-primary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dex-skeleton-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dex-skeleton-chart-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.dex-skeleton-chart-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.dex-skeleton-chart-footer {
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+}
+
+.dex-skeleton-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dex-skeleton-table-header {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-skeleton-table-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--dex-border-primary);
+}
+
+@keyframes dex-shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+

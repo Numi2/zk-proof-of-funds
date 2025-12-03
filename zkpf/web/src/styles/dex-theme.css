@@ -1,0 +1,271 @@
+/* DEX Premium Theme System */
+/* Extends Orderly UI variables with trading-optimized colors and effects */
+
+:root[data-theme="light"] {
+  /* Trading-optimized light theme */
+  --dex-bg-primary: #ffffff;
+  --dex-bg-secondary: #f8f9fa;
+  --dex-bg-tertiary: #f1f3f5;
+  --dex-bg-elevated: #ffffff;
+  --dex-bg-glass: rgba(255, 255, 255, 0.8);
+  
+  --dex-text-primary: #0f172a;
+  --dex-text-secondary: #475569;
+  --dex-text-tertiary: #94a3b8;
+  
+  --dex-border-primary: #e2e8f0;
+  --dex-border-secondary: #cbd5e1;
+  --dex-border-focus: #8b5cf6;
+  
+  --dex-profit: #10b981;
+  --dex-profit-light: #d1fae5;
+  --dex-loss: #ef4444;
+  --dex-loss-light: #fee2e2;
+  
+  --dex-depth-bid: rgba(16, 185, 129, 0.1);
+  --dex-depth-ask: rgba(239, 68, 68, 0.1);
+  
+  --dex-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --dex-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --dex-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --dex-shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  
+  --dex-gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --dex-gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --dex-gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+:root[data-theme="dark"] {
+  /* Trading-optimized dark theme */
+  --dex-bg-primary: #0f172a;
+  --dex-bg-secondary: #1e293b;
+  --dex-bg-tertiary: #334155;
+  --dex-bg-elevated: #1e293b;
+  --dex-bg-glass: rgba(30, 41, 59, 0.8);
+  
+  --dex-text-primary: #f1f5f9;
+  --dex-text-secondary: #cbd5e1;
+  --dex-text-tertiary: #94a3b8;
+  
+  --dex-border-primary: #334155;
+  --dex-border-secondary: #475569;
+  --dex-border-focus: #a78bfa;
+  
+  --dex-profit: #22c55e;
+  --dex-profit-light: rgba(34, 197, 94, 0.15);
+  --dex-loss: #f87171;
+  --dex-loss-light: rgba(248, 113, 113, 0.15);
+  
+  --dex-depth-bid: rgba(34, 197, 94, 0.15);
+  --dex-depth-ask: rgba(248, 113, 113, 0.15);
+  
+  --dex-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --dex-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --dex-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --dex-shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  
+  --dex-gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  --dex-gradient-success: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  --dex-gradient-danger: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+}
+
+/* Glass morphism effects */
+.dex-glass {
+  background: var(--dex-bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--dex-shadow-glass);
+}
+
+/* Premium depth layers */
+.dex-elevated {
+  background: var(--dex-bg-elevated);
+  box-shadow: var(--dex-shadow-md);
+  border: 1px solid var(--dex-border-primary);
+}
+
+.dex-elevated-lg {
+  background: var(--dex-bg-elevated);
+  box-shadow: var(--dex-shadow-lg);
+  border: 1px solid var(--dex-border-primary);
+}
+
+/* Trading-specific utilities */
+.dex-profit-text {
+  color: var(--dex-profit);
+}
+
+.dex-loss-text {
+  color: var(--dex-loss);
+}
+
+.dex-profit-bg {
+  background: var(--dex-profit-light);
+}
+
+.dex-loss-bg {
+  background: var(--dex-loss-light);
+}
+
+/* Smooth transitions */
+.dex-transition {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dex-transition-fast {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dex-transition-slow {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus states */
+.dex-focus-ring {
+  outline: 2px solid var(--dex-border-focus);
+  outline-offset: 2px;
+}
+
+/* Depth chart visualization */
+.dex-depth-bid {
+  background: var(--dex-depth-bid);
+}
+
+.dex-depth-ask {
+  background: var(--dex-depth-ask);
+}
+
+/* Premium button styles */
+.dex-button-primary {
+  background: var(--dex-gradient-primary);
+  color: white;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--dex-shadow-sm);
+}
+
+.dex-button-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dex-shadow-md);
+}
+
+.dex-button-primary:active {
+  transform: translateY(0);
+}
+
+/* Loading shimmer effect */
+@keyframes dex-shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.dex-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--dex-bg-tertiary) 0%,
+    var(--dex-bg-secondary) 50%,
+    var(--dex-bg-tertiary) 100%
+  );
+  background-size: 2000px 100%;
+  animation: dex-shimmer 2s infinite;
+}
+
+/* Orderbook depth visualization */
+.dex-orderbook-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.dex-orderbook-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: var(--depth-percent, 0%);
+  z-index: 0;
+  transition: width 0.3s ease;
+}
+
+.dex-orderbook-row-bid::before {
+  background: var(--dex-depth-bid);
+}
+
+.dex-orderbook-row-ask::before {
+  background: var(--dex-depth-ask);
+}
+
+/* Notification styles */
+.dex-notification {
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--dex-shadow-lg);
+  backdrop-filter: blur(12px);
+}
+
+/* Chart container */
+.dex-chart-container {
+  background: var(--dex-bg-primary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: var(--dex-shadow-sm);
+}
+
+/* Hide chart tab - prioritize orderflow trading */
+/* Target chart tab buttons by aria-controls attribute */
+button[role="tab"][aria-controls*="chart"],
+button[role="tab"][id*="chart"],
+button[role="tab"][id*="trigger-chart"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Hide chart content panel */
+[role="tabpanel"][id*="chart"],
+[role="tabpanel"][id*="content-chart"],
+[aria-labelledby*="chart"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Hide chart component containers */
+div[class*="oui-relative"][class*="oui-size-full"] {
+  /* This will be handled by JavaScript, but add CSS as backup */
+}
+
+/* Hide Risk Rate component - handled via data attribute set by PositionsPage.tsx */
+[data-hide-risk-rate="true"] {
+  display: none !important;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
+  .dex-glass {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+

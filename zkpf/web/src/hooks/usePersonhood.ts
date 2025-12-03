@@ -47,7 +47,7 @@ import {
 // ============================================================================
 
 /** localStorage key for storing UFVK (Zcash) */
-const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+import { hasUfvk, getUfvkSecurely } from '../utils/secureUfvkStorage';
 
 /** API base URL (empty string uses relative paths) */
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -124,8 +124,7 @@ export function usePersonhood(): UsePersonhoodResult {
     if (walletState.webWallet && 
         walletState.activeAccount !== null && 
         walletState.activeAccount !== undefined) {
-      const storedUfvk = localStorage.getItem(UFVK_STORAGE_KEY);
-      if (storedUfvk && storedUfvk.length > 0) {
+      if (hasUfvk()) {
         return { type: 'zcash' as const, ready: true };
       }
     }
@@ -164,7 +163,7 @@ export function usePersonhood(): UsePersonhoodResult {
     bindingId: WalletBindingId 
   } | null> => {
     if (activeWalletType === 'zcash') {
-      const ufvk = localStorage.getItem(UFVK_STORAGE_KEY);
+      const ufvk = await getUfvkSecurely();
       if (!ufvk) return null;
       
       const core = createWalletCoreFromUfvk(ufvk);
@@ -444,7 +443,7 @@ export function usePersonhood(): UsePersonhoodResult {
       setState(prev => ({
         ...prev,
         status: 'error',
-        error: bindingResult.error,
+        error: 'error' in bindingResult ? bindingResult.error : undefined,
       }));
     }
 

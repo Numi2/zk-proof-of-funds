@@ -51,10 +51,10 @@ interface ZkpfRampProps {
 }
 
 // Asset metadata
-const ASSET_META: Record<CryptoAsset, { icon: string; name: string; color: string; tokenAddress?: string }> = {
-  zkUSD: { icon: '💵', name: 'zkUSD', color: '#22c55e', tokenAddress: undefined },
-  ZEC: { icon: '🛡️', name: 'Zcash', color: '#f4b728' },
-  STRK: { icon: '⚡', name: 'Starknet', color: '#ec796b' },
+const ASSET_META: Record<CryptoAsset, { icon: string | React.ReactNode; name: string; color: string; tokenAddress?: string }> = {
+  zkUSD: { icon: '$', name: 'zkUSD', color: '#22c55e', tokenAddress: undefined },
+  ZEC: { icon: '', name: 'Zcash', color: '#f4b728' },
+  STRK: { icon: 'STRK', name: 'Starknet', color: '#ec796b' },
 };
 
 // Default API base URL
@@ -477,7 +477,7 @@ export function ZkpfRamp({
             <div className="quote-row">
               <span>Fee</span>
               <span className={quote.feePct === 0 ? 'quote-free' : ''}>
-                {quote.feePct === 0 ? 'FREE ✨' : `${quote.feePct.toFixed(1)}%`}
+                {quote.feePct === 0 ? 'FREE' : `${quote.feePct.toFixed(1)}%`}
               </span>
             </div>
             <div className="quote-row">
@@ -510,7 +510,7 @@ export function ZkpfRamp({
             onClick={() => setPaymentMethod('card')}
             disabled={status === 'processing'}
           >
-            <span className="payment-icon">💳</span>
+            <span className="payment-icon">Card</span>
             <span>Card</span>
           </button>
           <button
@@ -528,7 +528,7 @@ export function ZkpfRamp({
             onClick={() => setPaymentMethod('bank')}
             disabled={status === 'processing'}
           >
-            <span className="payment-icon">🏦</span>
+            <span className="payment-icon">Bank</span>
             <span>Bank</span>
           </button>
         </div>
@@ -574,7 +574,7 @@ export function ZkpfRamp({
       {/* Status Messages */}
       {status === 'processing' && intent && (
         <div className="ramp-status processing">
-          <div className="status-icon">⏳</div>
+          <div className="status-icon">⏱</div>
           <div className="status-text">
             <strong>{getStatusMessage()}</strong>
             <span>Your {asset} will arrive in ~{formatTime(quote?.estimatedTime || 300)}</span>
@@ -594,7 +594,7 @@ export function ZkpfRamp({
 
       {status === 'complete' && (
         <div className="ramp-status complete">
-          <div className="status-icon">✅</div>
+          <div className="status-icon">✓</div>
           <div className="status-text">
             <strong>Purchase complete!</strong>
             <span>{formatCrypto((intent?.cryptoAmount || 0) / 1_000_000)} {asset} delivered</span>
@@ -615,7 +615,7 @@ export function ZkpfRamp({
       {/* Error Display */}
       {error && (
         <div className="ramp-error">
-          <span className="error-icon">⚠️</span>
+          <span className="error-icon">⚠</span>
           <span>{error}</span>
           <button 
             type="button" 
@@ -634,11 +634,11 @@ export function ZkpfRamp({
           <span>Non-custodial</span>
         </div>
         <div className="trust-item">
-          <span className="trust-icon">👤</span>
+          <span className="trust-icon">✓</span>
           <span>No KYC</span>
         </div>
         <div className="trust-item">
-          <span className="trust-icon">🌐</span>
+          <span className="trust-icon"></span>
           <span>Decentralized</span>
         </div>
       </div>

@@ -1,0 +1,72 @@
+/* Footprint Chart Styles */
+.footprint-chart-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #0f172a;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.footprint-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 8px 12px;
+  flex-shrink: 0;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.footprint-chart-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.footprint-chart-content {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+  height: 320px;
+}
+
+.footprint-chart-scroll-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: contain;
+}
+
+.footprint-chart-canvas {
+  display: block;
+}
+
+.footprint-chart-price-axis {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.footprint-chart-time-axis {
+  pointer-events: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+}
+
+.footprint-chart-corner {
+  pointer-events: none;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  border-left: 1px solid rgba(148, 163, 184, 0.4);
+  border-top: 1px solid rgba(148, 163, 184, 0.4);
+  background: #0f1b34;
+}

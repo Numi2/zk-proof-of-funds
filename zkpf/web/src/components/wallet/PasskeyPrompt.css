@@ -35,6 +35,12 @@
   animation: slideUp 0.3s ease-out;
 }
 
+[data-theme='light'] .passkey-prompt {
+  background: var(--bg-card);
+  border-color: var(--border-primary);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);
@@ -75,7 +81,11 @@
 }
 
 .passkey-prompt-icon {
-  font-size: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
   line-height: 1;
 }
 
@@ -87,12 +97,20 @@
   text-align: center;
 }
 
+[data-theme='light'] .passkey-prompt-title {
+  color: var(--text-primary);
+}
+
 .passkey-prompt-description {
   color: #94a3b8;
   font-size: 0.9rem;
   text-align: center;
   margin: 0;
   line-height: 1.5;
+}
+
+[data-theme='light'] .passkey-prompt-description {
+  color: var(--text-secondary);
 }
 
 .passkey-prompt-form {
@@ -109,6 +127,10 @@
   margin-bottom: 0.5rem;
 }
 
+[data-theme='light'] .passkey-prompt-label {
+  color: var(--text-primary);
+}
+
 .passkey-prompt-input {
   width: 100%;
   padding: 0.75rem 1rem;
@@ -120,14 +142,29 @@
   transition: all 0.2s;
 }
 
+[data-theme='light'] .passkey-prompt-input {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
 .passkey-prompt-input:focus {
   outline: none;
   border-color: #38bdf8;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
 }
 
+[data-theme='light'] .passkey-prompt-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(75, 85, 99, 0.1);
+}
+
 .passkey-prompt-input::placeholder {
   color: #64748b;
+}
+
+[data-theme='light'] .passkey-prompt-input::placeholder {
+  color: var(--text-muted);
 }
 
 .passkey-prompt-actions {
@@ -170,8 +207,19 @@
   color: #cbd5e1;
 }
 
+[data-theme='light'] .passkey-prompt-button-ghost {
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
 .passkey-prompt-button-ghost:hover:not(:disabled) {
   background: rgba(148, 163, 184, 0.2);
+}
+
+[data-theme='light'] .passkey-prompt-button-ghost:hover:not(:disabled) {
+  background: rgba(241, 245, 249, 1);
+  border-color: var(--border-hover);
 }
 
 /* Mandatory prompt styling - no backdrop click dismiss */
@@ -194,8 +242,18 @@
   letter-spacing: 0.05em;
 }
 
+[data-theme='light'] .passkey-prompt-security-badge {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #059669;
+}
+
 .passkey-prompt-security-badge svg {
   stroke: #10b981;
+}
+
+[data-theme='light'] .passkey-prompt-security-badge svg {
+  stroke: #059669;
 }
 
 .passkey-prompt-error {
@@ -231,9 +289,18 @@
   margin-top: 0.5rem;
 }
 
+[data-theme='light'] .passkey-prompt-back {
+  color: var(--text-primary);
+}
+
 .passkey-prompt-back:hover:not(:disabled) {
   color: #94a3b8;
   background: rgba(148, 163, 184, 0.05);
+}
+
+[data-theme='light'] .passkey-prompt-back:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(241, 245, 249, 0.8);
 }
 
 .passkey-prompt-back:disabled {
@@ -271,17 +338,30 @@
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 0.75rem;
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
 }
 
+[data-theme='light'] .wallet-option {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+}
+
 .wallet-option:hover:not(:disabled) {
-  background: rgba(15, 23, 42, 0.8);
-  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(30, 41, 59, 1);
+  border-color: rgba(56, 189, 248, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .wallet-option:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   transform: translateY(-1px);
 }
 
@@ -291,20 +371,37 @@
 }
 
 .wallet-option.passkey-option {
-  border-color: rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme='light'] .wallet-option.passkey-option {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: var(--bg-tertiary);
 }
 
 .wallet-option.passkey-option:hover:not(:disabled) {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+[data-theme='light'] .wallet-option.passkey-option:hover:not(:disabled) {
   border-color: rgba(16, 185, 129, 0.5);
-  background: rgba(16, 185, 129, 0.05);
+  background: rgba(16, 185, 129, 0.08);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
 }
 
 .wallet-option.passkey-option.no-passkeys {
-  border-color: rgba(148, 163, 184, 0.2);
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .wallet-option-icon {
-  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -322,9 +419,17 @@
   font-size: 0.95rem;
 }
 
+[data-theme='light'] .wallet-option-name {
+  color: var(--text-primary);
+}
+
 .wallet-option-status {
   font-size: 0.8rem;
   color: #94a3b8;
+}
+
+[data-theme='light'] .wallet-option-status {
+  color: var(--text-secondary);
 }
 
 .wallet-option-spinner {

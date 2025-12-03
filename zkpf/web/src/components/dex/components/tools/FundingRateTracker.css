@@ -1,0 +1,91 @@
+.dex-funding-tracker {
+  padding: 1rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+}
+
+.dex-funding-tracker h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-funding-loading {
+  padding: 1rem;
+  text-align: center;
+  color: var(--dex-text-tertiary);
+  font-size: 0.875rem;
+}
+
+.dex-funding-current {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-funding-rate,
+.dex-funding-next {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dex-funding-label {
+  font-size: 0.75rem;
+  color: var(--dex-text-secondary);
+}
+
+.dex-funding-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-funding-prediction {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.dex-funding-history h5 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dex-text-secondary);
+}
+
+.dex-funding-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dex-funding-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 6px;
+}
+
+.dex-funding-time {
+  font-size: 0.75rem;
+  color: var(--dex-text-tertiary);
+}
+
+.dex-funding-rate-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+

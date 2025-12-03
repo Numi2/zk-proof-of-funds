@@ -1,0 +1,109 @@
+.locale-settings {
+  background: rgba(var(--oui-color-base-1), 0.5);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(var(--oui-color-base-5), 0.3);
+}
+
+.locale-settings-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.locale-settings-icon {
+  font-size: 24px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.locale-settings-title-group {
+  flex: 1;
+}
+
+.locale-settings-title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(var(--oui-color-base-10), 1);
+}
+
+.locale-settings-description {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(var(--oui-color-base-6), 1);
+}
+
+.locale-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.locale-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--oui-color-base-5), 0.3);
+  background: rgba(var(--oui-color-base-2), 0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  font-family: inherit;
+}
+
+.locale-option:hover {
+  background: rgba(var(--oui-color-base-3), 0.8);
+  border-color: rgba(var(--oui-color-base-6), 0.5);
+}
+
+.locale-option-active {
+  background: rgba(var(--oui-color-primary), 0.15);
+  border-color: rgba(var(--oui-color-primary), 0.5);
+}
+
+.locale-option-active:hover {
+  background: rgba(var(--oui-color-primary), 0.2);
+  border-color: rgba(var(--oui-color-primary), 0.6);
+}
+
+.locale-flag {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.locale-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(var(--oui-color-base-10), 1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.locale-check {
+  font-size: 14px;
+  color: rgba(var(--oui-color-primary), 1);
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .locale-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .locale-option {
+    padding: 8px 10px;
+  }
+  
+  .locale-name {
+    font-size: 12px;
+  }
+}
+

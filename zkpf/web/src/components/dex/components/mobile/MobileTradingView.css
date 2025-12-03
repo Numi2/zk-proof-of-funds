@@ -1,0 +1,43 @@
+.dex-mobile-trading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dex-mobile-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--dex-border-primary);
+  background: var(--dex-bg-elevated);
+}
+
+.dex-mobile-tab {
+  flex: 1;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dex-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-mobile-tab.active {
+  color: var(--dex-text-primary);
+  border-bottom-color: var(--dex-border-focus);
+}
+
+.dex-mobile-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 769px) {
+  .dex-mobile-trading {
+    display: none;
+  }
+}
+

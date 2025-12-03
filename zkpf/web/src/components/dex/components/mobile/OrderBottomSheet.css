@@ -1,0 +1,46 @@
+.dex-bottom-sheet-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9998;
+  backdrop-filter: blur(4px);
+}
+
+.dex-bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 90vh;
+  background: var(--dex-bg-elevated);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  z-index: 9999;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.dex-bottom-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--dex-border-secondary);
+  border-radius: 2px;
+  margin: 0.75rem auto;
+}
+
+.dex-bottom-sheet-content {
+  padding: 1rem;
+  max-height: calc(90vh - 2rem);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 769px) {
+  .dex-bottom-sheet-overlay,
+  .dex-bottom-sheet {
+    display: none;
+  }
+}
+

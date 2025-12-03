@@ -1,0 +1,45 @@
+.dex-performance-metrics {
+  width: 100%;
+}
+
+.dex-performance-metrics h3 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-metrics-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--dex-text-tertiary);
+}
+
+.dex-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.dex-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+}
+
+.dex-metric-label {
+  font-size: 0.75rem;
+  color: var(--dex-text-secondary);
+  font-weight: 500;
+}
+
+.dex-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--dex-text-primary);
+}
+

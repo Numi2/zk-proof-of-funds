@@ -2,7 +2,7 @@
  * Login Modal Component
  * 
  * Beautiful, unified login interface supporting:
- * - Solana Wallet (Phantom, Solflare, Backpack)
+ * - Solana Wallet (Phantom)
  * - NEAR Wallet via near-connect (HOT, Meteor, Nightly, etc.)
  * - Passkey (WebAuthn/FIDO2)
  */
@@ -53,46 +53,24 @@ export function LoginModal() {
       const win = window as Window & {
         solana?: { isPhantom?: boolean };
         phantom?: { solana?: { isPhantom?: boolean } };
-        solflare?: { isSolflare?: boolean };
-        backpack?: unknown;
       };
 
       const hasPhantom = win.phantom?.solana?.isPhantom || win.solana?.isPhantom;
-      const hasSolflare = win.solflare?.isSolflare;
-      const hasBackpack = !!win.backpack;
 
       options.push({
         id: 'phantom',
         name: 'Phantom',
-        icon: '👻',
+        icon: 'PH',
         type: 'solana',
         description: 'Solana wallet',
         available: !!hasPhantom,
-      });
-
-      options.push({
-        id: 'solflare',
-        name: 'Solflare',
-        icon: '🔆',
-        type: 'solana',
-        description: 'Solana wallet',
-        available: !!hasSolflare,
-      });
-
-      options.push({
-        id: 'backpack',
-        name: 'Backpack',
-        icon: '🎒',
-        type: 'solana',
-        description: 'Solana wallet',
-        available: !!hasBackpack,
       });
 
       // Passkey
       options.push({
         id: 'passkey',
         name: 'Passkey',
-        icon: '🔐',
+        icon: '🔒',
         type: 'passkey',
         description: 'Face ID, Touch ID, or security key',
         available: !!window.PublicKeyCredential,
@@ -134,8 +112,6 @@ export function LoginModal() {
       // Open install page for unavailable wallets
       const installUrls: Record<string, string> = {
         phantom: 'https://phantom.app/download',
-        solflare: 'https://solflare.com/download',
-        backpack: 'https://backpack.app/download',
       };
       if (installUrls[option.id]) {
         window.open(installUrls[option.id], '_blank');
@@ -254,7 +230,7 @@ export function LoginModal() {
               {passkey && (
                 <div className="wallet-section passkey-section">
                   <div className="wallet-section-header">
-                    <span className="wallet-section-icon">🔐</span>
+                    <span className="wallet-section-icon">🔒</span>
                     <span>Passkey</span>
                   </div>
                   <div className="wallet-options">
@@ -375,15 +351,6 @@ export function LoginModal() {
                     </button>
                   ))}
                 </div>
-                <div className="near-connect-footer">
-                  <div className="near-connect-security">
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M7 1L2 3v4c0 3.31 2.13 6.41 5 7 2.87-.59 5-3.69 5-7V3L7 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M5 7l1.5 1.5L9 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span>Secure connection</span>
-                  </div>
-                </div>
               </div>
             </>
           )}
@@ -437,7 +404,7 @@ export function LoginModal() {
                     </>
                   ) : (
                     <>
-                      <span>🔐</span>
+                      <span>🔒</span>
                       Create Passkey
                     </>
                   )}

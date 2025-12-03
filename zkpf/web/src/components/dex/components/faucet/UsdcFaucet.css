@@ -1,0 +1,217 @@
+/**
+ * USDC Faucet Component Styles
+ * Matches DEX styling with CSS variables
+ */
+
+.usdc-faucet {
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 0;
+}
+
+/* Header */
+.faucet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.faucet-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.faucet-icon {
+  font-size: 1.2em;
+}
+
+.faucet-badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.faucet-badge.testnet {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+/* Description */
+.faucet-description {
+  margin-bottom: 24px;
+}
+
+.faucet-description p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  font-size: 0.95em;
+}
+
+
+/* Status Messages */
+.faucet-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+  font-weight: 500;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.faucet-message.error {
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.faucet-message.success {
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+}
+
+.faucet-message.warning {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+.faucet-message.info {
+  background: rgba(33, 150, 243, 0.1);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  color: #2196f3;
+}
+
+.message-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message-content p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.message-hint {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+
+/* Claim Button */
+.faucet-claim-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.faucet-claim-button:hover:not(:disabled) {
+  background: var(--color-primary-dark, rgba(0, 192, 139, 0.9));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 192, 139, 0.3);
+}
+
+.faucet-claim-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.faucet-claim-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--background-tertiary);
+  color: var(--text-secondary);
+  box-shadow: none;
+  transform: none;
+}
+
+.button-icon,
+.button-spinner {
+  font-size: 1.2rem;
+}
+
+.button-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Last Claim Info */
+.last-claim-info {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .usdc-faucet {
+    padding: 20px;
+  }
+
+  .faucet-title {
+    font-size: 1.25rem;
+  }
+
+  .faucet-claim-button {
+    padding: 14px 20px;
+    font-size: 0.9rem;
+  }
+}
+
+

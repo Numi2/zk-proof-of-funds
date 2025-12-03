@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -21,6 +22,19 @@ export default defineConfig({
     react(),
     wasm(),
     topLevelAwait(),
+    nodePolyfills({
+      include: ['path', 'stream', 'util', 'assert', 'crypto'],
+      exclude: ['http'],
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      overrides: {
+        fs: 'memfs',
+      },
+      protocolImports: true,
+    }),
   ],
   worker: {
     // wasm-bindgen-rayon expects ESM workers; Vite defaults to "iife" which
@@ -82,6 +96,10 @@ export default defineConfig({
       //     AR_wasm32_unknown_unknown="/opt/homebrew/opt/llvm/bin/llvm-ar" \
       //     wasm-pack build ./browser-wasm --dev --weak-refs --reference-types -t bundler -d pkg
       'chat-browser': path.resolve(__dirname, '../zkpf-chat/browser-wasm/pkg/chat_browser.js'),
+      // Polyfill shims - resolve to actual files for build-time bundling
+      'vite-plugin-node-polyfills/shims/global': path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/global/dist/index.js'),
+      'vite-plugin-node-polyfills/shims/buffer': path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/buffer/dist/index.js'),
+      'vite-plugin-node-polyfills/shims/process': path.resolve(__dirname, 'node_modules/vite-plugin-node-polyfills/shims/process/dist/index.js'),
     },
   },
   optimizeDeps: {
@@ -90,5 +108,31 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Split large vendor libraries
+          if (id.includes('node_modules')) {
+            if (id.includes('@orderly.network')) {
+              return 'orderly';
+            }
+            if (id.includes('@walletconnect') || id.includes('@reown')) {
+              return 'wallet-connect';
+            }
+            if (id.includes('near-api-js')) {
+              return 'near-sdk';
+            }
+            // Split WASM-related modules
+            if (id.includes('webwallet') || id.includes('wasm')) {
+              return 'wasm';
+            }
+            // Default vendor chunk
+            return 'vendor';
+          }
+        },
+      },
+      maxParallelFileOps: 2, // Reduce concurrent operations
+    },
   },
 });

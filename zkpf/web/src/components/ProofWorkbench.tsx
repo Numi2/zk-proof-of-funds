@@ -736,20 +736,6 @@ export function ProofWorkbench({
     }
   };
 
-  // Quick start: Load sample bundle for instant demo
-  // Must be defined before any early returns to satisfy React hooks rules
-  const handleQuickDemo = useCallback(async () => {
-    try {
-      const response = await fetch('/sample-bundle-orchard.json');
-      if (!response.ok) throw new Error(`Failed to load sample (${response.status})`);
-      const text = await response.text();
-      handleRawInput(text);
-      showToast('Sample proof loaded', 'success');
-    } catch (err) {
-      const message = (err as Error).message ?? 'Failed to load sample';
-      showToast(message, 'error');
-    }
-  }, [handleRawInput]);
 
   // Streamlined mode: simplified UI when coming from wallet with custom policy
   if (isStreamlinedMode && customPolicy) {
@@ -924,25 +910,6 @@ export function ProofWorkbench({
         Upload or paste your proof bundle to verify it. We'll automatically detect all the settings for you.
       </p>
       
-      {/* Quick Start Banner - for first-time visitors */}
-      {!bundle && !rawInput.trim() && !customPolicy && (
-        <div className="quick-start-banner">
-          <div className="quick-start-content">
-            <div className="quick-start-icon">⚡</div>
-            <div className="quick-start-text">
-              <h3>See verification in action</h3>
-              <p>Load a sample proof bundle and verify it instantly.</p>
-            </div>
-            <button 
-              type="button" 
-              className="quick-start-button"
-              onClick={handleQuickDemo}
-            >
-              Load sample →
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Only show technical flow steps when no bundle loaded - keep it simple */}
       {!bundle && connectionState !== 'connected' && (

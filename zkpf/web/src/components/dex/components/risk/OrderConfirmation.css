@@ -1,0 +1,105 @@
+.dex-order-confirmation {
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-width: 400px;
+  box-shadow: var(--dex-shadow-lg);
+}
+
+.dex-confirmation-header {
+  margin-bottom: 1rem;
+}
+
+.dex-confirmation-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-confirmation-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dex-confirmation-warning {
+  padding: 0.75rem;
+  background: var(--dex-loss-light);
+  border: 1px solid var(--dex-loss);
+  border-radius: 8px;
+  color: var(--dex-loss);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dex-confirmation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-confirmation-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.dex-confirmation-row span:first-child {
+  color: var(--dex-text-secondary);
+}
+
+.dex-confirmation-row span:last-child {
+  color: var(--dex-text-primary);
+  font-weight: 600;
+}
+
+.dex-confirmation-total {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--dex-border-primary);
+  font-size: 1rem;
+}
+
+.dex-confirmation-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.dex-confirm-cancel,
+.dex-confirm-submit {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-confirm-cancel {
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  color: var(--dex-text-primary);
+}
+
+.dex-confirm-cancel:hover {
+  background: var(--dex-bg-tertiary);
+}
+
+.dex-confirm-submit {
+  background: var(--dex-gradient-primary);
+  color: white;
+  border: none;
+}
+
+.dex-confirm-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dex-shadow-md);
+}
+

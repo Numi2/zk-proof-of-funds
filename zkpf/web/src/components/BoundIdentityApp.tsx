@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
 import { MobileBottomNav } from './MobileBottomNav';
+import { ThemeToggle } from './ThemeToggle';
 import './mobile.css';
 
 const BoundIdentityBuilder = lazy(() =>
@@ -28,7 +29,10 @@ export function BoundIdentityApp() {
               <h1>Bound Identity Proof</h1>
             </div>
           </div>
-          <div className="hero-subtitle"></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="hero-subtitle"></div>
+            <ThemeToggle />
+          </div>
         </div>
         <p>
           Create cryptographic bonds between identity proofs and funds proofs for privacy-preserving KYC+PoF.

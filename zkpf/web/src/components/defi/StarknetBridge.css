@@ -442,6 +442,160 @@
   }
 }
 
+/* Light theme overrides */
+[data-theme='light'] .starknet-info-card,
+[data-theme='light'] .create-attestation-section,
+[data-theme='light'] .attestations-section,
+[data-theme='light'] .network-info-section {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-primary) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme='light'] .starknet-info-card h3,
+[data-theme='light'] .create-attestation-section h3,
+[data-theme='light'] .attestations-section h3,
+[data-theme='light'] .network-info-section h3 {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .info-description {
+  color: var(--text-muted) !important;
+}
+
+[data-theme='light'] .stat-label {
+  color: var(--text-muted) !important;
+}
+
+[data-theme='light'] .stat-value {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .form-group label {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme='light'] .address-input {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .address-input:focus {
+  border-color: var(--border-hover) !important;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme='light'] .address-input::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 0.6;
+}
+
+[data-theme='light'] .balance-display {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}
+
+[data-theme='light'] .token-checkbox {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme='light'] .token-checkbox:hover {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .token-checkbox input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+}
+
+[data-theme='light'] .create-button {
+  background: linear-gradient(135deg, #4b5563 0%, #6b7280 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .create-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #000000 0%, #111827 100%) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px);
+}
+
+[data-theme='light'] .create-button:disabled {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-muted) !important;
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .error-message {
+  background: rgba(220, 38, 38, 0.08) !important;
+  border: 1px solid rgba(220, 38, 38, 0.2) !important;
+  color: #dc2626 !important;
+}
+
+[data-theme='light'] .loading,
+[data-theme='light'] .empty-state {
+  color: var(--text-muted) !important;
+}
+
+[data-theme='light'] .attestation-card {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme='light'] .attestation-id {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .attestation-status.valid {
+  background: rgba(34, 197, 94, 0.1) !important;
+  color: #22c55e !important;
+}
+
+[data-theme='light'] .attestation-status.invalid {
+  background: rgba(220, 38, 38, 0.1) !important;
+  color: #dc2626 !important;
+}
+
+[data-theme='light'] .detail-label {
+  color: var(--text-muted) !important;
+}
+
+[data-theme='light'] .detail-value {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .verify-button {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme='light'] .verify-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+[data-theme='light'] .verify-button:disabled {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-muted) !important;
+  opacity: 0.5;
+}
+
+[data-theme='light'] .explorer-link {
+  color: var(--accent-primary) !important;
+}
+
+[data-theme='light'] .explorer-link:hover {
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .network-detail {
+  border-bottom-color: var(--border-primary) !important;
+}
+
 @media (max-width: 480px) {
   .starknet-bridge {
     gap: 0.875rem;

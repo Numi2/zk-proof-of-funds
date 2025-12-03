@@ -1,0 +1,33 @@
+.dex-personhood-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-profit);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.dex-personhood-icon {
+  font-size: 1rem;
+  color: var(--dex-profit);
+  line-height: 1;
+}
+
+.dex-personhood-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.dex-personhood-label {
+  font-weight: 700;
+  color: var(--dex-text-primary);
+}
+
+.dex-personhood-level {
+  font-size: 0.625rem;
+  color: var(--dex-text-secondary);
+}
+

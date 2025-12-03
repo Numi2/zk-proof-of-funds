@@ -1,26 +1,11 @@
 import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useWebZjsContext } from '../../context/WebzjsContext';
 import { PcdProvider } from '../../context/PcdContext';
 import { AuthButton } from '../auth/AuthButton';
 import { PasskeyPrompt } from './PasskeyPrompt';
+import { WalletIcon } from '../icons/WalletIcon';
 
 export function WalletLayout() {
-  const { state } = useWebZjsContext();
-  
-  const isConnected = state.webWallet !== null;
-  const isLoading = state.loading;
-  const isSyncing = state.syncInProgress;
-
-  // Determine connection status: loading > syncing > connected > disconnected
-  const getConnectionStatus = () => {
-    if (isLoading) return { className: 'connecting', text: 'Connecting...' };
-    if (isConnected && isSyncing) return { className: 'connecting', text: 'Syncing...' };
-    if (isConnected) return { className: 'connected', text: 'Connected' };
-    return { className: 'disconnected', text: 'Not Connected' };
-  };
-
-  const connectionStatus = getConnectionStatus();
 
   return (
     <PcdProvider>
@@ -33,18 +18,12 @@ export function WalletLayout() {
                 ← Back to ZKPF
               </NavLink>
               <div className="wallet-title-block">
-                <div className="wallet-logo">🛡️</div>
+                <div className="wallet-logo"><WalletIcon size={24} /></div>
                 <div>
                   <p className="eyebrow">Zcash Privacy Wallet</p>
                   <h1>Shielded WebWallet</h1>
                 </div>
               </div>
-            </div>
-            <div className={`connection-status wallet-connection-status ${connectionStatus.className}`}>
-              <span className="status-dot"></span>
-              <span className="status-text">
-                {connectionStatus.text}
-              </span>
             </div>
           </div>
           

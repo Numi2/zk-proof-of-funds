@@ -3,7 +3,18 @@
  * 
  * Fetches real-time price data from multiple sources to provide
  * accurate cross-chain swap quotes for the NEAR Intents integration.
+ * 
+ * Uses Orderly Network for supported perpetual markets, falls back to CoinGecko
+ * for other tokens.
  */
+
+import {
+  createOrderlyApiClient,
+  mapTokenToOrderlySymbol,
+  extractBaseTokenFromSymbol,
+  type OrderlyNetwork,
+} from "./orderly-api";
+import { getNetwork } from "../components/dex/storage";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -70,6 +81,23 @@ const COINGECKO_IDS: Record<string, string> = {
   'MATIC': 'matic-network',
 };
 
+// Tokens supported by Orderly Network (have perpetual markets)
+const ORDERLY_SUPPORTED_TOKENS = new Set([
+  'BTC', 'ETH', 'NEAR', 'SOL', 'ARB', 'OP', 'TIA', 'WOO', 'INJ',
+  'SUI', 'JUP', 'WLD', 'STRK', 'SEI', 'DYM', 'DOGE', 'ETHFI', 'ENA',
+  'W', 'WIF', '1000PEPE', 'MERL', 'ONDO', 'AR', 'BOME', '1000BONK', 'TON',
+  'STG', 'BRETT', 'IO', 'ZRO', 'POPCAT', 'AAVE', 'TRX', 'CRV', 'LDO',
+  'POL', 'TAO', 'EIGEN', 'MOODENG', 'SHIB', 'GOAT', 'MOG', 'SPX', 'PNUT',
+  'CETUS', 'PENDLE', 'AIXBT', 'PENGU', 'FARTCOIN', 'ZEN', 'BIO', 'RAY', 'ADA',
+  'S', 'TRUMP', 'MELANIA', 'VINE', 'FET', 'PLUME', 'BERA', 'UXLINK', 'IP',
+  'CAKE', 'KAITO', 'HBAR', 'PAXG', 'GRASS', 'USELESS', 'MNT', 'H',
+  'CRO', 'XLM', 'PUMP', 'RUNE', 'BGSC', 'SPK', 'SAROS', 'OKB', 'UNI', 'DOT',
+  'MEME', 'QTUM', 'WLFI', 'PYTH', 'ENS', 'LINEA', 'MYX', 'SKY', 'ZORA',
+  'AVNT', 'STBL', 'ASTER', 'XPL', '0G', 'APEX', 'MIRA', 'FF', 'ZEC', 'SNX',
+  'DASH', 'ATH', 'MET', 'XMR', 'GIGGLE', 'MORPHO', 'ZK', 'ICP', 'AIA', 'FIL',
+  'AKT', 'TNSR', 'MON',
+]);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // REAL SOLVERS (Simulated with realistic data)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -134,7 +162,7 @@ const CACHE_TTL = 30000; // 30 seconds
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Fetch real-time prices from CoinGecko
+ * Fetch real-time prices from Orderly Network (for supported tokens) and CoinGecko (fallback)
  */
 export async function fetchPrices(tokens: string[]): Promise<Record<string, TokenPrice>> {
   const now = Date.now();
@@ -150,52 +178,104 @@ export async function fetchPrices(tokens: string[]): Promise<Record<string, Toke
     }
   }
 
-  // Map tokens to CoinGecko IDs
-  const coingeckoIds = tokens
-    .map(t => COINGECKO_IDS[t])
-    .filter(Boolean)
-    .join(',');
-
-  try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoIds}&vs_currencies=usd&include_24hr_change=true`,
-      {
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.status}`);
+  const network: OrderlyNetwork = getNetwork();
+  const orderlyClient = createOrderlyApiClient(network);
+  const prices: Record<string, TokenPrice> = {};
+  
+  // Separate tokens into Orderly-supported and others
+  const orderlyTokens: string[] = [];
+  const otherTokens: string[] = [];
+  
+  tokens.forEach(token => {
+    if (ORDERLY_SUPPORTED_TOKENS.has(token)) {
+      orderlyTokens.push(token);
+    } else {
+      otherTokens.push(token);
     }
+  });
 
-    const data = await response.json();
-    
-    // Map back to our token symbols
-    const prices: Record<string, TokenPrice> = {};
-    for (const token of tokens) {
-      const coingeckoId = COINGECKO_IDS[token];
-      if (coingeckoId && data[coingeckoId]) {
-        prices[token] = {
-          usd: data[coingeckoId].usd,
-          usd_24h_change: data[coingeckoId].usd_24h_change,
-        };
-      }
+  // Fetch from Orderly for supported tokens
+  if (orderlyTokens.length > 0) {
+    try {
+      const orderlySymbols = orderlyTokens.map(mapTokenToOrderlySymbol);
+      const tickers = await orderlyClient.getTickers(orderlySymbols);
+      
+      tickers.forEach(ticker => {
+        const baseToken = extractBaseTokenFromSymbol(ticker.symbol);
+        if (orderlyTokens.includes(baseToken)) {
+          const markPrice = parseFloat(ticker.mark_price || ticker.last_price || '0');
+          if (markPrice > 0) {
+            prices[baseToken] = {
+              usd: markPrice,
+              usd_24h_change: ticker.change_24h ? parseFloat(ticker.change_24h) : undefined,
+            };
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to fetch prices from Orderly:', error);
     }
-
-    // Update cache
-    priceCache = {
-      prices: { ...priceCache.prices, ...prices },
-      lastUpdated: now,
-    };
-
-    return prices;
-  } catch (error) {
-    console.warn('Failed to fetch prices from CoinGecko:', error);
-    // Return cached prices or fallback
-    return getFallbackPrices(tokens);
   }
+
+  // Fetch from CoinGecko for non-Orderly tokens
+  if (otherTokens.length > 0) {
+    const coingeckoIds = otherTokens
+      .map(t => COINGECKO_IDS[t])
+      .filter(Boolean)
+      .join(',');
+
+    if (coingeckoIds) {
+      try {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoIds}&vs_currencies=usd&include_24hr_change=true`,
+          {
+            headers: {
+              'Accept': 'application/json',
+            },
+          }
+        ).catch((fetchError) => {
+          throw new Error(`Network error fetching prices: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
+        });
+
+        if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const text = await response.text();
+            if (!text.trim().startsWith('<')) {
+              const data = JSON.parse(text);
+              for (const token of otherTokens) {
+                const coingeckoId = COINGECKO_IDS[token];
+                if (coingeckoId && data[coingeckoId]) {
+                  prices[token] = {
+                    usd: data[coingeckoId].usd,
+                    usd_24h_change: data[coingeckoId].usd_24h_change,
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch prices from CoinGecko:', error);
+      }
+    }
+  }
+
+  // Fill missing prices with fallback
+  for (const token of tokens) {
+    if (!prices[token]) {
+      const fallback = getFallbackPrices([token]);
+      prices[token] = fallback[token];
+    }
+  }
+
+  // Update cache
+  priceCache = {
+    prices: { ...priceCache.prices, ...prices },
+    lastUpdated: now,
+  };
+
+  return prices;
 }
 
 /**

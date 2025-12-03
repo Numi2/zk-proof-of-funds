@@ -227,7 +227,7 @@ export const TeeAgentChat: React.FC<TeeAgentChatProps> = ({ className = '' }) =>
     if (messages.length === 0) {
       addMessage({
         role: 'agent',
-        content: `🛡️ **TachyonPay TEE Agent**
+        content: `⚛️ **TachyonPay TEE Agent**
 
 I'm your private AI assistant running in a Trusted Execution Environment. I can help you with:
 
@@ -544,7 +544,7 @@ All operations are processed in a Trusted Execution Environment (TEE) for maximu
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerTitle}>
-          <span style={styles.headerIcon}>🛡️</span>
+          <span style={styles.headerIcon}></span>
           <span>TachyonPay Agent</span>
         </div>
         <div style={styles.headerStatus}>
@@ -564,7 +564,7 @@ All operations are processed in a Trusted Execution Environment (TEE) for maximu
             }}
           >
             <div style={styles.messageContent}>
-              {msg.role === 'agent' && <span style={styles.agentAvatar}>🤖</span>}
+              {msg.role === 'agent' && <span style={styles.agentAvatar}>AI</span>}
               <div
                 style={styles.messageText}
                 dangerouslySetInnerHTML={{
@@ -580,7 +580,7 @@ All operations are processed in a Trusted Execution Environment (TEE) for maximu
         {isProcessing && (
           <div style={styles.message}>
             <div style={styles.messageContent}>
-              <span style={styles.agentAvatar}>🤖</span>
+              <span style={styles.agentAvatar}>AI</span>
               <div style={styles.typing}>
                 <span></span>
                 <span></span>

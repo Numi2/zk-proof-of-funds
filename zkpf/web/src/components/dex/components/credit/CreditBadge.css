@@ -1,0 +1,48 @@
+.dex-credit-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.dex-credit-badge:hover {
+  border-color: var(--dex-border-focus);
+  box-shadow: var(--dex-shadow-sm);
+}
+
+.dex-credit-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.dex-credit-verified {
+  color: var(--dex-profit);
+  border-color: var(--dex-profit);
+}
+
+.dex-credit-loading {
+  color: var(--dex-text-secondary);
+}
+
+.dex-credit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.dex-credit-tier {
+  font-weight: 700;
+  color: var(--dex-text-primary);
+}
+
+.dex-credit-amount {
+  font-size: 0.625rem;
+  color: var(--dex-text-secondary);
+}
+

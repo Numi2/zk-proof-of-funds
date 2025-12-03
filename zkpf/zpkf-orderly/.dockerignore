@@ -1,0 +1,14 @@
+node_modules
+build
+dist
+__tests__
+
+.git
+.gitignore
+
+.dockerignore
+Dockerfile
+
+*.md
+.DS_Store
+

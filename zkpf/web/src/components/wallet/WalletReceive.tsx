@@ -93,7 +93,7 @@ export function WalletReceive() {
             className={`wallet-address-tab ${activeTab === 'unified' ? 'active' : ''}`}
             onClick={() => setActiveTab('unified')}
           >
-            <span className="wallet-tab-icon">🛡️</span>
+            <span className="wallet-tab-icon"></span>
             <span>Unified Address</span>
             <span className="wallet-tab-badge recommended">Recommended</span>
           </button>
@@ -139,7 +139,7 @@ export function WalletReceive() {
         <div className="wallet-info-box">
           {activeTab === 'unified' ? (
             <>
-              <p className="wallet-info-title">🛡️ Unified Address</p>
+              <p className="wallet-info-title">Unified Address</p>
               <p className="muted small">
                 This is your unified address that supports both shielded (Orchard/Sapling) and transparent pools. 
                 Senders will automatically use the most private option their wallet supports.

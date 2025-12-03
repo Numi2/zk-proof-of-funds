@@ -1,0 +1,76 @@
+.dex-position-calculator {
+  padding: 1rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+}
+
+.dex-position-calculator h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-calc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dex-calc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dex-calc-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--dex-text-secondary);
+}
+
+.dex-calc-input {
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 6px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.dex-calc-input:focus {
+  outline: none;
+  border-color: var(--dex-border-focus);
+}
+
+.dex-calc-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--dex-border-primary);
+}
+
+.dex-calc-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 6px;
+}
+
+.dex-calc-label {
+  font-size: 0.75rem;
+  color: var(--dex-text-secondary);
+}
+
+.dex-calc-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+

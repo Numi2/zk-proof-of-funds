@@ -55,16 +55,6 @@ const steps = [
 
 const valuePillars = [
   {
-    title: 'Faster diligence loops',
-    body:
-      'Credit desks and exchanges review the same bundle, policy, and verifier result instead of waiting for custom spreadsheets or screenshots.',
-    bullets: [
-      'Single link for onboarding and risk teams.',
-      'Shared language: circuit version, policy, and scope IDs.',
-      'Can be wired into automated retries and alerting.',
-    ],
-  },
-  {
     title: 'Privacy-preserving transparency',
     body:
       'Zero-knowledge proofs show you meet the required total balance while keeping individual wallets and trades private—ideal for OTC and treasury operations.',
@@ -79,16 +69,6 @@ const valuePillars = [
     body:
       'Structured JSON, hashes, and verifier responses map cleanly to SOC 2 / ISAE evidence requirements.',
     bullets: ['Stable bundle schema.', 'Clear manifest and epoch history.', 'Drop artifacts into existing GRC tools.'],
-  },
-  {
-    title: 'Multi-rail coverage',
-    body:
-      'One workflow covers Zcash Orchard and other digital asset reserves, so finance, compliance, and crypto teams can share the same tool.',
-    bullets: [
-      'Rail toggle records where funds are held.',
-      'Policy metadata handles ISO currency codes and custody IDs.',
-      'Single verifier result no matter which rail you use.',
-    ],
   },
 ];
 

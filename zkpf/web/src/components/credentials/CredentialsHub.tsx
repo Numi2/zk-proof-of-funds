@@ -15,12 +15,13 @@ import { CredentialVerifier } from './CredentialVerifier';
 import { CredentialShareModal } from './CredentialShareModal';
 import { useCredentialsStore } from './useCredentialsStore';
 import { useWebZjsContext } from '../../context/WebzjsContext';
+import { ThemeToggle } from '../ThemeToggle';
 import './CredentialsHub.css';
 
 type TabId = 'dashboard' | 'generate' | 'verify' | 'history';
 
 const SUPPORTED_CHAINS = [
-  { id: 'zcash', name: 'Zcash', icon: '🛡️', color: '#f4b728', status: 'live' as const },
+  { id: 'zcash', name: 'Zcash', icon: '⚡', color: '#f4b728', status: 'live' as const },
   { id: 'mina', name: 'Mina', icon: '∞', color: '#e6007a', status: 'beta' as const },
   { id: 'starknet', name: 'Starknet', icon: '⬡', color: '#29296e', status: 'beta' as const },
   { id: 'near', name: 'NEAR', icon: '◈', color: '#00c08b', status: 'beta' as const },
@@ -97,13 +98,14 @@ export const CredentialsHub: React.FC = () => {
         <div className="credentials-header-content">
           <div className="credentials-title-section">
             <h1 className="credentials-title">
-              <span className="credentials-icon">🔐</span>
+              <span className="credentials-icon">🔒</span>
               Cross-chain Credentials Hub
             </h1>
             <p className="credentials-subtitle">
               Prove your funds across any chain. No bridging. No asset movement. Pure cryptographic proof.
             </p>
           </div>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -111,7 +113,7 @@ export const CredentialsHub: React.FC = () => {
       {hasZcashWallet && zcashBalance !== null && (
         <div className="wallet-status-banner">
           <div className="wallet-status-content">
-            <span className="wallet-status-icon">🛡️</span>
+            <span className="wallet-status-icon"></span>
             <div className="wallet-status-info">
               <span className="wallet-status-label">Zcash Wallet Connected</span>
               <span className="wallet-status-balance">
@@ -190,7 +192,7 @@ export const CredentialsHub: React.FC = () => {
         )}
         {activeTab === 'generate' && (
           <ChainCredentialGenerator 
-            chains={SUPPORTED_CHAINS.filter(c => c.status !== 'soon')}
+            chains={SUPPORTED_CHAINS.filter(c => c.status !== 'soon' && c.id !== 'mina' && c.id !== 'near' && c.id !== 'starknet')}
             onCredentialGenerated={handleCredentialGenerated}
           />
         )}
@@ -237,7 +239,7 @@ const DashboardTab: React.FC<DashboardTabProps> = ({
   if (credentials.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon">🔐</div>
+        <div className="empty-state-icon">🔒</div>
         <h3>No Active Credentials</h3>
         <p>
           {hasWallet 

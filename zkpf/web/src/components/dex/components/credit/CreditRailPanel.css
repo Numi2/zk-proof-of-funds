@@ -1,0 +1,164 @@
+.dex-credit-rail-panel {
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--dex-shadow-sm);
+}
+
+.dex-credit-rail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.dex-credit-rail-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-clear-button {
+  padding: 0.375rem 0.75rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 6px;
+  color: var(--dex-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-clear-button:hover {
+  background: var(--dex-bg-tertiary);
+  color: var(--dex-text-primary);
+}
+
+.dex-credit-status {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dex-credit-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-credit-label {
+  font-size: 0.875rem;
+  color: var(--dex-text-secondary);
+  font-weight: 500;
+}
+
+.dex-credit-value {
+  font-size: 0.875rem;
+  color: var(--dex-text-primary);
+  font-weight: 600;
+}
+
+.dex-refresh-button {
+  padding: 0.625rem 1rem;
+  background: var(--dex-gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+}
+
+.dex-refresh-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dex-shadow-md);
+}
+
+.dex-credit-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dex-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dex-form-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--dex-text-primary);
+}
+
+.dex-select {
+  padding: 0.625rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.dex-select:focus {
+  outline: none;
+  border-color: var(--dex-border-focus);
+}
+
+.dex-textarea {
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  color: var(--dex-text-primary);
+  font-size: 0.75rem;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.dex-textarea:focus {
+  outline: none;
+  border-color: var(--dex-border-focus);
+}
+
+.dex-verify-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--dex-gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dex-verify-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--dex-shadow-md);
+}
+
+.dex-verify-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dex-credit-help {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--dex-text-tertiary);
+  text-align: center;
+}
+

@@ -13,7 +13,7 @@ const WALLET_ICONS: Record<string, string> = {
   solana: '◎',
   near: 'Ⓝ',
   'near-connect': 'Ⓝ',
-  passkey: '🔐',
+  passkey: '🔒',
   ethereum: '⟠',
 };
 

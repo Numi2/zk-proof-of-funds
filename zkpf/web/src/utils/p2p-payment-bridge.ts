@@ -116,10 +116,10 @@ export function createCustomPaymentLink(
  * Format a payment link for sharing
  */
 export function formatPaymentLinkMessage(link: P2PPaymentLink): string {
-  return `🔒 ZEC Payment Link
+  return `ZEC Payment Link
 
-💰 Amount: ${link.amountZec} ZEC
-📝 ${link.description}
+Amount: ${link.amountZec} ZEC
+${link.description}
 
 🔗 Click to receive:
 ${link.uri}

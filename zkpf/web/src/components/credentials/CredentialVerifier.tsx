@@ -14,7 +14,7 @@ import { getCurrencyMeta } from '../../utils/policy';
 interface VerificationResult {
   valid: boolean;
   chain: string;
-  chainIcon: string;
+  chainIcon: string | React.ReactNode;
   provenValue: number;
   currency: string;
   currencyCode: number;
@@ -107,10 +107,10 @@ export const CredentialVerifier: React.FC<CredentialVerifierProps> = ({ prefillJ
 
       // Determine chain from rail_id
       let chain = 'unknown';
-      let chainIcon = '🔗';
+      let chainIcon: string = '🔗';
       if (bundle.rail_id?.includes('ORCHARD') || bundle.rail_id?.includes('ZCASH')) {
         chain = 'zcash';
-        chainIcon = '🛡️';
+        chainIcon = '⚡';
       } else if (bundle.rail_id?.includes('MINA')) {
         chain = 'mina';
         chainIcon = '∞';
@@ -416,7 +416,7 @@ export const CredentialVerifier: React.FC<CredentialVerifierProps> = ({ prefillJ
 
       {/* Trust Info */}
       <div className="verifier-trust-info">
-        <h4>🔐 Verification Process</h4>
+        <h4>Verification Process</h4>
         <ul>
           <li>Zero-knowledge proof is cryptographically verified by the backend</li>
           <li>Policy compliance is checked against the registered policy</li>

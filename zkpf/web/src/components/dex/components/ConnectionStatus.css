@@ -1,0 +1,52 @@
+.dex-connection-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.dex-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: dex-pulse 2s infinite;
+}
+
+.dex-connection-text {
+  color: var(--dex-text-secondary);
+}
+
+.dex-reconnect-button {
+  background: none;
+  border: none;
+  color: var(--dex-text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.dex-reconnect-button:hover {
+  transform: rotate(180deg);
+  color: var(--dex-text-primary);
+}
+
+@keyframes dex-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+

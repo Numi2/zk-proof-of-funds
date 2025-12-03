@@ -1,0 +1,16 @@
+/**
+ * Assets Page Container Styles
+ */
+
+.assets-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0;
+}
+
+/* Ensure Orderly module takes up remaining space */
+.assets-page-container > :last-child {
+  flex: 1;
+}
+

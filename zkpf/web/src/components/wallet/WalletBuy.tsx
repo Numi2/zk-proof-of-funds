@@ -209,7 +209,7 @@ export function WalletBuy() {
         {/* Amount Input Section */}
         <div className="ramp-section">
           <label className="ramp-label">
-            <span className="label-icon">💰</span>
+            <span className="label-icon">$</span>
             You Pay
           </label>
           <div className="ramp-input-container amount-input-large">

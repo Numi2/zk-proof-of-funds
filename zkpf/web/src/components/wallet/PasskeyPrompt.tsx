@@ -1,18 +1,23 @@
 /**
  * Passkey Prompt Component
  * 
- * MANDATORY authentication gate for /wallet routes:
+ * Authentication gate for /wallet routes:
+ * - Only shows if a wallet already exists AND user has created a passkey
  * - If passkey exists: requires verification before accessing wallet
- * - If no passkey: requires creating one before accessing wallet
+ * - If no passkey exists: user can access wallet without passkey (not required)
  * 
- * This provides security by ensuring only authenticated users can access wallet features.
+ * If no wallet exists, users can proceed directly to wallet creation without passkey.
+ * Passkey is optional - users only need to authenticate if they've chosen to set one up.
  * Re-authentication is required every time the user leaves and re-enters /wallet routes.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useWebZjsContext } from '../../context/WebzjsContext';
 import { PASSKEY_CREDENTIALS_KEY } from '../../types/auth';
+import { LockIcon } from '../icons/LockIcon';
+import { migratePlainToEncrypted } from '../../utils/secureUfvkStorage';
 import './PasskeyPrompt.css';
 
 interface StoredPasskey {
@@ -33,6 +38,7 @@ function getStoredPasskeys(): StoredPasskey[] {
 
 export function PasskeyPrompt() {
   const { connectPasskey, registerPasskey, status, account } = useAuth();
+  const { state: walletState } = useWebZjsContext();
   const location = useLocation();
   const navigate = useNavigate();
   const [hasPasskeys, setHasPasskeys] = useState(false);
@@ -47,6 +53,19 @@ export function PasskeyPrompt() {
 
   // Check if we're on any /wallet route
   const isWalletRoute = location.pathname.startsWith('/wallet');
+
+  // Check if a wallet exists (only check activeAccount - UFVK in storage alone doesn't mean wallet is created)
+  const [walletExists, setWalletExists] = useState(false);
+  
+  useEffect(() => {
+    const checkWallet = async () => {
+      // Only show passkey prompt if there's an active account (wallet is actually created)
+      // Don't check hasUfvk() alone because UFVK might exist in storage without a wallet being created
+      const exists = walletState.activeAccount != null;
+      setWalletExists(exists);
+    };
+    checkWallet();
+  }, [walletState.activeAccount]);
 
   // Reset verification when user leaves /wallet routes and comes back
   useEffect(() => {
@@ -89,7 +108,9 @@ export function PasskeyPrompt() {
     setError(null);
     try {
       await registerPasskey(username.trim());
-      // Successfully registered - mark this wallet session as verified
+      // Successfully registered - migrate plain text UFVK to encrypted if needed
+      await migratePlainToEncrypted();
+      // Mark this wallet session as verified
       setWalletSessionVerified(true);
     } catch (err) {
       console.error('Failed to create passkey:', err);
@@ -104,7 +125,9 @@ export function PasskeyPrompt() {
     setError(null);
     try {
       await connectPasskey();
-      // Successfully verified - mark this wallet session as verified
+      // Successfully verified - migrate plain text UFVK to encrypted if needed
+      await migratePlainToEncrypted();
+      // Mark this wallet session as verified
       setWalletSessionVerified(true);
     } catch (err) {
       console.error('Failed to verify with passkey:', err);
@@ -114,8 +137,12 @@ export function PasskeyPrompt() {
     }
   }, [connectPasskey]);
 
-  // Don't render if not on wallet route or already authenticated
-  if (!isWalletRoute || isAuthenticated) {
+  // Don't render if:
+  // - Not on wallet route
+  // - Already authenticated
+  // - No wallet exists (user can proceed to wallet creation without passkey)
+  // - No passkeys exist (user hasn't chosen to add one, so don't require it)
+  if (!isWalletRoute || isAuthenticated || !walletExists || !hasPasskeys) {
     return null;
   }
 
@@ -123,7 +150,9 @@ export function PasskeyPrompt() {
     <div className="passkey-prompt-backdrop passkey-prompt-mandatory">
       <div className="passkey-prompt" onClick={(e) => e.stopPropagation()}>
         <div className="passkey-prompt-content">
-          <div className="passkey-prompt-icon">🔐</div>
+          <div className="passkey-prompt-icon">
+            <LockIcon size={48} />
+          </div>
           
           <div className="passkey-prompt-security-badge">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -155,7 +184,9 @@ export function PasskeyPrompt() {
                 onClick={handleVerifyPasskey}
                 disabled={isProcessing || status === 'connecting'}
               >
-                <span className="wallet-option-icon">🔐</span>
+                <span className="wallet-option-icon">
+                  <LockIcon size={24} />
+                </span>
                 <div className="wallet-option-info">
                   <span className="wallet-option-name">Sign in with Passkey</span>
                   <span className="wallet-option-status">Face ID, Touch ID, or security key</span>
@@ -225,7 +256,9 @@ export function PasskeyPrompt() {
                   onClick={() => setShowUsernameInput(true)}
                   disabled={isProcessing || status === 'connecting'}
                 >
-                  <span className="wallet-option-icon">🔐</span>
+                  <span className="wallet-option-icon">
+                    <LockIcon size={24} />
+                  </span>
                   <div className="wallet-option-info">
                     <span className="wallet-option-name">Create a Passkey</span>
                     <span className="wallet-option-status">Set up biometric authentication</span>

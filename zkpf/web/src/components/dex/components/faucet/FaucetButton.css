@@ -1,0 +1,71 @@
+/**
+ * Compact Faucet Button Styles
+ * Matches DEX styling with CSS variables
+ */
+
+.faucet-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--background-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.faucet-button:hover:not(:disabled) {
+  background: var(--background-hover);
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 192, 139, 0.15);
+}
+
+.faucet-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.faucet-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.faucet-button-icon,
+.faucet-button-spinner {
+  font-size: 1rem;
+}
+
+.faucet-button-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.faucet-button-text {
+  font-size: 0.875rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .faucet-button-text {
+    display: none;
+  }
+
+  .faucet-button {
+    padding: 8px 12px;
+  }
+}
+

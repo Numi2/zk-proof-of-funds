@@ -30,11 +30,11 @@ function getStatusDisplay(status: PersonhoodFlowStatus): {
     case 'not_verified':
       return { label: 'Not verified', icon: '○', className: 'status-unverified' };
     case 'awaiting_passport':
-      return { label: 'Waiting for passport scan...', icon: '📱', className: 'status-pending' };
+      return { label: 'Waiting for passport scan...', icon: 'Phone', className: 'status-pending' };
     case 'signing':
-      return { label: 'Confirming your wallet...', icon: '🔐', className: 'status-pending' };
+      return { label: 'Confirming your wallet...', icon: '🔒', className: 'status-pending' };
     case 'submitting':
-      return { label: 'Saving verification...', icon: '💾', className: 'status-pending' };
+      return { label: 'Saving verification...', icon: 'Save', className: 'status-pending' };
     case 'verified':
       return { label: 'Verified as unique person', icon: '✓', className: 'status-verified' };
     case 'error':

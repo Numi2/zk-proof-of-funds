@@ -291,6 +291,101 @@
   font-weight: 600;
 }
 
+/* Light theme overrides */
+[data-theme='light'] .rail-info-card,
+[data-theme='light'] .issue-credential-section,
+[data-theme='light'] .credentials-section,
+[data-theme='light'] .supported-chains-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme='light'] .rail-info-card h3,
+[data-theme='light'] .issue-credential-section h3,
+[data-theme='light'] .credentials-section h3,
+[data-theme='light'] .supported-chains-section h3 {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .info-label,
+[data-theme='light'] .form-group label,
+[data-theme='light'] .detail-label,
+[data-theme='light'] .chains-group h4,
+[data-theme='light'] .loading,
+[data-theme='light'] .empty-state {
+  color: var(--text-muted);
+}
+
+[data-theme='light'] .info-value,
+[data-theme='light'] .credential-id,
+[data-theme='light'] .detail-value {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .account-input,
+[data-theme='light'] .tier-select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .account-input:focus,
+[data-theme='light'] .tier-select:focus {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme='light'] .issue-button {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .issue-button:hover:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .credential-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .broadcast-button {
+  background: rgba(107, 114, 128, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .broadcast-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+[data-theme='light'] .chain-badge {
+  background: rgba(107, 114, 128, 0.08);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .revoke-button {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+[data-theme='light'] .revoke-button:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+[data-theme='light'] .error-message {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: #dc2626;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .axelar-credit-rail {

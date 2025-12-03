@@ -33,6 +33,7 @@ import {
 } from '../wasm/prover';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { bigIntToLittleEndianBytes, bytesToBigIntBE, bytesToHex, normalizeField, numberArrayFromBytes } from '../utils/field';
+import { getUfvkSecurely } from '../utils/secureUfvkStorage';
 
 // Helper to convert hex string to number array for Orchard public inputs
 function hexToBytes(hex: string): number[] {
@@ -687,13 +688,13 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
       return;
     }
 
-    // Try to get UFVK from localStorage
-    const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
+    // Try to get UFVK from secure storage
     let ufvk = '';
     try {
-      ufvk = localStorage.getItem(UFVK_STORAGE_KEY) || '';
-    } catch {
-      // localStorage might be unavailable
+      const storedUfvk = await getUfvkSecurely();
+      ufvk = storedUfvk || '';
+    } catch (err) {
+      console.error('Failed to load UFVK:', err);
     }
 
     if (!ufvk.trim()) {
@@ -1285,7 +1286,7 @@ export function ProofBuilder({ client, connectionState, onBundleReady }: Props) 
           {/* Auth wallet connection - for signing attestations */}
           <div className="builder-auth-section">
             <div className="auth-section-header">
-              <h4>🔐 Optional: Connect a signing wallet</h4>
+              <h4>Optional: Connect a signing wallet</h4>
               <p className="muted small">
                 Connect a wallet (Solana, NEAR, or Passkey) to cryptographically sign your attestation. 
                 This links your proof to your identity. Not required for basic proofs.

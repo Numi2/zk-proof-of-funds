@@ -1,144 +1,190 @@
+/**
+ * BridgePage - Main entry point for the Omni Bridge
+ * 
+ * Provides tabs for Bridge, History, Proofs, and Settings
+ */
+
 import React, { useState } from 'react';
+import { BridgeProvider } from '../../contexts/BridgeContext';
 import { OmniBridge } from './OmniBridge';
 import { BridgeHistory } from './BridgeHistory';
+import { BridgedAssetProof } from './BridgedAssetProof';
+import './BridgePage.css';
 
-type Tab = 'bridge' | 'history';
+type Tab = 'bridge' | 'history' | 'proofs';
 
 export const BridgePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('bridge');
 
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '2rem 1rem' }}>
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ color: '#fff', marginBottom: '0.5rem', fontSize: '2rem' }}>
-          🌉 Omni Bridge
-        </h1>
-        <p style={{ color: '#8b949e', margin: 0 }}>
-          Powered by the Omni Bridge SDK - The next generation of Rainbow Bridge
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          marginBottom: '1.5rem',
-          background: 'rgba(22, 27, 34, 0.6)',
-          padding: '0.25rem',
-          borderRadius: '10px',
-        }}
-      >
-        <button
-          onClick={() => setActiveTab('bridge')}
-          style={{
-            flex: 1,
-            padding: '0.75rem 1rem',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            transition: 'all 0.2s ease',
-            background: activeTab === 'bridge' ? 'rgba(88, 166, 255, 0.2)' : 'transparent',
-            color: activeTab === 'bridge' ? '#58a6ff' : '#8b949e',
-          }}
-        >
-          Bridge
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          style={{
-            flex: 1,
-            padding: '0.75rem 1rem',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            transition: 'all 0.2s ease',
-            background: activeTab === 'history' ? 'rgba(88, 166, 255, 0.2)' : 'transparent',
-            color: activeTab === 'history' ? '#58a6ff' : '#8b949e',
-          }}
-        >
-          History
-        </button>
-      </div>
-
-      {/* Content */}
-      {activeTab === 'bridge' ? <OmniBridge /> : <BridgeHistory />}
-
-      {/* Supported Chains */}
-      <div
-        style={{
-          marginTop: '2rem',
-          padding: '1rem',
-          background: 'rgba(22, 27, 34, 0.4)',
-          borderRadius: '12px',
-          textAlign: 'center',
-        }}
-      >
-        <p style={{ color: '#8b949e', fontSize: '0.875rem', margin: '0 0 0.75rem' }}>
-          Supported Networks
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          {[
-            { name: 'NEAR', color: '#00ec97' },
-            { name: 'Ethereum', color: '#627eea' },
-            { name: 'Arbitrum', color: '#28a0f0' },
-            { name: 'Base', color: '#0052ff' },
-            { name: 'Solana', color: '#9945ff' },
-          ].map((chain) => (
-            <div
-              key={chain.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.5rem 0.75rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '20px',
-              }}
+    <BridgeProvider>
+      <div className="bridge-page">
+        {/* Header */}
+        <div className="bridge-page-header">
+          <h1 className="bridge-page-title">
+            <BridgeLogoIcon />
+            Omni Bridge
+          </h1>
+          <p className="bridge-page-subtitle">
+            Powered by the{' '}
+            <a 
+              href="https://github.com/Near-One/bridge-sdk-js" 
+              target="_blank" 
+              rel="noopener noreferrer"
             >
-              <div
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: chain.color,
-                }}
-              />
-              <span style={{ color: '#fff', fontSize: '0.875rem' }}>{chain.name}</span>
-            </div>
-          ))}
+              Omni Bridge SDK
+            </a>
+            {' '}— The next generation of Rainbow Bridge
+          </p>
         </div>
-      </div>
 
-      {/* Footer Info */}
-      <div
-        style={{
-          marginTop: '1.5rem',
-          padding: '1rem',
-          background: 'rgba(88, 166, 255, 0.1)',
-          borderRadius: '12px',
-          border: '1px solid rgba(88, 166, 255, 0.2)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4" />
-            <path d="M12 8h.01" />
-          </svg>
-          <div style={{ fontSize: '0.875rem', color: '#8b949e' }}>
-            <strong style={{ color: '#fff' }}>How it works:</strong> The Omni Bridge uses light client proofs
-            to securely transfer assets between chains without trusted intermediaries. Transfers are
-            verified on-chain using cryptographic proofs from the source network.
+        {/* Tabs */}
+        <div className="bridge-tabs">
+          <button
+            className={`bridge-tab ${activeTab === 'bridge' ? 'active' : ''}`}
+            onClick={() => setActiveTab('bridge')}
+          >
+            <BridgeIcon />
+            Bridge
+          </button>
+          <button
+            className={`bridge-tab ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            <HistoryIcon />
+            History
+          </button>
+          <button
+            className={`bridge-tab ${activeTab === 'proofs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('proofs')}
+          >
+            <ShieldIcon />
+            Proofs
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="bridge-content">
+          {activeTab === 'bridge' && <OmniBridge />}
+          {activeTab === 'history' && <BridgeHistory />}
+          {activeTab === 'proofs' && <BridgedAssetProof />}
+        </div>
+
+        {/* Supported Chains */}
+        <div className="supported-chains">
+          <span className="chains-label">Supported Networks</span>
+          <div className="chains-list">
+            <ChainBadge name="NEAR" color="#00ec97" icon="N" />
+            <ChainBadge name="Ethereum" color="#627eea" icon="Ξ" />
+            <ChainBadge name="Arbitrum" color="#28a0f0" icon="A" />
+            <ChainBadge name="Base" color="#0052ff" icon="B" />
+            <ChainBadge name="Solana" color="#9945ff" icon="S" />
+          </div>
+        </div>
+
+        {/* Features */}
+        <div className="bridge-features">
+          <div className="feature-card">
+            <FastIcon />
+            <div className="feature-content">
+              <h4>Fast Transfers</h4>
+              <p>2-15 minute cross-chain transfers with fast mode</p>
+            </div>
+          </div>
+          <div className="feature-card">
+            <SecureIcon />
+            <div className="feature-content">
+              <h4>Secure</h4>
+              <p>MPC signatures and cryptographic proofs</p>
+            </div>
+          </div>
+          <div className="feature-card">
+            <ProofIcon />
+            <div className="feature-content">
+              <h4>Verifiable</h4>
+              <p>Generate proofs for zkpf attestations</p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </BridgeProvider>
   );
 };
 
-export default BridgePage;
+// Chain Badge Component
+function ChainBadge({ name, color, icon }: { name: string; color: string; icon: string }) {
+  return (
+    <div className="chain-badge" style={{ '--chain-color': color } as React.CSSProperties}>
+      <span className="chain-badge-icon" style={{ background: color }}>{icon}</span>
+      <span className="chain-badge-name">{name}</span>
+    </div>
+  );
+}
 
+// Icons
+function BridgeLogoIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M8 3L4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="M16 21l4-4-4-4" />
+      <path d="M20 17H4" />
+    </svg>
+  );
+}
+
+function BridgeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M8 3L4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="M16 21l4-4-4-4" />
+      <path d="M20 17H4" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function FastIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
+}
+
+function SecureIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0110 0v4" />
+    </svg>
+  );
+}
+
+function ProofIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+      <path d="M22 4L12 14.01l-3-3" />
+    </svg>
+  );
+}
+
+export default BridgePage;

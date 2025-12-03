@@ -1,0 +1,206 @@
+.supported-markets-list {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--dex-bg-primary, #ffffff);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.supported-markets-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.supported-markets-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--dex-text-primary, #1a1a1a);
+}
+
+.supported-markets-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--dex-text-secondary, #666666);
+}
+
+.supported-markets-table-container {
+  overflow-x: auto;
+  margin-bottom: 24px;
+}
+
+.supported-markets-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.supported-markets-table thead {
+  background: var(--dex-bg-secondary, #f5f5f5);
+  border-bottom: 2px solid var(--dex-border-color, #e0e0e0);
+}
+
+.supported-markets-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--dex-text-primary, #1a1a1a);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.supported-markets-table tbody tr {
+  border-bottom: 1px solid var(--dex-border-color, #e0e0e0);
+  transition: background-color 0.2s;
+}
+
+.supported-markets-table tbody tr:hover {
+  background: var(--dex-bg-hover, #f9f9f9);
+}
+
+.supported-markets-table tbody tr.disabled {
+  opacity: 0.6;
+  background: var(--dex-bg-disabled, #fafafa);
+}
+
+.supported-markets-table td {
+  padding: 12px 16px;
+  color: var(--dex-text-primary, #1a1a1a);
+}
+
+.token-ticker {
+  font-weight: 600;
+  color: var(--dex-text-primary, #1a1a1a);
+}
+
+.token-symbol {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  background: var(--dex-bg-code, #f0f0f0);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--dex-text-code, #d63384);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.enabled {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-badge.disabled {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.supported-markets-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dex-border-color, #e0e0e0);
+}
+
+.supported-markets-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dex-text-secondary, #666666);
+  line-height: 1.6;
+}
+
+.supported-markets-note strong {
+  color: var(--dex-text-primary, #1a1a1a);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .supported-markets-list {
+    background: var(--dex-bg-primary-dark, #1a1a1a);
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+
+  .supported-markets-header h3 {
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+
+  .supported-markets-subtitle {
+    color: var(--dex-text-secondary-dark, #aaaaaa);
+  }
+
+  .supported-markets-table thead {
+    background: var(--dex-bg-secondary-dark, #2a2a2a);
+    border-bottom-color: var(--dex-border-color-dark, #404040);
+  }
+
+  .supported-markets-table th {
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+
+  .supported-markets-table tbody tr {
+    border-bottom-color: var(--dex-border-color-dark, #404040);
+  }
+
+  .supported-markets-table tbody tr:hover {
+    background: var(--dex-bg-hover-dark, #2a2a2a);
+  }
+
+  .supported-markets-table tbody tr.disabled {
+    background: var(--dex-bg-disabled-dark, #252525);
+  }
+
+  .supported-markets-table td {
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+
+  .token-ticker {
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+
+  .token-symbol {
+    background: var(--dex-bg-code-dark, #2a2a2a);
+    color: var(--dex-text-code-dark, #ff6b9d);
+  }
+
+  .supported-markets-footer {
+    border-top-color: var(--dex-border-color-dark, #404040);
+  }
+
+  .supported-markets-note {
+    color: var(--dex-text-secondary-dark, #aaaaaa);
+  }
+
+  .supported-markets-note strong {
+    color: var(--dex-text-primary-dark, #ffffff);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .supported-markets-list {
+    padding: 16px;
+  }
+
+  .supported-markets-table {
+    font-size: 12px;
+  }
+
+  .supported-markets-table th,
+  .supported-markets-table td {
+    padding: 8px 12px;
+  }
+
+  .supported-markets-header h3 {
+    font-size: 20px;
+  }
+}
+

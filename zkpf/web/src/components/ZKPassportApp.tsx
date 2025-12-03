@@ -1,8 +1,9 @@
 import { Suspense, lazy, useMemo } from 'react';
-import { NavLink, Route, Routes, Navigate } from 'react-router-dom';
+import { NavLink, Link, Route, Routes, Navigate } from 'react-router-dom';
 import { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import { detectDefaultBase } from '../api/zkpf';
 import { MobileBottomNav } from './MobileBottomNav';
+import { ThemeToggle } from './ThemeToggle';
 import './mobile.css';
 
 const ZKPassportPage = lazy(() =>
@@ -28,6 +29,16 @@ export function ZKPassportApp() {
 
   return (
     <div className="app-shell zkpassport-app">
+      <div className="top-bar">
+        <div className="top-nav-links">
+          <Link to="/wallet" className="top-nav-link">Wallet</Link>
+          <Link to="/p2p" className="top-nav-link">P2P</Link>
+          <Link to="/defi" className="top-nav-link">CrossChain</Link>
+          <Link to="/dex" className="top-nav-link">DEX</Link>
+          <Link to="/zkpassport" className="top-nav-link">ZKPassport</Link>
+        </div>
+        <ThemeToggle />
+      </div>
       <header className="hero">
         <NavLink to="/" className="zkpassport-back-link">
           ← Back to ZKPF
@@ -35,14 +46,15 @@ export function ZKPassportApp() {
         <div className="header-top">
           <div className="brand">
             <div className="logo">
-              <span style={{ fontSize: '3rem' }}>🌐</span>
             </div>
             <div>
               <p className="eyebrow">ZKPassport Integration</p>
               <h1>Zero-Knowledge Identity Verification</h1>
             </div>
           </div>
-          <div className="hero-subtitle"></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="hero-subtitle"></div>
+          </div>
         </div>
         <p>
           Verify identity and eligibility using zero-knowledge proofs, without exposing sensitive information.

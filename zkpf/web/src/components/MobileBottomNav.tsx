@@ -16,24 +16,24 @@ interface NavItem {
 }
 
 const walletNavItems: NavItem[] = [
-  { path: '/wallet', label: 'Home', icon: '🏠', exact: true },
-  { path: '/zkpassport', label: 'Passport', icon: '🛂' },
-  { path: '/wallet/receive', label: 'Receive', icon: '📥' },
-  { path: '/p2p', label: 'Trade', icon: '🔄' },
+  { path: '/wallet', label: 'Home', icon: 'Home', exact: true },
+  { path: '/zkpassport', label: 'Passport', icon: 'ID' },
+  { path: '/wallet/receive', label: 'Receive', icon: '↓' },
+  { path: '/p2p', label: 'Trade', icon: '↔' },
 ];
 
 const p2pNavItems: NavItem[] = [
-  { path: '/p2p', label: 'Browse', icon: '🔍', exact: true },
-  { path: '/p2p/create', label: 'Create', icon: '➕' },
-  { path: '/wallet', label: 'Wallet', icon: '💰', exact: true },
-  { path: '/', label: 'Links', icon: '🔗' },
+  { path: '/p2p', label: 'Browse', icon: 'Search', exact: true },
+  { path: '/p2p/create', label: 'Create', icon: '+' },
+  { path: '/wallet', label: 'Wallet', icon: '$', exact: true },
+  { path: '/', label: 'Links', icon: 'Link' },
 ];
 
 const zkpassportNavItems: NavItem[] = [
-  { path: '/zkpassport', label: 'Home', icon: '🌐', exact: true },
+  { path: '/zkpassport', label: 'Home', icon: 'Home', exact: true },
   { path: '/zkpassport/verify', label: 'Verify', icon: '✓', exact: true },
-  { path: '/zkpassport/policies', label: 'Policies', icon: '📋' },
-  { path: '/bound-identity', label: 'Bond', icon: '🔗' },
+  { path: '/zkpassport/policies', label: 'Policies', icon: 'List' },
+  { path: '/bound-identity', label: 'Bond', icon: 'Link' },
 ];
 
 export function MobileBottomNav() {

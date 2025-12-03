@@ -535,7 +535,7 @@ export function BoundIdentityVerifier({
                   
                   <div className="info-card">
                     <div className="info-card-header">
-                      <span className="info-card-icon">💰</span>
+                      <span className="info-card-icon">$</span>
                       <strong>Funds</strong>
                     </div>
                     <div className="info-card-content">

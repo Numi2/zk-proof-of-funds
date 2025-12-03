@@ -1,0 +1,96 @@
+.dex-risk-reward-panel {
+  padding: 1rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+}
+
+.dex-risk-reward-panel h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-rr-inputs {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dex-rr-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dex-rr-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--dex-text-secondary);
+}
+
+.dex-rr-input {
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 6px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.dex-rr-input:focus {
+  outline: none;
+  border-color: var(--dex-border-focus);
+}
+
+.dex-rr-visualization {
+  margin-bottom: 1rem;
+}
+
+.dex-rr-bar {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--dex-bg-secondary);
+}
+
+.dex-rr-risk {
+  background: var(--dex-loss);
+  transition: width 0.3s ease;
+}
+
+.dex-rr-reward {
+  background: var(--dex-profit);
+  transition: width 0.3s ease;
+}
+
+.dex-rr-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dex-rr-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 6px;
+}
+
+.dex-rr-label {
+  font-size: 0.75rem;
+  color: var(--dex-text-secondary);
+}
+
+.dex-rr-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+

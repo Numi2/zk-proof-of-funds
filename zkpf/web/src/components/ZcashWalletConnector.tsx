@@ -22,6 +22,7 @@ import {
 import { policyShortSummary } from '../utils/policy';
 import { useWebZjsContext } from '../context/WebzjsContext';
 import { useWebzjsActions } from '../hooks/useWebzjsActions';
+import { storeUfvkSecurely, getUfvkSecurely, clearUfvk } from '../utils/secureUfvkStorage';
 
 // Noble secp256k1 relies on user-supplied sync hash functions in some code paths
 // (HMAC-DRBG / prehash). In the browser we prefer BLAKE3 over SHA-256, so wire
@@ -153,33 +154,30 @@ export function ZcashWalletConnector({ onAttestationReady, onShowToast, policy, 
   const [snapshotHeightInput, setSnapshotHeightInput] = useState<string>('');
   const [balanceZatsInput, setBalanceZatsInput] = useState<string>('');
 
-  // Persist UFVK to localStorage so it survives page reloads
-  const UFVK_STORAGE_KEY = 'zkpf-zcash-ufvk';
-  
-  const setUfvk = useCallback((value: string) => {
+  // Persist UFVK securely using encrypted storage
+  const setUfvk = useCallback(async (value: string) => {
     setUfvkState(value);
     try {
       if (value.trim()) {
-        localStorage.setItem(UFVK_STORAGE_KEY, value);
+        await storeUfvkSecurely(value);
       } else {
-        localStorage.removeItem(UFVK_STORAGE_KEY);
+        await clearUfvk();
       }
-    } catch {
-      // localStorage might be unavailable in some contexts
+    } catch (err) {
+      console.warn('Could not store UFVK securely:', err);
     }
   }, []);
 
-  // Restore UFVK from localStorage on mount if we have an active wallet
+  // Restore UFVK from secure storage on mount if we have an active wallet
   useEffect(() => {
     if (walletState.activeAccount != null && !ufvk.trim()) {
-      try {
-        const storedUfvk = localStorage.getItem(UFVK_STORAGE_KEY);
+      getUfvkSecurely().then(storedUfvk => {
         if (storedUfvk) {
           setUfvkState(storedUfvk);
         }
-      } catch {
-        // localStorage might be unavailable
-      }
+      }).catch(err => {
+        console.error('Failed to load UFVK:', err);
+      });
     }
   }, [walletState.activeAccount, ufvk]);
 

@@ -79,7 +79,7 @@ function TradeChat({
   return (
     <div className="trade-chat">
       <div className="chat-header">
-        <h4>💬 Trade Chat</h4>
+        <h4>Trade Chat</h4>
         <span className={`chat-status ${isConnected ? 'connected' : 'waiting'}`}>
           {isConnected ? '● Connected' : '○ Waiting for partner'}
         </span>
@@ -94,7 +94,7 @@ function TradeChat({
             {copyStatus === 'copying' ? 'Copying...' :
              copyStatus === 'copied' ? '✓ Copied!' :
              copyStatus === 'error' ? '✕ Failed' :
-             '📋 Copy invite link'}
+             'Copy invite link'}
           </button>
         )}
       </div>
@@ -116,7 +116,7 @@ function TradeChat({
           <div className="no-messages">
             {!isConnected ? (
               <>
-                <span className="no-msg-icon">🔗</span>
+                <span className="no-msg-icon">Link</span>
                 <p><strong>Share the invite link</strong> with your trading partner to connect!</p>
                 <p className="chat-hint-small">P2P chat requires sharing the link above to establish connection.</p>
               </>
@@ -240,7 +240,7 @@ function OfferChat({
     <div className={`offer-chat-card ${isExpanded ? 'expanded' : ''}`}>
       <div className="offer-chat-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="chat-title">
-          <span className="chat-icon">💬</span>
+          <span className="chat-icon">Chat</span>
           <h4>Discussion</h4>
           <span className={`connection-status ${isConnected ? 'connected' : 'connecting'}`}>
             {isConnected ? '● Connected' : '○ Connecting...'}
@@ -268,7 +268,7 @@ function OfferChat({
               {copyStatus === 'copying' ? 'Copying...' :
                copyStatus === 'copied' ? '✓ Copied!' :
                copyStatus === 'error' ? '✕ Failed' :
-               '📋 Copy chat link'}
+               'Copy chat link'}
             </button>
           </div>
           
@@ -406,7 +406,7 @@ function TradeFlow({
         </div>
         {!['completed', 'released', 'refunded', 'cancelled'].includes(trade.status) && (
           <div className="time-remaining">
-            <span className="time-icon">⏱️</span>
+            <span className="time-icon">⏱</span>
             {timeRemaining}
           </div>
         )}
@@ -415,7 +415,7 @@ function TradeFlow({
       {/* Trade Progress Steps */}
       <div className="trade-progress">
         <div className={`progress-step ${trade.status !== 'pending' ? 'completed' : 'active'}`}>
-          <span className="step-icon">🤝</span>
+          <span className="step-icon">Start</span>
           <span className="step-label">Trade Started</span>
         </div>
         <div className="progress-line"></div>
@@ -424,7 +424,7 @@ function TradeFlow({
             ? 'completed' 
             : trade.status === 'pending' ? 'active' : ''
         }`}>
-          <span className="step-icon">🔒</span>
+          <span className="step-icon">Lock</span>
           <span className="step-label">ZEC Locked</span>
         </div>
         <div className="progress-line"></div>
@@ -433,14 +433,14 @@ function TradeFlow({
             ? 'completed'
             : trade.status === 'escrow_locked' ? 'active' : ''
         }`}>
-          <span className="step-icon">💸</span>
+          <span className="step-icon">Pay</span>
           <span className="step-label">Fiat Sent</span>
         </div>
         <div className="progress-line"></div>
         <div className={`progress-step ${
           ['completed', 'released'].includes(trade.status) ? 'completed' : ''
         }`}>
-          <span className="step-icon">✅</span>
+          <span className="step-icon">✓</span>
           <span className="step-label">Complete</span>
         </div>
       </div>
@@ -450,7 +450,7 @@ function TradeFlow({
         {/* Pending - Seller needs to lock ZEC */}
         {trade.status === 'pending' && isSeller && (
           <div className="action-card seller">
-            <h3>🔐 Lock ZEC</h3>
+            <h3>Lock ZEC</h3>
             <p>
               Lock <strong>{formatZecFromZec(trade.zecAmount)} ZEC</strong> securely 
               to proceed with the trade. The funds will be released when you confirm 
@@ -485,7 +485,7 @@ function TradeFlow({
         {/* ZEC Locked - Buyer needs to send payment */}
         {trade.status === 'escrow_locked' && isBuyer && (
           <div className="action-card buyer">
-            <h3>💳 Send Payment</h3>
+            <h3>Send Payment</h3>
             <div className="payment-details">
               <div className="detail-row">
                 <span className="detail-label">Amount to send:</span>
@@ -515,7 +515,7 @@ function TradeFlow({
             </div>
             
             <div className="payment-instructions">
-              <h4>📋 Payment Instructions</h4>
+              <h4>Payment Instructions</h4>
               <p>{trade.paymentInstructions || 'Contact the seller via chat for payment details.'}</p>
             </div>
             
@@ -579,7 +579,7 @@ function TradeFlow({
         {/* Fiat Sent - Seller needs to confirm receipt */}
         {trade.status === 'fiat_sent' && isSeller && (
           <div className="action-card seller">
-            <h3>🔍 Verify Payment Received</h3>
+            <h3>Verify Payment Received</h3>
             <p>
               The buyer claims to have sent{' '}
               <strong>
@@ -645,7 +645,7 @@ function TradeFlow({
         {/* Completed */}
         {(trade.status === 'completed' || trade.status === 'released') && (
           <div className="action-card success">
-            <span className="success-icon">🎉</span>
+            <span className="success-icon">✓</span>
             <h3>Trade Completed!</h3>
             <p>
               {isBuyer 
@@ -665,7 +665,7 @@ function TradeFlow({
         {/* Disputed */}
         {trade.status === 'disputed' && (
           <div className="action-card dispute">
-            <span className="dispute-icon">⚖️</span>
+            <span className="dispute-icon">Dispute</span>
             <h3>Trade Under Dispute</h3>
             <p>
               This trade is being reviewed by our dispute resolution team.
@@ -683,7 +683,7 @@ function TradeFlow({
         {/* Cancelled */}
         {trade.status === 'cancelled' && (
           <div className="action-card cancelled">
-            <span className="cancelled-icon">❌</span>
+            <span className="cancelled-icon">✗</span>
             <h3>Trade Cancelled</h3>
             <p>This trade has been cancelled. No funds were exchanged.</p>
           </div>
@@ -692,7 +692,7 @@ function TradeFlow({
         {/* Refunded */}
         {trade.status === 'refunded' && (
           <div className="action-card refunded">
-            <span className="refunded-icon">↩️</span>
+            <span className="refunded-icon">↩</span>
             <h3>Trade Refunded</h3>
             <p>
               The locked ZEC has been returned to the seller following 
@@ -706,7 +706,7 @@ function TradeFlow({
       {showDispute && (
         <div className="dispute-modal-overlay" onClick={() => setShowDispute(false)}>
           <div className="dispute-modal" onClick={e => e.stopPropagation()}>
-            <h3>⚖️ Open Dispute</h3>
+            <h3>Open Dispute</h3>
             <p>
               Please describe the issue you're experiencing. Our team will 
               review and resolve the dispute.
@@ -1095,7 +1095,7 @@ export function P2POfferDetail() {
   if (!offer) {
     return (
       <div className="p2p-offer-detail not-found">
-        <span className="not-found-icon">🔍</span>
+        <span className="not-found-icon">Search</span>
         <h2>Offer Not Found</h2>
         <p>This offer may have been cancelled or completed.</p>
         <button type="button" onClick={() => navigate('/p2p')}>
@@ -1134,7 +1134,7 @@ export function P2POfferDetail() {
       {/* Shared offer indicator */}
       {isSharedOffer && (
         <div className="shared-offer-banner">
-          <span className="shared-icon">🔗</span>
+          <span className="shared-icon">Link</span>
           <span>This offer was shared with you. Connect your wallet to trade.</span>
         </div>
       )}
@@ -1142,7 +1142,7 @@ export function P2POfferDetail() {
       {/* Error Display */}
       {error && (
         <div className="p2p-error">
-          <span className="error-icon">⚠️</span>
+          <span className="error-icon">⚠</span>
           <span>{error}</span>
           <button type="button" className="dismiss-error" onClick={clearError}>×</button>
         </div>
@@ -1178,159 +1178,131 @@ export function P2POfferDetail() {
         <div className="offer-detail-content">
           {/* Offer Card */}
           <div className="offer-detail-card">
-            <div className="offer-detail-header" style={{ display: 'none' }}>
-              <div className={`offer-type-badge large ${isSelling ? 'sell' : 'buy'}`}>
-                {isSelling ? '🛒 Selling ZEC' : '💸 Buying ZEC'}
+            {/* Header Section */}
+            <div className="offer-card-header">
+              <div className="offer-header-left">
+                <div className={`offer-type-badge ${isSelling ? 'sell' : 'buy'}`}>
+                  {isSelling ? 'SELLING ZEC' : 'BUYING ZEC'}
+                </div>
+                <div className="offer-meta">
+                  <span className="offer-date">Posted {new Date(offer.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  <span className={`offer-status-badge status-${offer.status || 'active'}`}>
+                    {offer.status === 'active' ? 'ACTIVE' : offer.status === 'completed' ? 'COMPLETED' : offer.status === 'cancelled' ? 'CANCELLED' : 'ACTIVE'}
+                  </span>
+                </div>
               </div>
               <div className="offer-header-actions">
                 <PaymentLinkButton offer={offer} variant="icon" size="small" />
-                <ShareButton offer={offer} size="medium" />
-                <div className="offer-created">
-                  Posted {new Date(offer.createdAt).toLocaleDateString()}
-                </div>
+                <ShareButton offer={offer} size="small" />
               </div>
             </div>
             
-            {/* Amounts */}
-            <div className="offer-detail-amounts">
-              <div className="amounts-header">
-                <div className={`offer-type-badge ${isSelling ? 'sell' : 'buy'}`}>
-                  {isSelling ? '🛒 Selling ZEC' : '💸 Buying ZEC'}
-                </div>
-                <div className="offer-header-actions">
-                  <PaymentLinkButton offer={offer} variant="icon" size="small" />
-                  <ShareButton offer={offer} size="small" />
-                  <div className="offer-created">
-                    Posted {new Date(offer.createdAt).toLocaleDateString()}
-                  </div>
+            {/* Main Amount Display */}
+            <div className="offer-main-amounts">
+              <div className="amount-section">
+                <div className="amount-label">Amount</div>
+                <div className="amount-display zec">
+                  <span className="amount-number">{formatZecFromZec(offer.zecAmount)}</span>
+                  <span className="amount-currency">ZEC</span>
                 </div>
               </div>
               
-              <div className="amounts-main">
-                <div className="amount-block zec">
-                  <span className="amount-label">Amount</span>
-                  <span className="amount-value">{formatZecFromZec(offer.zecAmount)}</span>
-                  <span className="amount-unit">ZEC</span>
-                </div>
-                <div className="amount-arrow">⇄</div>
-                <div className="amount-block fiat">
-                  <span className="amount-label">For</span>
-                  <span className="amount-value">
+              <div className="amount-divider">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M7 17L17 7M7 7h10v10"/>
+                </svg>
+              </div>
+              
+              <div className="amount-section">
+                <div className="amount-label">For</div>
+                <div className="amount-display fiat">
+                  <span className="amount-number">
                     {offer.fiatAmountCents 
                       ? formatFiat(offer.fiatAmountCents, offer.fiatCurrency || offer.exchangeCurrency)
                       : formatExchangeValue(offer.exchangeValue, offer.exchangeCurrency)
                     }
                   </span>
-                  <span className="amount-unit">{offer.fiatCurrency || offer.exchangeCurrency}</span>
+                  <span className="amount-currency">{offer.fiatCurrency || offer.exchangeCurrency}</span>
                 </div>
-              </div>
-              
-              <div className="amounts-details">
-                {offer.pricePerZecCents && offer.fiatCurrency && (
-                  <div className="amount-detail-item">
-                    <span className="detail-label">Price</span>
-                    <span className="detail-value">{formatPricePerZec(offer.pricePerZecCents, offer.fiatCurrency)}</span>
-                  </div>
-                )}
-                {(offer.minTradeZec || offer.minTradeZatoshi) && (
-                  <div className="amount-detail-item">
-                    <span className="detail-label">Trade limits</span>
-                    <span className="detail-value">
-                      {formatZecFromZec(offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : 0), 2)} - {formatZecFromZec(offer.maxTradeZec ?? (offer.maxTradeZatoshi ? offer.maxTradeZatoshi / 100_000_000 : offer.zecAmount), 2)} ZEC
-                    </span>
-                  </div>
-                )}
-                {offer.paymentWindow && (
-                  <div className="amount-detail-item">
-                    <span className="detail-label">Payment window</span>
-                    <span className="detail-value">{offer.paymentWindow} min</span>
-                  </div>
-                )}
               </div>
             </div>
             
-            {offer.pricePerZecCents && offer.fiatCurrency && (
-              <div className="offer-price-highlight">
-                <span className="price-label">Price:</span>
-                <span className="price-value">{formatPricePerZec(offer.pricePerZecCents, offer.fiatCurrency)}</span>
-              </div>
-            )}
-            
-            {/* Details */}
-            <div className="offer-detail-info">
-              {(offer.minTradeZec || offer.minTradeZatoshi) && (
-                <div className="info-row">
-                  <span className="info-label">Trade limits</span>
-                  <span className="info-value">
-                    {formatZecFromZec(offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : 0), 2)} - {formatZecFromZec(offer.maxTradeZec ?? (offer.maxTradeZatoshi ? offer.maxTradeZatoshi / 100_000_000 : offer.zecAmount), 2)} ZEC
-                  </span>
-                </div>
-              )}
-              {offer.paymentWindow && (
-                <div className="info-row">
-                  <span className="info-label">Payment window</span>
-                  <span className="info-value">{offer.paymentWindow} minutes</span>
+            {/* Price & Key Details */}
+            <div className="offer-key-details">
+              {offer.pricePerZecCents && offer.fiatCurrency && (
+                <div className="key-detail-item">
+                  <div className="key-detail-content">
+                    <span className="key-detail-label">Price per ZEC</span>
+                    <span className="key-detail-value">{formatPricePerZec(offer.pricePerZecCents, offer.fiatCurrency)}</span>
+                  </div>
                 </div>
               )}
               {offer.location?.city && (
-                <div className="info-row">
-                  <span className="info-label">Location</span>
-                  <span className="info-value">
-                    {offer.location.city}{offer.location.country ? `, ${offer.location.country}` : ''}
-                  </span>
+                <div className="key-detail-item">
+                  <div className="key-detail-content">
+                    <span className="key-detail-label">Location</span>
+                    <span className="key-detail-value">
+                      {offer.location.city}{offer.location.country ? `, ${offer.location.country}` : ''}
+                    </span>
+                  </div>
                 </div>
               )}
-              <div className="info-row">
-                <span className="info-label">Status</span>
-                <span className="info-value">
-                  <span className={`status-badge status-${offer.status || 'active'}`}>
-                    {offer.status === 'active' ? 'Active' : offer.status === 'completed' ? 'Completed' : offer.status === 'cancelled' ? 'Cancelled' : 'Active'}
-                  </span>
-                </span>
-              </div>
-              {offer.expiresAt && (
-                <div className="info-row">
-                  <span className="info-label">Expires</span>
-                  <span className="info-value">
-                    {new Date(offer.expiresAt).toLocaleDateString()} {new Date(offer.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+              {(offer.minTradeZec || offer.minTradeZatoshi) && (
+                <div className="key-detail-item">
+                  <div className="key-detail-content">
+                    <span className="key-detail-label">Trade Range</span>
+                    <span className="key-detail-value">
+                      {formatZecFromZec(offer.minTradeZec ?? (offer.minTradeZatoshi ? offer.minTradeZatoshi / 100_000_000 : 0), 2)} - {formatZecFromZec(offer.maxTradeZec ?? (offer.maxTradeZatoshi ? offer.maxTradeZatoshi / 100_000_000 : offer.zecAmount), 2)} ZEC
+                    </span>
+                  </div>
+                </div>
+              )}
+              {offer.paymentWindow && (
+                <div className="key-detail-item">
+                  <div className="key-detail-content">
+                    <span className="key-detail-label">Payment Window</span>
+                    <span className="key-detail-value">{offer.paymentWindow} minutes</span>
+                  </div>
                 </div>
               )}
             </div>
             
-            {/* Trading Methods */}
-            {offer.tradingMethods && offer.tradingMethods.length > 0 && (
-              <div className="offer-payment-section">
-                <h4>Trading Methods</h4>
-                <div className="payment-methods-list">
-                  {offer.tradingMethods.map(tm => (
-                    <span key={tm} className="payment-tag">
-                      {TRADING_METHOD_INFO[tm]?.icon} {TRADING_METHOD_INFO[tm]?.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Payment Methods (if any) */}
-            {offer.paymentMethods && offer.paymentMethods.length > 0 && (
-              <div className="offer-payment-section">
-                <h4>Payment Methods</h4>
-                <div className="payment-methods-list">
-                  {offer.paymentMethods.map(pm => (
-                    <span key={pm} className="payment-tag">
-                      {PAYMENT_METHOD_ICONS[pm]} {PAYMENT_METHOD_LABELS[pm]}
-                    </span>
-                  ))}
-                </div>
+            {/* Trading & Payment Methods */}
+            {((offer.tradingMethods?.length ?? 0) > 0 || ((offer.paymentMethods?.length ?? 0) > 0)) && (
+              <div className="offer-methods-section">
+                {offer.tradingMethods && offer.tradingMethods.length > 0 && (
+                  <div className="methods-group">
+                    <h4 className="methods-title">Trading Methods</h4>
+                    <div className="methods-list">
+                      {offer.tradingMethods.map(tm => (
+                        <span key={tm} className="method-tag">
+                          {TRADING_METHOD_INFO[tm]?.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {offer.paymentMethods && offer.paymentMethods.length > 0 && (
+                  <div className="methods-group">
+                    <h4 className="methods-title">Payment Methods</h4>
+                    <div className="methods-list">
+                      {offer.paymentMethods.map(pm => (
+                        <span key={pm} className="method-tag">
+                          {PAYMENT_METHOD_LABELS[pm]}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             
             {/* Terms or Notes */}
             {(offer.terms || offer.notes) && (
               <div className="offer-terms-section">
-                <h4>📝 Terms & Instructions</h4>
-                <p>{offer.terms || offer.notes}</p>
+                <h4 className="terms-title">Terms & Instructions</h4>
+                <p className="terms-content">{offer.terms || offer.notes}</p>
               </div>
             )}
             
@@ -1355,7 +1327,7 @@ export function P2POfferDetail() {
               <div className="maker-identity">
                 <h3>
                   {makerProfile.displayName || offer.maker}
-                  {makerProfile.isVerified && <span className="verified-badge">✓</span>}
+                  {makerProfile.isVerified && <span className="verified-badge">VERIFIED</span>}
                 </h3>
                 <span className={`reputation-tier tier-${tier.toLowerCase()}`}>{tier}</span>
               </div>

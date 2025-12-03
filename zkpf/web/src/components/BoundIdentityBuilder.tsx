@@ -23,6 +23,7 @@ import {
   saveBoundIdentityProof,
 } from '../utils/bound-identity';
 import { getCurrencyMeta } from '../utils/policy';
+import { hasUfvk, getUfvkSecurely } from '../utils/secureUfvkStorage';
 
 // ============================================================================
 // Types
@@ -184,11 +185,7 @@ export function BoundIdentityBuilder({
   
   // Detect if we have wallet viewing key available
   const hasWalletViewingKey = useMemo(() => {
-    try {
-      return !!localStorage.getItem('zkpf-zcash-ufvk');
-    } catch {
-      return false;
-    }
+    return hasUfvk();
   }, []);
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -423,7 +420,8 @@ export function BoundIdentityBuilder({
     
     try {
       // Get wallet viewing key for binding derivation
-      const ufvk = localStorage.getItem('zkpf-zcash-ufvk') || '';
+      const storedUfvk = await getUfvkSecurely();
+      const ufvk = storedUfvk || '';
       const uniqueId = zkpassportProof.uniqueIdentifier || zkpassportProof.proofId;
       
       // Derive holder secret seed
@@ -506,7 +504,7 @@ export function BoundIdentityBuilder({
         return (
           <div className="bound-identity-intro">
             <div className="intro-hero">
-              <div className="intro-icon">🔐</div>
+              <div className="intro-icon">🔒</div>
               <h2>Bound Identity Proof</h2>
               <p className="intro-subtitle">
                 Create a cryptographic bond between your identity and your funds.
@@ -516,14 +514,14 @@ export function BoundIdentityBuilder({
             
             <div className="intro-features">
               <div className="intro-feature">
-                <span className="feature-icon">🛡️</span>
+                <span className="feature-icon"></span>
                 <div>
                   <strong>Privacy-Preserving KYC</strong>
                   <p>Verify identity requirements without exposing passport details</p>
                 </div>
               </div>
               <div className="intro-feature">
-                <span className="feature-icon">💰</span>
+                <span className="feature-icon">$</span>
                 <div>
                   <strong>Proof of Funds</strong>
                   <p>Prove you meet balance thresholds without revealing amounts</p>
@@ -556,7 +554,7 @@ export function BoundIdentityBuilder({
                   <p className="policy-description">{policy.description}</p>
                   <div className="policy-requirements">
                     <div className="requirement">
-                      <span className="req-icon">👤</span>
+                      <span className="req-icon">ID</span>
                       <span>
                         Age ≥ {policy.identityQuery.ageGte || 18}
                         {policy.identityQuery.nationalityIn && 
@@ -564,7 +562,7 @@ export function BoundIdentityBuilder({
                       </span>
                     </div>
                     <div className="requirement">
-                      <span className="req-icon">💎</span>
+                      <span className="req-icon">$</span>
                       <span>
                         {getCurrencyMeta(policy.fundsPolicy.currencyCode).code} ≥{' '}
                         {(policy.fundsPolicy.thresholdRaw / 100_000_000).toLocaleString()}
@@ -717,7 +715,7 @@ export function BoundIdentityBuilder({
                 
                 {identityState.status === 'error' && (
                   <div className="verification-error">
-                    <span className="error-icon">⚠️</span>
+                    <span className="error-icon">⚠</span>
                     <p>{identityState.error}</p>
                     <button
                       type="button"
@@ -787,7 +785,7 @@ export function BoundIdentityBuilder({
                 {/* Show wallet help banner if no wallet connected */}
                 {!hasWalletViewingKey && (
                   <div className="wallet-help-banner">
-                    <div className="wallet-help-icon">💡</div>
+                    <div className="wallet-help-icon">ℹ</div>
                     <div className="wallet-help-content">
                       <strong>No wallet connected</strong>
                       <p>To build a proof, you first need to connect your Zcash wallet.</p>
@@ -803,7 +801,7 @@ export function BoundIdentityBuilder({
                 )}
                 
                 <div className={`funds-option ${!hasWalletViewingKey ? 'disabled' : ''}`}>
-                  <div className="option-icon">🏗️</div>
+                  <div className="option-icon">⚙</div>
                   <div className="option-content">
                     <strong>Build New Proof</strong>
                     <p>Generate a fresh proof from your connected wallet</p>
@@ -824,7 +822,7 @@ export function BoundIdentityBuilder({
                 <div className="option-divider">or</div>
                 
                 <div className="funds-option">
-                  <div className="option-icon">📁</div>
+                  <div className="option-icon">📄</div>
                   <div className="option-content">
                     <strong>Upload Existing Proof</strong>
                     <p>Use a proof bundle JSON file you already have</p>
@@ -899,7 +897,7 @@ export function BoundIdentityBuilder({
             <div className="review-cards">
               <div className="review-card">
                 <div className="review-card-header">
-                  <span className="review-card-icon">👤</span>
+                  <span className="review-card-icon">ID</span>
                   <strong>Identity Proof</strong>
                   {zkpassportProof ? (
                     <span className="status-badge success">✓ Loaded</span>
@@ -933,7 +931,7 @@ export function BoundIdentityBuilder({
               
               <div className="review-card">
                 <div className="review-card-header">
-                  <span className="review-card-icon">💰</span>
+                  <span className="review-card-icon">$</span>
                   <strong>Funds Proof</strong>
                   {zkpfBundle ? (
                     <span className="status-badge success">✓ Loaded</span>
@@ -1008,7 +1006,7 @@ export function BoundIdentityBuilder({
             {/* Missing data warnings */}
             {!zkpassportProof && (
               <div className="warning-message">
-                <span className="warning-icon">💡</span>
+                    <span className="warning-icon">ℹ</span>
                 <div className="warning-content">
                   <strong>Identity proof missing</strong>
                   <p>Go back to Step 1 to verify your identity with ZKPassport.</p>
@@ -1025,7 +1023,7 @@ export function BoundIdentityBuilder({
             
             {!zkpfBundle && (
               <div className="warning-message">
-                <span className="warning-icon">💡</span>
+                    <span className="warning-icon">ℹ</span>
                 <div className="warning-content">
                   <strong>Funds proof missing</strong>
                   <p>Go back to Step 2 to build or upload a proof of funds.</p>
@@ -1072,13 +1070,13 @@ export function BoundIdentityBuilder({
           <div className="bound-identity-step binding-step">
             <div className="binding-animation">
               <div className="binding-circle identity-circle">
-                <span>👤</span>
+                <span>ID</span>
               </div>
               <div className="binding-line">
-                <span className="binding-particles">🔗</span>
+                <span className="binding-particles">+</span>
               </div>
               <div className="binding-circle funds-circle">
-                <span>💰</span>
+                <span>$</span>
               </div>
             </div>
             <h3>Creating Cryptographic Bond</h3>
@@ -1109,7 +1107,7 @@ export function BoundIdentityBuilder({
       case 'complete':
         return (
           <div className="bound-identity-step complete-step">
-            <div className="complete-icon">🎉</div>
+            <div className="complete-icon">✓</div>
             <h3>Bound Identity Proof Created!</h3>
             <p className="muted">
               Your identity and funds are now cryptographically bonded.
@@ -1149,7 +1147,7 @@ export function BoundIdentityBuilder({
                     className="tiny-button"
                     onClick={copyShareUrl}
                   >
-                    {copied ? '✓ Copied!' : '📋 Copy'}
+                    {copied ? '✓ Copied!' : 'Copy'}
                   </button>
                 </div>
               </div>
@@ -1161,7 +1159,7 @@ export function BoundIdentityBuilder({
                 className="primary-action"
                 onClick={downloadBoundProof}
               >
-                📥 Download Bound Proof
+                Download Bound Proof
               </button>
               <button
                 type="button"

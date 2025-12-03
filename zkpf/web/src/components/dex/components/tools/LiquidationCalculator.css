@@ -1,0 +1,95 @@
+.dex-liquidation-calculator {
+  padding: 1rem;
+  background: var(--dex-bg-elevated);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 12px;
+}
+
+.dex-liquidation-calculator h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-liq-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dex-liq-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dex-liq-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--dex-text-secondary);
+}
+
+.dex-liq-input {
+  padding: 0.5rem;
+  background: var(--dex-bg-secondary);
+  border: 1px solid var(--dex-border-primary);
+  border-radius: 6px;
+  color: var(--dex-text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.dex-liq-input:focus {
+  outline: none;
+  border-color: var(--dex-border-focus);
+}
+
+.dex-liq-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dex-liq-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+}
+
+.dex-liq-critical {
+  border: 2px solid var(--dex-loss);
+  background: var(--dex-loss-light);
+}
+
+.dex-liq-label {
+  font-size: 0.75rem;
+  color: var(--dex-text-secondary);
+}
+
+.dex-liq-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.dex-liq-warning {
+  margin-top: 0.5rem;
+}
+
+.dex-liq-alert {
+  padding: 0.75rem;
+  background: var(--dex-loss-light);
+  border: 1px solid var(--dex-loss);
+  border-radius: 8px;
+  color: var(--dex-loss);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+

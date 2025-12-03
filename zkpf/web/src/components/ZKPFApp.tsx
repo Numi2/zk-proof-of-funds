@@ -11,6 +11,11 @@ import type { PolicyDefinition, ProofBundle } from '../types/zkpf';
 import { ProgressChecklist, type ChecklistStep, type ChecklistStatus } from './ProgressChecklist';
 import { RouteErrorBoundary } from './ErrorBoundary';
 import { MobileBottomNav } from './MobileBottomNav';
+import { WalletIcon } from './icons/WalletIcon';
+import { PassportIcon } from './icons/PassportIcon';
+import { PersonhoodIcon } from './icons/PersonhoodIcon';
+import { P2PIcon } from './icons/P2PIcon';
+import { ThemeToggle } from './ThemeToggle';
 import './mobile.css';
 
 const ProofBuilder = lazy(() =>
@@ -72,35 +77,11 @@ const CredentialsHub = lazy(() =>
 );
 
 const DEFAULT_BASE = detectDefaultBase();
-const HERO_HIGHLIGHTS = [
-  {
-    title: 'Prime brokerage onboarding',
-    description: 'Prove total balances to credit teams, without exposing individual wallets.',
-  },
-  {
-    title: 'OTC settlement guardrails',
-    description: 'Verify proofs meet minimum balance rules before releasing funds.',
-  },
-  {
-    title: 'Regulator-ready audit trail',
-    description: 'Save proof files and verifier responses for audit reuse.',
-  },
-];
 
 const PRODUCT_SUITE = [
   {
-    id: 'credentials',
-    icon: '🔐',
-    title: 'Cross-chain Credentials Hub',
-    subtitle: 'Zcash • Mina • Starknet • NEAR',
-    description: 'Generate, manage, and share proof-of-funds credentials across multiple chains. Prove your funds exist without moving assets or revealing balances.',
-    features: ['Multi-chain proofs', 'One-click verification', 'Shareable credentials'],
-    gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-    link: '/credentials',
-  },
-  {
     id: 'wallet',
-    icon: '🛡️',
+    icon: <WalletIcon size={24} />,
     title: 'Privacy-First Web Wallet',
     subtitle: 'Zcash Orchard • Shielded by default',
     description: 'Full-featured Zcash wallet with shielded transactions, transparent-to-shielded conversion, and native ZKPassport integration. Your keys, your coins, your privacy.',
@@ -110,7 +91,7 @@ const PRODUCT_SUITE = [
   },
   {
     id: 'zkpassport',
-    icon: '🛂',
+    icon: <PassportIcon size={24} />,
     title: 'ZKPassport Integration',
     subtitle: 'Prove identity • Preserve privacy',
     description: 'Verify you\'re a unique real person using your passport, without revealing any personal data. ZKPassport uses zero-knowledge proofs to create a privacy-preserving identity layer.',
@@ -120,7 +101,7 @@ const PRODUCT_SUITE = [
   },
   {
     id: 'personhood',
-    icon: '🔗',
+    icon: <PersonhoodIcon size={24} />,
     title: 'Personhood-Wallet Binding',
     subtitle: 'Bond funds to verified identity',
     description: 'Cryptographically bind your wallet to your verified personhood. Prove you control funds as a verified individual without revealing wallet addresses or balances.',
@@ -130,7 +111,7 @@ const PRODUCT_SUITE = [
   },
   {
     id: 'p2p',
-    icon: '🤝',
+    icon: <P2PIcon size={24} />,
     title: 'P2P Marketplace',
     subtitle: 'Trade with verified counterparties',
     description: 'Peer-to-peer trading with proof-of-funds escrow. Both parties can verify each other\'s balances before committing, without revealing exact amounts.',
@@ -223,11 +204,6 @@ export function ZKPFApp() {
       verifyStatus = 'pending';
     }
 
-    const shareStatus: ChecklistStatus =
-      verificationOutcome === 'accepted'
-        ? 'active'
-        : 'pending';
-
     const syncDescription =
       connectionState === 'connected'
         ? 'Ready to build proof'
@@ -274,15 +250,6 @@ export function ZKPFApp() {
         hint: 'Use Verify console to submit the bundle and see the verifier response.',
         disabled: connectionState === 'error',
       },
-      {
-        id: 'share',
-        title: 'Share & record',
-        description:
-          'Download the bundle and save the verifier response (and optional on-chain attestation) to your records.',
-        status: shareStatus,
-        hint: 'Attach artifacts to credit memos, deal rooms, or audit trails.',
-        disabled: verificationOutcome !== 'accepted',
-      },
     ];
 
     return steps;
@@ -297,13 +264,16 @@ export function ZKPFApp() {
 
   return (
     <div className="app-shell">
-      {!isWalletRoute && !isBoundIdentityRoute && !isCredentialsRoute && (
+      {!isBoundIdentityRoute && !isCredentialsRoute && (
         <div className="top-bar">
-          <Link to="/wallet" className="top-nav-link">Wallet</Link>
-          <Link to="/credentials" className="top-nav-link">Credentials</Link>
-          <Link to="/p2p" className="top-nav-link">P2P</Link>
-          <Link to="/defi" className="top-nav-link">CrossChain</Link>
-          <Link to="/zkpassport" className="top-nav-link">ZKPassport</Link>
+          <div className="top-nav-links">
+            <Link to="/wallet" className="top-nav-link">Wallet</Link>
+            <Link to="/p2p" className="top-nav-link">P2P</Link>
+            <Link to="/defi" className="top-nav-link">CrossChain</Link>
+            <Link to="/dex" className="top-nav-link">DEX</Link>
+            <Link to="/zkpassport" className="top-nav-link">ZKPassport</Link>
+          </div>
+          <ThemeToggle />
         </div>
       )}
       
@@ -311,74 +281,16 @@ export function ZKPFApp() {
         <header className="hero">
           <div className="header-top">
             <div className="brand">
-              <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
-                <span className="status-dot"></span>
-                <span className="status-text">
-                  {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
-                </span>
-              </div>
               <div>
-                <p className="eyebrow">ZK Stack</p>
-                <h1>Zero-knowledge proof-of-funds</h1>
+                <p className="eyebrow">Privacy Wallet</p>
+                <h1>ZKPF Wallet</h1>
               </div>
             </div>
-            <div className="hero-subtitle"></div>
           </div>
           <p>
-            Prove funds, without exposing privacy.
+            Shielded-by-default Zcash wallet with zero-knowledge proof capabilities. Your keys, your coins, your privacy.
           </p>
-
-          <div className="hero-cta">
-            <Link to="/build" className="hero-cta-button">
-              Try it now →
-            </Link>
-          </div>
-
-          {!isDeFiRoute && (
-            <nav className="main-nav">
-              <NavLink
-                to="/"
-                end
-                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-              >
-                Overview
-              </NavLink>
-              <NavLink
-                to="/build"
-                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-              >
-                Build proof
-              </NavLink>
-              <NavLink
-                to="/workbench"
-                className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
-              >
-                Verify console
-              </NavLink>
-              <NavLink
-                to="/policies"
-                className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
-              >
-                Policy composer
-              </NavLink>
-            </nav>
-          )}
         </header>
-      )}
-
-      {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isDeFiRoute && !isCredentialsRoute && (
-        <ProgressChecklist
-          steps={checklistSteps}
-          onStepClick={(id) => {
-            if (id === 'sync') {
-              navigate('/');
-            } else if (id === 'build') {
-              navigate('/build');
-            } else if (id === 'verify') {
-              navigate('/workbench');
-            }
-          }}
-        />
       )}
 
       <Routes>
@@ -386,14 +298,46 @@ export function ZKPFApp() {
           path="/"
           element={(
             <>
-              {/* Product Suite Section */}
-              <section className="product-suite">
+              {/* Supporting Features Section */}
+              <section className="supporting-features">
+                <header className="supporting-features-header">
+                  <h2>Built around your wallet</h2>
+                 
+                </header>
+                <div className="supporting-features-grid">
+                  <Link to="/build" className="supporting-feature-card">
+                    <h3>Proof-of-Funds</h3>
+                    <p className="muted small">Generate zero-knowledge proofs from your wallet balance. Prove minimum thresholds without revealing exact amounts or addresses.</p>
+                  </Link>
+                  <Link to="/dex" className="supporting-feature-card">
+                    <h3>DEX Trading</h3>
+                    <p className="muted small">Trade directly from your wallet on Orderly Network. Perpetual futures, spot trading, and portfolio management.</p>
+                  </Link>
+                  <Link to="/p2p" className="supporting-feature-card">
+                    <h3>P2P Marketplace</h3>
+                    <p className="muted small">Trade peer-to-peer with zero-knowledge verified escrow. Verify counterparty balances before committing.</p>
+                  </Link>
+                  <Link to="/zkpassport" className="supporting-feature-card">
+                    <h3>ZKPassport</h3>
+                    <p className="muted small">Verify your identity using passport data without storing PII. Bind your verified personhood to your wallet.</p>
+                  </Link>
+                  <Link to="/bound-identity" className="supporting-feature-card">
+                    <h3>Proof of real human Binding</h3>
+                    <p className="muted small">Cryptographically bind your wallet to verified identity. Prove you control funds as a verified individual.</p>
+                  </Link>
+                  <Link to="/defi" className="supporting-feature-card">
+                    <h3>Cross-Chain</h3>
+                    <p className="muted small">Bridge assets across chains while maintaining privacy. Generate proof-of-funds credentials for multiple networks.</p>
+                  </Link>
+                </div>
+              </section>
+
+              {/* Product Suite Section - Hidden */}
+              {/* <section className="product-suite">
                 <header className="product-suite-header">
                   <p className="eyebrow">Product Suite</p>
-                  <h2>Privacy infrastructure for the next era of finance</h2>
-                  <p className="muted">
-                    A complete toolkit for proving ownership, identity, and creditworthiness—without sacrificing privacy.
-                  </p>
+                  <h2>Integrated privacy tools</h2>
+        
                 </header>
                 <div className="product-grid">
                   {PRODUCT_SUITE.map((product) => (
@@ -418,7 +362,7 @@ export function ZKPFApp() {
                     </Link>
                   ))}
                 </div>
-              </section>
+              </section> */}
 
               <section className="card concepts">
                 <header>
@@ -448,11 +392,12 @@ export function ZKPFApp() {
                 </ul>
               </section>
 
-              <FinanceContext
+              {/* FinanceContext - Hidden */}
+              {/* <FinanceContext
                 params={paramsQuery.data}
                 connectionState={connectionState}
                 verifierUrl={client.baseUrl}
-              />
+              /> */}
 
               <section className="info-grid">
                 <VerifierEndpointCard
@@ -462,6 +407,51 @@ export function ZKPFApp() {
               </section>
 
               <UsageGuide />
+
+              {/* Navigation and Proof-of-Funds Flow Checklist */}
+              {!isWorkbenchRoute && !isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isDeFiRoute && !isCredentialsRoute && (
+                <>
+                  <nav className="main-nav">
+                    <NavLink
+                      to="/"
+                      end
+                      className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                    >
+                      Overview
+                    </NavLink>
+                    <NavLink
+                      to="/build"
+                      className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                    >
+                      Build proof
+                    </NavLink>
+                    <NavLink
+                      to="/workbench"
+                      className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                    >
+                      Verify console
+                    </NavLink>
+                    <NavLink
+                      to="/policies"
+                      className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
+                    >
+                      Policy composer
+                    </NavLink>
+                  </nav>
+                  <ProgressChecklist
+                    steps={checklistSteps}
+                    onStepClick={(id) => {
+                      if (id === 'sync') {
+                        navigate('/');
+                      } else if (id === 'build') {
+                        navigate('/build');
+                      } else if (id === 'verify') {
+                        navigate('/workbench');
+                      }
+                    }}
+                  />
+                </>
+              )}
             </>
           )}
         />
@@ -520,6 +510,33 @@ export function ZKPFApp() {
                   }}
                 />
               </Suspense>
+              <nav className="main-nav">
+                <NavLink
+                  to="/"
+                  end
+                  className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                >
+                  Overview
+                </NavLink>
+                <NavLink
+                  to="/build"
+                  className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                >
+                  Build proof
+                </NavLink>
+                <NavLink
+                  to="/workbench"
+                  className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+                >
+                  Verify console
+                </NavLink>
+                <NavLink
+                  to="/policies"
+                  className={({ isActive }) => (isActive ? 'nav-link nav-link-active policy-nav-link' : 'nav-link policy-nav-link')}
+                >
+                  Policy composer
+                </NavLink>
+              </nav>
               <ProgressChecklist
                 steps={checklistSteps}
                 onStepClick={(id) => {
@@ -672,17 +689,6 @@ export function ZKPFApp() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-
-      {!isWalletRoute && !isBoundIdentityRoute && !isP2PRoute && !isCredentialsRoute && (
-        <div className="hero-highlights">
-          {HERO_HIGHLIGHTS.map((item) => (
-            <div key={item.title} className="hero-highlight">
-              <p className="hero-highlight-title">{item.title}</p>
-              <p>{item.description}</p>
-            </div>
-          ))}
-        </div>
-      )}
 
       <footer>
         <p>

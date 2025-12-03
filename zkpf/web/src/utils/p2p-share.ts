@@ -185,14 +185,14 @@ export function formatOfferAsText(offer: P2POffer): string {
   const tradingMethods = offer.tradingMethods ?? ['other'];
   const methods = tradingMethods.map(m => {
     const codes: Record<TradingMethod, string> = {
-      'face_to_face': '🤝 Face to Face',
-      'bank_transfer': '🏦 Bank Transfer',
-      'mobile_payment': '📱 Mobile Payment',
-      'crypto': '₿ Crypto',
-      'gift_card': '🎁 Gift Card',
-      'goods': '📦 Goods',
-      'services': '⚡ Services',
-      'other': '✨ Other',
+      'face_to_face': 'Meet Face to Face',
+      'bank_transfer': 'Bank Transfer',
+      'mobile_payment': 'Mobile Payment',
+      'crypto': 'Crypto',
+      'gift_card': 'Gift Card',
+      'goods': 'Goods',
+      'services': 'Services',
+      'other': 'Other',
     };
     return codes[m] || '✨ Other';
   }).join(', ');
@@ -203,9 +203,9 @@ export function formatOfferAsText(offer: P2POffer): string {
   const exchangeCurrency = offer.exchangeCurrency ?? 'USD';
   const makerProfile = offer.makerProfile ?? { displayName: undefined, totalTrades: 0, successRate: 0 };
   
-  let text = `🔒 ZEC P2P Offer\n\n`;
-  text += `${type === 'Selling' ? '📤' : '📥'} ${type} ${zecAmount} ZEC\n`;
-  text += `💰 For: ${exchangeValue} ${exchangeCurrency}\n`;
+  let text = `ZEC P2P Offer\n\n`;
+  text += `${type} ${zecAmount} ZEC\n`;
+  text += `For: ${exchangeValue} ${exchangeCurrency}\n`;
   text += `📍 Methods: ${methods}\n`;
   
   if (offer.location?.city) {

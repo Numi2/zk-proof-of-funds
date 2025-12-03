@@ -24,8 +24,15 @@ type ChannelState = {
 
 // Lazy import of the wasm module to avoid breaking SSR or non-COOP/COEP contexts.
 async function loadChat() {
-	const mod = await import('chat-browser');
-	return mod;
+	try {
+		const mod = await import('chat-browser');
+		return mod;
+	} catch (error) {
+		// If the module fails to load (e.g., WASM not available, wrong path, etc.),
+		// log the error and throw a more descriptive error
+		console.error('Failed to load chat-browser module:', error);
+		throw new Error(`Chat module failed to load: ${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
 class ChatServiceImpl {

@@ -48,7 +48,7 @@ const STAGES: StageDefinition[] = [
     key: 'proof-generated',
     label: 'Proof Generated',
     description: 'ZK proof created successfully, verifying...',
-    icon: '🔐',
+    icon: '🔒',
   },
   {
     key: 'verified',

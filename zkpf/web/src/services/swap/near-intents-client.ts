@@ -192,7 +192,7 @@ export class NearIntentsClient {
   }
 
   /**
-   * Execute a swap via NEAR Intents.
+   * Execute a swap via NEAR Intents using Defuse resolver.
    */
   async executeIntent(request: SwapExecuteRequest): Promise<SwapExecuteResponse> {
     const intent = this.createIntentFromRoute(request.route);
@@ -200,28 +200,51 @@ export class NearIntentsClient {
     // Generate a unique swap ID
     const swapId = `near-intent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // In production, this would:
-    // 1. Sign and broadcast the intent
-    // 2. Wait for resolver to match
-    // 3. Monitor execution across chains
-    
-    const trackingData: SwapTrackingData = {
-      provider: 'near_intents',
-      providerSwapId: intent.intent_id,
-      nearIntentId: intent.intent_id,
-      trackingUrl: `https://nearblocks.io/txns/${intent.intent_id}`,
-    };
+    try {
+      // Get resolver contract ID from config
+      const networkId = this.config.nearIntents?.networkId || 'mainnet';
+      const resolverId = this.config.nearIntents?.resolverContract || 'defuse.near';
+      
+      // TODO: Implement actual intent broadcasting to Defuse resolver
+      // This requires:
+      // 1. Connect to NEAR wallet
+      // 2. Sign intent with user's account
+      // 3. Call resolver.submit_intent(intent) on defuse.near contract
+      // 4. Wait for resolver to match and execute
+      // 
+      // Example structure:
+      // const near = await connect({ ... });
+      // const account = await near.account(userAccountId);
+      // await account.functionCall({
+      //   contractId: resolverId,
+      //   methodName: 'submit_intent',
+      //   args: intent,
+      //   gas: '300000000000000',
+      // });
+      
+      // For now, return the intent structure for UI display
+      const trackingData: SwapTrackingData = {
+        provider: 'near_intents',
+        providerSwapId: intent.intent_id,
+        nearIntentId: intent.intent_id,
+        resolverContract: resolverId,
+        trackingUrl: `https://nearblocks.io/intents/${intent.intent_id}`,
+      };
 
-    return {
-      swapId,
-      depositAddress: this.getDepositAddress(request.route.source.chain),
-      depositMemo: intent.intent_id, // Use intent ID as memo
-      depositAmount: request.route.amountIn,
-      status: 'awaiting_deposit',
-      expectedOutput: request.route.expectedAmountOut,
-      estimatedCompletionAt: Date.now() + request.route.estimatedTimeSeconds * 1000,
-      trackingData,
-    };
+      return {
+        swapId,
+        depositAddress: this.getDepositAddress(request.route.source.chain),
+        depositMemo: intent.intent_id, // Use intent ID as memo
+        depositAmount: request.route.amountIn,
+        status: 'awaiting_deposit',
+        expectedOutput: request.route.expectedAmountOut,
+        estimatedCompletionAt: Date.now() + request.route.estimatedTimeSeconds * 1000,
+        trackingData,
+      };
+    } catch (error) {
+      console.error('Failed to execute intent:', error);
+      throw new Error(`Intent execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**

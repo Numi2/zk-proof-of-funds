@@ -45,7 +45,7 @@ const VERIFICATION_SCENARIOS: VerificationScenario[] = [
   },
   {
     id: 'personhood',
-    icon: '👤',
+    icon: 'ID',
     title: 'Personhood',
     description: 'Prove you\'re human',
     color: '#a78bfa',
@@ -53,7 +53,7 @@ const VERIFICATION_SCENARIOS: VerificationScenario[] = [
   },
   {
     id: 'basic-kyc',
-    icon: '📋',
+    icon: 'List',
     title: 'Basic KYC',
     description: 'Name + nationality',
     color: '#38bdf8',
@@ -300,7 +300,7 @@ export function ZKPassportPage() {
                 )}
                 <div className="success-actions">
                   <button onClick={downloadProofs} className="secondary-button">
-                    📥 Download Proof
+                    Download Proof
                   </button>
                   <button onClick={resetVerification} className="primary-button">
                     Verify Something Else
@@ -353,7 +353,7 @@ export function ZKPassportPage() {
         </header>
         <div className="privacy-grid">
           <div className="privacy-item privacy-item-never">
-            <div className="privacy-icon">🚫</div>
+            <div className="privacy-icon">✗</div>
             <h4>Never Stored</h4>
             <ul>
               <li>Passport names or numbers</li>
@@ -386,7 +386,7 @@ export function ZKPassportPage() {
           </p>
         </div>
         <Link to="/bound-identity" className="identity-bond-card">
-          <span className="identity-bond-icon">🔗</span>
+          <span className="identity-bond-icon">Link</span>
           <div className="identity-bond-content">
             <span className="identity-bond-title">Create Identity Bond</span>
             <span className="identity-bond-desc">Prove identity + funds together for DeFi, KYC, or accredited investor verification</span>
@@ -397,15 +397,15 @@ export function ZKPassportPage() {
         {/* Quick info cards */}
         <div className="identity-bond-features">
           <div className="bond-feature">
-            <span className="bond-feature-icon">🛡️</span>
+            <span className="bond-feature-icon"></span>
             <span>Privacy-preserving KYC</span>
           </div>
           <div className="bond-feature">
-            <span className="bond-feature-icon">💰</span>
+            <span className="bond-feature-icon">$</span>
             <span>Proof of funds</span>
           </div>
           <div className="bond-feature">
-            <span className="bond-feature-icon">🔐</span>
+            <span className="bond-feature-icon">🔒</span>
             <span>Cryptographic binding</span>
           </div>
         </div>
@@ -419,29 +419,11 @@ export function ZKPassportPage() {
         </header>
         <div className="product-grid">
           <Link 
-            to="/credentials" 
-            className="product-card"
-            style={{ '--card-gradient': 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' } as React.CSSProperties}
-          >
-            <div className="product-card-icon">🔐</div>
-            <div className="product-card-content">
-              <h3 className="product-card-title">Cross-chain Credentials Hub</h3>
-              <p className="product-card-subtitle">Zcash • Mina • Starknet • NEAR</p>
-              <p className="product-card-description">Generate, manage, and share proof-of-funds credentials across multiple chains. Prove your funds exist without moving assets or revealing balances.</p>
-              <ul className="product-card-features">
-                <li>Multi-chain proofs</li>
-                <li>One-click verification</li>
-                <li>Shareable credentials</li>
-              </ul>
-            </div>
-            <div className="product-card-arrow">→</div>
-          </Link>
-          <Link 
             to="/bound-identity" 
             className="product-card"
             style={{ '--card-gradient': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' } as React.CSSProperties}
           >
-            <div className="product-card-icon">🔗</div>
+            <div className="product-card-icon">Link</div>
             <div className="product-card-content">
               <h3 className="product-card-title">Personhood-Wallet Binding</h3>
               <p className="product-card-subtitle">Bond funds to verified identity</p>
@@ -459,7 +441,7 @@ export function ZKPassportPage() {
             className="product-card"
             style={{ '--card-gradient': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' } as React.CSSProperties}
           >
-            <div className="product-card-icon">🤝</div>
+            <div className="product-card-icon">↔</div>
             <div className="product-card-content">
               <h3 className="product-card-title">P2P Marketplace</h3>
               <p className="product-card-subtitle">Trade with verified counterparties</p>

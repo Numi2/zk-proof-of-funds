@@ -1,0 +1,115 @@
+/* Mobile Order Entry Styles */
+
+.mobile-order-quick-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--dex-bg-primary);
+  border-top: 1px solid var(--dex-border-primary);
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-quick-action {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 2px solid var(--dex-border-primary);
+  border-radius: 12px;
+  background: var(--dex-bg-elevated);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.mobile-quick-action:active {
+  transform: scale(0.98);
+}
+
+.mobile-quick-buy {
+  border-color: var(--dex-profit);
+  color: var(--dex-profit);
+}
+
+.mobile-quick-buy:active {
+  background: var(--dex-profit-light);
+}
+
+.mobile-quick-sell {
+  border-color: var(--dex-loss);
+  color: var(--dex-loss);
+}
+
+.mobile-quick-sell:active {
+  background: var(--dex-loss-light);
+}
+
+.action-icon {
+  font-size: 1.5rem;
+}
+
+.action-label {
+  font-size: 0.875rem;
+}
+
+.mobile-order-entry-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mobile-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--dex-border-primary);
+}
+
+.mobile-order-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--dex-text-primary);
+}
+
+.mobile-order-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--dex-bg-secondary);
+  border-radius: 8px;
+  color: var(--dex-text-secondary);
+  cursor: pointer;
+  font-size: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.mobile-order-close:active {
+  background: var(--dex-bg-tertiary);
+  transform: scale(0.95);
+}
+
+.mobile-order-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+}
+
+/* Desktop: Hide quick actions, show standard component */
+@media (min-width: 769px) {
+  .mobile-order-quick-actions {
+    display: none;
+  }
+}
+

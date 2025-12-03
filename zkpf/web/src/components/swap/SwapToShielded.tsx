@@ -299,7 +299,7 @@ export function SwapToShielded({
 
       {/* Privacy Notice */}
       <div className="swap-privacy-notice">
-        <span className="privacy-icon">🛡️</span>
+        <span className="privacy-icon"></span>
         <span>
           Auto-shields to fresh Orchard address • Swap data never on-chain
         </span>

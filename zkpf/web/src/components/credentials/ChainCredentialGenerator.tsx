@@ -289,7 +289,7 @@ export const ChainCredentialGenerator: React.FC<ChainCredentialGeneratorProps> =
             <div className="connect-options">
               {selectedChain.id === 'zcash' && (
                 <button className="connect-option" onClick={handleGoToWallet}>
-                  <span className="connect-option-icon">🔐</span>
+                  <span className="connect-option-icon">🔒</span>
                   <div>
                     <span className="connect-option-label">ZKPF Web Wallet</span>
                     <span className="connect-option-desc">Set up your in-browser Zcash wallet first</span>
@@ -522,7 +522,7 @@ export const ChainCredentialGenerator: React.FC<ChainCredentialGeneratorProps> =
                     Preparing...
                   </>
                 ) : (
-                  '🔐 Generate Zero-Knowledge Proof'
+                  'Generate Zero-Knowledge Proof'
                 )}
               </button>
               

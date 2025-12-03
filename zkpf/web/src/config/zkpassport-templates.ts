@@ -28,12 +28,12 @@ export type TemplateCategory =
 export const TEMPLATE_CATEGORIES: Record<TemplateCategory, { label: string; icon: string; description: string }> = {
   'age-verification': {
     label: 'Age Verification',
-    icon: '🎂',
+    icon: 'Age',
     description: 'Verify user age for age-restricted content and services',
   },
   'kyc-compliance': {
     label: 'KYC & Compliance',
-    icon: '🔐',
+    icon: '🔒',
     description: 'Know Your Customer and regulatory compliance scenarios',
   },
   'geographic': {
@@ -43,7 +43,7 @@ export const TEMPLATE_CATEGORIES: Record<TemplateCategory, { label: string; icon
   },
   'financial': {
     label: 'Financial Services',
-    icon: '💰',
+    icon: '$',
     description: 'Financial service eligibility and compliance',
   },
   'access-control': {

@@ -53,18 +53,18 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 };
 
 export const PAYMENT_METHOD_ICONS: Record<PaymentMethod, string> = {
-  bank_transfer: '🏦',
-  sepa: '🇪🇺',
-  ach: '🇺🇸',
-  wise: '💸',
-  revolut: '💳',
-  paypal: '🅿️',
-  venmo: '💵',
-  cashapp: '💲',
-  zelle: '⚡',
-  cash: '💵',
-  crypto: '₿',
-  other: '📋',
+  bank_transfer: 'Bank',
+  sepa: 'EU',
+  ach: 'US',
+  wise: 'Wise',
+  revolut: 'Revolut',
+  paypal: 'PayPal',
+  venmo: 'Venmo',
+  cashapp: 'CashApp',
+  zelle: 'Zelle',
+  cash: 'Cash',
+  crypto: 'Crypto',
+  other: 'Other',
 };
 
 // Trading methods - how will you exchange?
@@ -81,42 +81,42 @@ export type TradingMethod =
 export const TRADING_METHOD_INFO: Record<TradingMethod, { label: string; icon: string; description: string }> = {
   face_to_face: { 
     label: 'Face to Face', 
-    icon: '🤝', 
+    icon: 'Meet', 
     description: 'Meet in person to exchange'
   },
   bank_transfer: { 
     label: 'Bank Transfer', 
-    icon: '🏦', 
+    icon: 'Bank', 
     description: 'Wire or ACH transfer'
   },
   mobile_payment: { 
     label: 'Mobile Payment', 
-    icon: '📱', 
+    icon: 'Mobile', 
     description: 'Venmo, CashApp, Zelle, PayPal...'
   },
   crypto: { 
     label: 'Crypto', 
-    icon: '₿', 
+    icon: 'Crypto', 
     description: 'Trade for other cryptocurrencies'
   },
   gift_card: { 
     label: 'Gift Card', 
-    icon: '🎁', 
+    icon: 'Gift', 
     description: 'Amazon, Steam, etc.'
   },
   goods: { 
     label: 'Goods', 
-    icon: '📦', 
+    icon: 'Box', 
     description: 'Trade ZEC for physical items'
   },
   services: { 
     label: 'Services', 
-    icon: '⚡', 
+    icon: 'Service', 
     description: 'Trade ZEC for work or services'
   },
   other: { 
     label: 'Other', 
-    icon: '✨', 
+    icon: 'Other', 
     description: 'Custom arrangement'
   },
 };

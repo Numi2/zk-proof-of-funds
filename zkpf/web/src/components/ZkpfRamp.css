@@ -1256,3 +1256,158 @@
     justify-content: center;
   }
 }
+
+/* Light theme overrides - Elegant & Subtle */
+[data-theme='light'] .zkpf-ramp {
+  --ramp-bg: var(--bg-card);
+  --ramp-surface: var(--bg-tertiary);
+  --ramp-surface-hover: var(--bg-hover);
+  --ramp-border: var(--border-primary);
+  --ramp-border-active: var(--border-hover);
+  --ramp-text: var(--text-primary);
+  --ramp-text-muted: var(--text-muted);
+  --ramp-text-bright: var(--text-primary);
+  --ramp-primary: #4b5563;
+  --ramp-primary-hover: #374151;
+  --ramp-accent: #6b7280;
+  --ramp-accent-glow: rgba(107, 114, 128, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .ramp-title h2 {
+  background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+[data-theme='light'] .ramp-badge {
+  background: rgba(107, 114, 128, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .ramp-input-container:focus-within {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme='light'] .quick-amount.active {
+  background: rgba(107, 114, 128, 0.1);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-primary);
+}
+
+[data-theme='light'] .ramp-quote {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .quote-value {
+  background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+[data-theme='light'] .quote-main {
+  border-bottom-color: var(--border-primary);
+}
+
+[data-theme='light'] .quote-spinner {
+  border-color: var(--border-primary);
+  border-top-color: var(--text-secondary);
+}
+
+[data-theme='light'] .payment-method.active {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  box-shadow: 0 0 0 1px var(--border-primary);
+}
+
+[data-theme='light'] .ramp-buy-button {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .ramp-buy-button:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, #000000, #111827);
+  transform: translateY(-2px);
+}
+
+[data-theme='light'] .ramp-asset-option.active {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .ramp-status {
+  border-left-color: var(--text-secondary);
+}
+
+[data-theme='light'] .tx-link {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .tx-link:hover {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .wallet-chain-badge {
+  background: rgba(107, 114, 128, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .wallet-connect-btn {
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border-primary);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .wallet-connect-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-style: solid;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+[data-theme='light'] .quote-enhanced {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+}
+
+[data-theme='light'] .quote-comparison {
+  border-top-color: var(--border-primary);
+}
+
+[data-theme='light'] .quote-provider-card.best {
+  border-color: var(--ramp-success);
+}
+
+[data-theme='light'] .quote-provider-icon {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .provider-card.active,
+[data-theme='light'] .network-card.active {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+[data-theme='light'] .provider-card.active .provider-icon,
+[data-theme='light'] .network-card.active .network-icon {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .demo-env-list code {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .demo-hint a {
+  color: var(--text-secondary);
+}

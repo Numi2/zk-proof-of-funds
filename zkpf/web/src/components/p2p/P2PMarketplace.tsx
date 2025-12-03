@@ -119,7 +119,7 @@ function OfferCard({
             )}
             {offer.location.meetingPoints && (
               <span className="offer-meeting-points" title="Suggested meeting spots">
-                🤝 {offer.location.meetingPoints}
+                Meet: {offer.location.meetingPoints}
               </span>
             )}
           </div>
@@ -164,7 +164,7 @@ function QuickCreateModal({
             className="quick-option sell"
             onClick={() => onNavigateToCreate('sell')}
           >
-            <span className="option-icon">📤</span>
+            <span className="option-icon">↑</span>
             <span className="option-title">Sell ZEC</span>
 
           </button>
@@ -173,7 +173,7 @@ function QuickCreateModal({
             className="quick-option buy"
             onClick={() => onNavigateToCreate('buy')}
           >
-            <span className="option-icon">📥</span>
+            <span className="option-icon">↓</span>
             <span className="option-title">Buy ZEC</span>
 
           </button>
@@ -227,7 +227,7 @@ function ImportOfferModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal import-modal" onClick={e => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>×</button>
-        <h2>📥 Import an Offer</h2>
+        <h2>Import an Offer</h2>
         <p className="import-subtitle">
           Paste a shared offer link to view and trade with it
         </p>
@@ -247,7 +247,7 @@ function ImportOfferModal({
         
         {importError && (
           <div className="import-error">
-            <span>⚠️</span> {importError}
+            <span>⚠</span> {importError}
           </div>
         )}
         
@@ -407,7 +407,7 @@ export function P2PMarketplace() {
       {/* Search & Filters */}
       <div className="filters-bar">
         <div className="search-box">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon">Search</span>
           <input
             type="text"
             placeholder="Search by currency, location, or keyword..."
@@ -497,7 +497,7 @@ export function P2PMarketplace() {
           </div>
         ) : displayOffers.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-icon">🌍</span>
+            <span className="empty-icon">○</span>
             <h3>No offers found</h3>
             <p>
               {hasFilters 
@@ -527,7 +527,7 @@ export function P2PMarketplace() {
       {/* Traveler callout */}
       <section className="traveler-section">
         <div className="traveler-content">
-          <span className="traveler-icon">✈️</span>
+          <span className="traveler-icon">✈</span>
           <div>
             <h3>Traveling?</h3>
             <p>
@@ -550,7 +550,7 @@ export function P2PMarketplace() {
       {/* Payment Links callout */}
       <section className="payment-links-section">
         <div className="payment-links-content">
-          <span className="payment-links-icon">🔗</span>
+          <span className="payment-links-icon">Link</span>
           <div>
             <h3>Quick Payments</h3>
             <p>
@@ -579,12 +579,12 @@ export function P2PMarketplace() {
         <h2>Marketplace</h2>
         <div className="how-grid">
           <div className="how-item">
-            <span className="how-icon">💬</span>
+            <span className="how-icon">Chat</span>
             <h3>Connect</h3>
             <p>Find someone trading what you need. Message them to agree on terms.</p>
           </div>
           <div className="how-item">
-            <span className="how-icon">🤝</span>
+            <span className="how-icon">↔</span>
             <h3>Trade</h3>
             <p>Exchange however works for both of you — in person, online, any method.</p>
           </div>

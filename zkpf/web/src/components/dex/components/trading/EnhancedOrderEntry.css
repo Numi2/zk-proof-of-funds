@@ -1,0 +1,334 @@
+/* Enhanced Order Entry Styles */
+
+.dex-enhanced-order-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--panel-bg, #1e1e1e);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.dex-order-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dex-order-tab {
+  padding: 12px;
+  background: var(--secondary-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  color: var(--text-secondary, #aaa);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dex-order-tab:hover {
+  background: var(--hover-bg, #333);
+}
+
+.dex-order-tab.active {
+  background: var(--primary-color, #4CAF50);
+  border-color: var(--primary-color, #4CAF50);
+  color: white;
+}
+
+.dex-order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dex-order-type-selector {
+  width: 100%;
+}
+
+.dex-order-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--input-bg, #252525);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dex-order-select:focus {
+  outline: none;
+  border-color: var(--primary-color, #4CAF50);
+}
+
+.dex-order-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.dex-order-field label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+  font-weight: 500;
+}
+
+.dex-order-max {
+  font-size: 12px;
+  color: var(--accent-color, #2196F3);
+}
+
+.dex-order-input {
+  padding: 10px 12px;
+  background: var(--input-bg, #252525);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.dex-order-input:focus {
+  outline: none;
+  border-color: var(--primary-color, #4CAF50);
+}
+
+.dex-order-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dex-order-max-btn {
+  position: absolute;
+  right: 8px;
+  top: 30px;
+  padding: 4px 12px;
+  background: var(--accent-color, #2196F3);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.dex-order-max-btn:hover {
+  opacity: 0.8;
+}
+
+.dex-order-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dex-order-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+}
+
+.dex-order-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.dex-order-error {
+  padding: 10px 12px;
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 6px;
+  color: #F44336;
+  font-size: 13px;
+}
+
+.dex-order-submit {
+  padding: 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dex-order-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dex-order-submit-buy {
+  background: #4CAF50;
+  color: white;
+}
+
+.dex-order-submit-buy:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.dex-order-submit-sell {
+  background: #F44336;
+  color: white;
+}
+
+.dex-order-submit-sell:hover:not(:disabled) {
+  background: #da190b;
+}
+
+.dex-order-summary {
+  padding: 12px;
+  background: var(--secondary-bg, #252525);
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #333);
+}
+
+.dex-order-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.dex-order-summary-row:last-child {
+  margin-bottom: 0;
+}
+
+.dex-order-summary-row span:first-child {
+  color: var(--text-secondary, #aaa);
+}
+
+.dex-order-summary-row span:last-child {
+  color: var(--text-primary, #fff);
+  font-weight: 500;
+}
+
+/* Order Input Dialog Styles */
+.dex-order-input-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dex-order-input-dialog {
+  background: var(--panel-bg, #1e1e1e);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #333);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.dex-order-input-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color, #333);
+}
+
+.dex-order-input-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary, #fff);
+}
+
+.dex-dialog-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.dex-dialog-close:hover {
+  background: var(--hover-bg, #333);
+  color: var(--text-primary, #fff);
+}
+
+.dex-order-input-form {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dex-order-input-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.dex-order-cancel {
+  padding: 12px;
+  background: var(--secondary-bg, #2a2a2a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  color: var(--text-primary, #fff);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dex-order-cancel:hover {
+  background: var(--hover-bg, #333);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dex-order-input-dialog {
+    width: 95%;
+    max-width: none;
+  }
+}
+

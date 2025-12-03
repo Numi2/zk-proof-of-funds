@@ -57,17 +57,17 @@ const StatCard: React.FC<{
 
 const EventIcon: React.FC<{ type: KeeperEventType }> = ({ type }) => {
   const icons: Record<string, string> = {
-    connected: '🔗',
-    keeper_started: '▶️',
-    keeper_stopped: '⏹️',
-    sync_started: '🔄',
-    sync_completed: '✅',
-    tachystamp_queued: '📝',
-    tachystamp_submitted: '🚀',
-    epoch_boundary: '📅',
-    warning: '⚠️',
-    error: '❌',
-    status_update: '📊',
+    connected: 'Link',
+    keeper_started: '▶',
+    keeper_stopped: '⏹',
+    sync_started: 'Sync',
+    sync_completed: '✓',
+    tachystamp_queued: 'Queue',
+    tachystamp_submitted: 'Submit',
+    epoch_boundary: 'Date',
+    warning: '⚠',
+    error: '✗',
+    status_update: 'Stats',
   };
   return <span className="keeper-event-icon">{icons[type] || '•'}</span>;
 };
@@ -194,7 +194,7 @@ export const KeeperStatusPanel: React.FC<KeeperStatusPanelProps> = ({
       {/* Header */}
       <div className="keeper-panel-header">
         <div className="keeper-panel-title">
-          <span className="keeper-panel-title-icon">🔐</span>
+          <span className="keeper-panel-title-icon">🔒</span>
           <span>PCD Keeper</span>
           <span className="keeper-panel-subtitle">Autonomous State Manager</span>
         </div>
