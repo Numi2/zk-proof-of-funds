@@ -15,6 +15,8 @@ primary_region = 'arn'
   ZKPF_PERSONHOOD_DB = "/app/data/personhood.db"
   # Mina Rail disabled - moved to separate zkpf-mina-rail crate
   MINA_RAIL_ENABLED = "0"
+  # Multi-rail manifest for Orchard (k=19) and other rail circuits
+  ZKPF_MULTI_RAIL_MANIFEST_PATH = "/app/config/multi-rail-manifest.json"
 
 [http_service]
   internal_port = 3000
@@ -25,8 +27,8 @@ primary_region = 'arn'
   processes = ['app']
 
 [[vm]]
-
-  memory = '1gb'
+  # Increased memory for loading Orchard pk.bin (~750MB)
+  memory = '2gb'
   cpus = 1
 
 [[mounts]]

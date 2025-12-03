@@ -42,10 +42,15 @@ COPY --from=snap-builder /snap/images ./snap/images
 COPY config ./config
 COPY artifacts/default ./artifacts
 
+# Copy Orchard rail artifacts (k=19, V2_ORCHARD layout, ~850MB total)
+# IMPORTANT: break_points.json is REQUIRED for proof generation
+COPY artifacts/zcash-orchard ./artifacts/zcash-orchard
+
 # Default paths expected by zkpf-backend.
 ENV ZKPF_MANIFEST_PATH=/app/artifacts/manifest.json \
     ZKPF_POLICY_PATH=/app/config/policies.json \
-    ZKPF_NULLIFIER_DB=/app/data/nullifiers.db
+    ZKPF_NULLIFIER_DB=/app/data/nullifiers.db \
+    ZKPF_MULTI_RAIL_MANIFEST_PATH=/app/config/multi-rail-manifest.json
 
 RUN mkdir -p /app/data
 
