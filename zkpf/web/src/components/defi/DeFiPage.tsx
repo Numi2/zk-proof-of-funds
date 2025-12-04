@@ -4,7 +4,6 @@ import { StarknetBridge } from './StarknetBridge';
 import { OmniBridge, BridgeProvider } from '../bridge';
 import { NearIntents } from './NearIntents';
 import { OneClickSwap } from './OneClickSwap';
-import { ThemeToggle } from '../ThemeToggle';
 import { NearProvider } from '../dex/context/NearContext';
 import { NEAR_INTENTS_CONFIG } from '../../services/swap/config';
 import './DeFiPage.css';
@@ -25,7 +24,6 @@ export const DeFiPage: React.FC = () => {
               Cross-chain proof-of-funds credentials and asset bridging
             </p>
           </div>
-          <ThemeToggle />
         </div>
 
         {/* Tabs */}

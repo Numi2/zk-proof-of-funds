@@ -264,7 +264,7 @@ export function ZKPFApp() {
 
   return (
     <div className="app-shell">
-      {!isBoundIdentityRoute && !isCredentialsRoute && !isDeFiRoute && (
+      {!isBoundIdentityRoute && !isCredentialsRoute && (
         <div className="top-bar">
           <div className="top-nav-links">
             <Link to="/wallet" className="top-nav-link">Wallet</Link>
