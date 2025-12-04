@@ -1,5 +1,5 @@
 import { Suspense, lazy, useMemo } from 'react';
-import { NavLink, Link, Route, Routes, Navigate } from 'react-router-dom';
+import { NavLink, Link, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import { ZKPassportPolicyClient } from '../api/zkpassport-policies';
 import { detectDefaultBase } from '../api/zkpf';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -26,6 +26,8 @@ const DEFAULT_BASE = detectDefaultBase();
 
 export function ZKPassportApp() {
   const zkpassportPolicyClient = useMemo(() => new ZKPassportPolicyClient(DEFAULT_BASE, true), []);
+  const location = useLocation();
+  const isZKPassportRoute = location.pathname.startsWith('/zkpassport');
 
   return (
     <div className="app-shell zkpassport-app">
@@ -45,8 +47,10 @@ export function ZKPassportApp() {
         </NavLink>
         <div className="header-top">
           <div className="brand">
-            <div className="logo">
-            </div>
+            {!isZKPassportRoute && (
+              <div className="logo">
+              </div>
+            )}
             <div>
               <p className="eyebrow">ZKPassport Integration</p>
               <h1>Zero-Knowledge Identity Verification</h1>

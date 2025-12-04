@@ -1,4 +1,26 @@
-# Zero-Knowledge Proof of Funds (zkpf)
+# zkpf web wallet
+
+with zk features Built around your it
+
+Proof-of-Funds
+Generate zero-knowledge proofs from your wallet balance. Prove minimum thresholds without revealing exact amounts or addresses.
+
+DEX Trading
+DEX trading. Perpetual futures, spot trading, and portfolio management, leveraging Orderly Network.
+
+P2P Marketplace
+Buy & Sell goods and services with Zcash. Peer-to-peer chat facilitates negotiation and payment between parties. Verify what you wish before committing.
+
+ZKPassport
+Verify your identity, age, location, and more using passport data without storing PII or revealing sensitive information. Bind your verified personhood to your wallet.
+
+Proof of real human Binding
+Cryptographically bind your wallet to verified identity. Prove you control funds as a verified individual.
+
+Cross-Chain
+Bridge assets across chains while maintaining privacy. Generate proof-of-funds credentials for multiple networks.
+
+Zero-Knowledge Proof of Funds (zkpf)
 
 A system for generating and verifying zero-knowledge proofs of funds. This allows custodians, wallet providers, and crypto holders to prove they meet minimum balance requirements without revealing exact balances or sensitive wallet information.
 
@@ -15,8 +37,7 @@ Zcash cryptographic APIs
 - Added proper nullifier derivation from decrypted notes using the Full Viewing Key
 
 
-The implementation now uses the official Zcash cryptographic primitives as specified in the protocol, ensuring full compatibility and security with the Zcash network.
-
+The implementation  uses the official Zcash cryptographic primitives as specified in the protocol, ensuring full compatibility and security with the Zcash network.
 
 
 **Credits:**  WebZjs builds on [ChainSafe's fork of librustzcash](https://github.com/ChainSafe/librustzcash), which added WASM compatibility to the official Zcash libraries. Standing on the shoulders of giants.
@@ -51,15 +72,18 @@ The core proof system is implemented in Rust, built on [Axiom's Halo2 fork](http
 
 | Crate | Purpose |
 |-------|---------|
-| `zkpf-tachyon-wallet` | Unified multi-chain wallet coordinator. Orchestrates proofs across Zcash, Mina, Starknet, Axelar, and NEAR. |
-| `zkpf-near-tee` | NEAR TEE-backed private AI agent. Wallet intelligence, proof strategy, intent parsing in confidential compute. |
 | `zkpf-mina` | Mina recursive proof hub. Wraps ProofBundles into Mina-native recursive proofs for cross-chain attestations. |
-| `zkpf-starknet-l2` | Starknet L2 rail. DeFi position proving, account abstraction, session keys. |
+| `zkpf-mina-kimchi-wrapper` | Kimchi proof wrapper for BN254 circuit compatibility. |
+| `zkpf-mina-rail` | Mina rail implementation for tachystamp aggregation. |
+| `zkpf-mina-relayer` | Mina state relayer for cross-chain attestations. |
 | `zkpf-rails-mina` | HTTP service for Mina rail endpoints. |
+| `zkpf-starknet-l2` | Starknet L2 rail. DeFi position proving, account abstraction, session keys. |
 | `zkpf-rails-starknet` | HTTP service for Starknet rail endpoints. |
-| `zkpf-rails-axelar` | Axelar GMP integration for cross-chain transport. |
+| `zkpf-axelar-gmp` | Types, encoding, and chain configurations for Axelar GMP. |
+| `zkpf-rails-axelar` | HTTP service for Axelar GMP integration and cross-chain transport. |
+| `zkpf-wallet-state` | Wallet state machine with ZK proofs. |
 
-The crate dependency graph flows: `zkpf-circuit` → `zkpf-common` → `zkpf-prover`/`zkpf-verifier` → `zkpf-backend`/`zkpf-wasm`. The Orchard crates extend this for shielded Zcash proofs. The Tachyon wallet coordinates across all rails.
+The crate dependency graph flows: `zkpf-circuit` → `zkpf-common` → `zkpf-prover`/`zkpf-verifier` → `zkpf-backend`/`zkpf-wasm`. The Orchard crates extend this for shielded Zcash proofs. Rail-specific crates provide multi-chain support.
 
 ---
 
@@ -67,18 +91,72 @@ The crate dependency graph flows: `zkpf-circuit` → `zkpf-common` → `zkpf-pro
 
 ```
 zkpf/
-├── zkpf-circuit/          # Core Halo2 zero-knowledge circuit
-├── zkpf-backend/          # HTTP API server (Axum)
-├── zkpf-prover/           # Proof generation
-├── zkpf-verifier/         # Proof verification
-├── zkpf-common/           # Shared types and utilities
-├── zkpf-wasm/             # WASM bindings for browser
-├── zkpf-test-fixtures/    # Deterministic test data
-├── zkpf-snap/             # MetaMask Snap for browser-based proofs
-├── webwallet/             # Full Zcash wallet in WebAssembly
-├── web/                   # React frontend dashboard
-├── contracts/             # Solidity smart contracts
-└── docs/                  # Detailed documentation
+├── Core Circuit & Proof System
+│   ├── zkpf-circuit/          # Core Halo2 zero-knowledge circuit
+│   ├── zkpf-prover/           # Proof generation
+│   ├── zkpf-verifier/         # Proof verification
+│   ├── zkpf-common/           # Shared types and utilities
+│   ├── zkpf-wasm/             # WASM bindings for browser
+│   ├── zkpf-test-fixtures/    # Deterministic test data
+│   └── zkpf-tools/            # CLI utilities
+│
+├── Backend & API
+│   ├── zkpf-backend/          # HTTP API server (Axum)
+│   └── api/                   # API client libraries (chat, lightwalletd, p2p)
+│
+├── Zcash Orchard Rail
+│   ├── zkpf-zcash-orchard-circuit/    # Orchard circuit extensions
+│   ├── zkpf-zcash-orchard-wallet/     # Orchard wallet integration
+│   ├── zkpf-orchard-inner/            # Inner proof types
+│   ├── zkpf-orchard-pof-circuit/      # Orchard PoF circuit
+│   └── zkpf-rails-zcash-orchard/      # Orchard rail HTTP service
+│
+├── Multi-Chain Rails
+│   ├── zkpf-mina/                     # Mina recursive proof hub
+│   │   ├── zkpf-mina-kimchi-wrapper/  # Kimchi wrapper for BN254
+│   │   ├── zkpf-mina-rail/             # Mina rail implementation
+│   │   ├── zkpf-mina-relayer/          # Mina state relayer
+│   │   └── zkpf-rails-mina/            # Mina rail HTTP service
+│   ├── zkpf-rails-starknet/            # Starknet rail HTTP service
+│   │   └── zkpf-starknet-l2/           # Starknet L2 circuit and types
+│   ├── zkpf-axelar-gmp/                # Axelar GMP types and encoding
+│   │   └── zkpf-rails-axelar/          # Axelar rail HTTP service
+│   └── zkpf-wallet-state/              # Wallet state machine with ZK proofs
+│
+├── Frontend & User Interfaces
+│   ├── web/                   # React frontend dashboard
+│   ├── zkpf-snap/             # MetaMask Snap for browser-based proofs
+│   ├── webwallet/             # Full Zcash wallet in WebAssembly
+│   ├── zkpf-chat/             # P2P chat application (frontend + backend)
+│   └── zpkf-orderly/          # Orderly Network DEX integration
+│
+├── Smart Contracts
+│   ├── contracts/
+│   │   ├── AttestationRegistry.sol
+│   │   ├── WalletCommitmentRegistry.sol
+│   │   ├── BalanceSnapshotPublisher.sol
+│   │   ├── axelar/            # Axelar GMP contracts
+│   │   ├── mina/              # Mina zkApp contracts
+│   │   ├── mina-bridge/       # Mina bridge contracts
+│   │   ├── p2p/               # P2P marketplace contracts
+│   │   ├── ramp/              # Ramp protocol contracts
+│   │   └── starknet/          # Starknet Cairo contracts
+│
+├── Supporting Infrastructure
+│   ├── config/                # Configuration files (policies, manifests)
+│   ├── artifacts/             # Circuit artifacts (params, keys, manifests)
+│   ├── data/                  # Persistent data (nullifiers.db, personhood.db)
+│   ├── vendor/                # Forked dependencies (halo2-axiom, halo2-base, etc.)
+│   ├── docs/                  # Documentation
+│   ├── experiments/           # Experimental crates (not in main workspace)
+│   ├── xtask/                 # Build automation
+│   ├── Dockerfile             # Container configuration
+│   ├── fly.toml               # Fly.io deployment config
+│   └── vercel.json            # Vercel deployment config
+│
+└── Additional Features
+    ├── zkpf-uri-payment/      # URI-Encapsulated Payments (ZIP 324)
+    └── validate_attestation.py # Attestation validation script
 ```
 
 ## Key Components
@@ -89,7 +167,9 @@ The Halo2 zero-knowledge circuit. Verifies ECDSA signatures from allow-listed cu
 
 ### Backend API (`zkpf-backend/`)
 
-Axum-based REST server with the following endpoints:
+Axum-based REST server. The `api/` directory contains client libraries for chat, lightwalletd, and P2P functionality.
+
+Endpoints:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -114,15 +194,15 @@ The proof-of-funds snap described above. Manages policy selection, funding sourc
 
 ### WebWallet (`webwallet/`)
 
-The web Zcash wallet described above. Four Rust crates compiled to WASM, a React frontend (`web-wallet/`), and a companion snap for secure PCZT signing (`snap/`). The first browser-based Zcash wallet with full shielded transaction support.
+Zcash wallet implementation in WebAssembly. Four Rust crates compiled to WASM with a React frontend. Supports shielded transactions and note management.
 
-### Tachyon Wallet (`zkpf-tachyon-wallet/`)
+### Chat Application (`zkpf-chat/`)
 
-The unified multi-chain wallet coordinator described above. Orchestrates proofs across Zcash, Mina, Starknet, Axelar, and NEAR. Provides proof aggregation, cross-chain attestation transport, and TEE-backed wallet intelligence.
+Peer-to-peer chat application for P2P marketplace negotiations. Includes browser WASM backend, CLI, and React frontend.
 
-### NEAR TEE Agent (`zkpf-near-tee/`)
+### Orderly Network Integration (`zpkf-orderly/`)
 
-The TEE-backed private AI agent described above. Runs wallet intelligence, proof strategy recommendations, and intent parsing in Trusted Execution Environments. Provides privacy-preserving insights without exposing sensitive wallet data.
+DEX trading integration with Orderly Network. Supports perpetual futures, spot trading, and portfolio management.
 
 ### Smart Contracts (`contracts/`)
 
@@ -159,13 +239,19 @@ The holder tag is deterministic per message—the same user signing the same pol
 ## Documentation
 
 - **[Main README](zkpf/README.md)** — Comprehensive technical documentation
-- **[Tachyon Architecture](zkpf/docs/tachyon-architecture.md)** — Multi-chain wallet architecture and design
-- **[MetaMask Snap](zkpf/zkpf-snap/README.md)** — Snap installation, usage, and dapp integration
-- **[WebWallet API](zkpf/webwallet/readme.md)** — Complete WebWallet class documentation
+- **[Architecture](zkpf/architecture.md)** — System architecture and design patterns
+- **[Tachyon Architecture](zkpf/docs/tachyon-architecture.md)** — Multi-chain wallet architecture
+- **[MetaMask Snap](zkpf/zkpf-snap/README.md)** — Snap installation and usage
+- **[WebWallet API](zkpf/webwallet/readme.md)** — WebWallet class documentation
 - **[Mina Rail](zkpf/docs/mina-rail.md)** — Mina recursive proof hub specification
+- **[Mina Roadmap](zkpf/docs/mina-roadmap.md)** — Mina integration roadmap
 - **[Starknet Rail](zkpf/docs/starknet-rail.md)** — Starknet L2 rail documentation
+- **[Axelar GMP](zkpf/docs/axelar-gmp.md)** — Axelar General Message Passing integration
 - **[On-Chain Design](zkpf/docs/onchain-proof-of-funds.md)** — On-chain rail specification
+- **[URI Payments](zkpf/docs/uri-encapsulated-payments.md)** — URI-Encapsulated Payments (ZIP 324)
+- **[Mina Bridge](zkpf/docs/mina-bridge.md)** — Mina bridge implementation
 - **[Web Console](zkpf/web/README.md)** — Frontend documentation
+
 
 ## Development
 

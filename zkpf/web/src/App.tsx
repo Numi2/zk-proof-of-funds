@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ComponentType } from 'react';
+import { Suspense, lazy, useState, useEffect, type ComponentType } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { RouteErrorBoundary } from './components/ErrorBoundary';
 import './App.css';
@@ -64,19 +64,62 @@ const DexApp = lazyWithErrorHandling(
   'DexApp'
 );
 
+function LoadingFallback() {
+  const [showSlowWarning, setShowSlowWarning] = useState(false);
+
+  useEffect(() => {
+    // Show warning if loading takes more than 5 seconds
+    const timer = setTimeout(() => {
+      setShowSlowWarning(true);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <section className="card">
+        <p className="eyebrow">Loading</p>
+        <p className="muted small">Loading application modules…</p>
+        {showSlowWarning && (
+          <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <p style={{ color: 'var(--accent-primary)' }}>
+              ⚠️ Loading is taking longer than expected.
+            </p>
+            <p style={{ marginTop: '0.5rem' }}>
+              This might be due to:
+            </p>
+            <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem', textAlign: 'left' }}>
+              <li>Slow network connection</li>
+              <li>Large JavaScript bundles downloading</li>
+              <li>Browser compatibility issues</li>
+            </ul>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                background: 'var(--accent-primary)',
+                color: 'var(--bg-primary)',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+              }}
+            >
+              Reload Page
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function App() {
   return (
     <RouteErrorBoundary>
-      <Suspense
-        fallback={(
-          <div className="app-shell">
-            <section className="card">
-              <p className="eyebrow">Loading</p>
-              <p className="muted small">Preparing the console…</p>
-            </section>
-          </div>
-        )}
-      >
+      <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route
             path="/zkpassport/*"
