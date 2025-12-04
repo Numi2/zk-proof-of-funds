@@ -802,7 +802,7 @@ export const OneClickSwap: React.FC = () => {
       </div>
 
       {/* Supported Chains */}
-      <div className="supported-chains">
+      {/* <div className="supported-chains">
         <h4>Supported Chains</h4>
         <div className="chain-grid">
           {Array.from(new Set(tokens.map(t => t.blockchain))).filter(Boolean).slice(0, 12).map((chain) => {
@@ -815,7 +815,7 @@ export const OneClickSwap: React.FC = () => {
             );
           })}
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };

@@ -109,30 +109,26 @@ export default defineConfig({
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 1000,
+    // Ensure proper module format for production
+    commonjsOptions: {
+      // Suppress warnings about ESM to CommonJS compilation for external dependencies
+      transformMixedEsModules: true,
+    },
+    // Improve module resolution to handle circular dependencies
+    modulePreload: {
+      polyfill: true,
+    },
     rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          // Split large vendor libraries
-          if (id.includes('node_modules')) {
-            if (id.includes('@orderly.network')) {
-              return 'orderly';
-            }
-            if (id.includes('@walletconnect') || id.includes('@reown')) {
-              return 'wallet-connect';
-            }
-            if (id.includes('near-api-js')) {
-              return 'near-sdk';
-            }
-            // Split WASM-related modules
-            if (id.includes('webwallet') || id.includes('wasm')) {
-              return 'wasm';
-            }
-            // Default vendor chunk
-            return 'vendor';
-          }
-        },
-      },
+      // Removed manual chunking to avoid initialization order issues
+      // Vite will handle automatic chunking based on size and dependencies
       maxParallelFileOps: 2, // Reduce concurrent operations
+      onwarn(warning, warn) {
+        // Suppress warnings about ESM/CommonJS for external CDN scripts if needed
+        if (warning.code === 'MODULE_LEVEL_DIRECTIVE') {
+          return;
+        }
+        warn(warning);
+      },
     },
   },
 });

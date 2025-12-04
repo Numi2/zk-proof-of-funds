@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   getQuotes as fetchRealTimeQuotes,
   fetchPrices,
@@ -10,25 +10,7 @@ import {
 } from '../../services/near-intents-quotes';
 import { useCredentialsStore } from '../credentials/useCredentialsStore';
 import type { Credential } from '../credentials/CredentialCard';
-import { NearContext, type NearContextValue } from '../dex/context/NearContext';
-import {
-  IntentsSDKService,
-  FeeExceedsAmountError,
-  MinWithdrawalAmountError,
-  TrustlineNotFoundError,
-  TokenNotFoundInDestinationChainError,
-} from '../../services/intents-sdk-service';
-import { chainTokenToAssetId } from '../../services/asset-id-mapper';
-import { NEAR_INTENTS_CONFIG } from '../../services/swap/config';
 import './NearIntents.css';
-
-/**
- * Safe hook to get NEAR context without throwing if provider is not available
- */
-function useNearSafe(): NearContextValue | null {
-  const context = useContext(NearContext);
-  return context;
-}
 
 // Intent types
 type IntentStatus = 'pending' | 'matching' | 'executing' | 'completed' | 'failed' | 'expired';
@@ -74,22 +56,12 @@ const SUPPORTED_CHAINS: ChainToken[] = [
 ];
 
 export const NearIntents: React.FC = () => {
-  // Mode state
-  const [mode, setMode] = useState<'swap' | 'withdrawal'>('swap');
-  
   // Form state
-  const [sourceToken, setSourceToken] = useState<ChainToken>(SUPPORTED_CHAINS[1]); // USDC on NEAR
-  const [targetToken, setTargetToken] = useState<ChainToken>(SUPPORTED_CHAINS[9]); // ZEC
+  const [sourceToken, setSourceToken] = useState<ChainToken>(SUPPORTED_CHAINS[0]);
+  const [targetToken, setTargetToken] = useState<ChainToken>(SUPPORTED_CHAINS[4]);
   const [sourceAmount, setSourceAmount] = useState('');
   const [slippageTolerance, setSlippageTolerance] = useState(0.5);
   const [requireZkProof, setRequireZkProof] = useState(false);
-  
-  // Withdrawal state
-  const [withdrawalAsset, setWithdrawalAsset] = useState<ChainToken>(SUPPORTED_CHAINS[1]); // USDC on NEAR
-  const [withdrawalAmount, setWithdrawalAmount] = useState('');
-  const [destinationAddress, setDestinationAddress] = useState('');
-  const [withdrawalFeeEstimation, setWithdrawalFeeEstimation] = useState<{ amount: bigint; formatted: string } | null>(null);
-  const [isEstimatingFee, setIsEstimatingFee] = useState(false);
   
   // UI state
   const [quotes, setQuotes] = useState<IntentQuote[]>([]);
@@ -101,46 +73,19 @@ export const NearIntents: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [intentType, setIntentType] = useState<IntentType>('swap');
   const [selectedCredentialId, setSelectedCredentialId] = useState<string | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'source' | 'target' | null>(null);
+  
+  // Refs for click outside detection
+  const sourceDropdownRef = useRef<HTMLDivElement>(null);
+  const targetDropdownRef = useRef<HTMLDivElement>(null);
+  const sourceSelectorRef = useRef<HTMLButtonElement>(null);
+  const targetSelectorRef = useRef<HTMLButtonElement>(null);
+  const sourceInputRef = useRef<HTMLInputElement>(null);
+  const targetInputRef = useRef<HTMLInputElement>(null);
 
   // Token prices state
   const [prices, setPrices] = useState<Record<string, { usd: number; usd_24h_change?: number }>>({});
   const [lastPriceUpdate, setLastPriceUpdate] = useState<number>(0);
-
-  // NEAR wallet connection - safely handle if provider is not available
-  const nearContext = useNearSafe();
-  const isConnected = nearContext?.isConnected ?? false;
-  const accountId = nearContext?.accountId ?? null;
-  const nearService = nearContext?.service ?? null;
-  const connectWallet = nearContext?.connect ?? (async () => {
-    throw new Error('NEAR wallet connection not available. Please ensure NearProvider is set up.');
-  });
-  
-  // Intents SDK service instance
-  const intentsServiceRef = useRef<IntentsSDKService | null>(null);
-  
-  // Initialize Intents SDK service when wallet is connected
-  useEffect(() => {
-    if (isConnected && accountId && nearContext) {
-      const initializeService = async () => {
-        try {
-          // Initialize Intents SDK service
-          const intentsService = new IntentsSDKService({
-            nearContext,
-            accountId,
-          });
-          await intentsService.initialize();
-          intentsServiceRef.current = intentsService;
-        } catch (err) {
-          console.error('Failed to initialize Intents SDK service:', err);
-          intentsServiceRef.current = null;
-        }
-      };
-      
-      initializeService();
-    } else {
-      intentsServiceRef.current = null;
-    }
-  }, [isConnected, accountId, nearContext]);
 
   // ZKPF credentials (already verified via zkpf-backend)
   const { getActiveCredentials } = useCredentialsStore();
@@ -171,79 +116,30 @@ export const NearIntents: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Poll intent status for active intents
+  // Auto-refresh intents
   useEffect(() => {
-    if (!intentsServiceRef.current || intents.length === 0) {
-      return;
-    }
-
-    const pollIntentStatus = async () => {
-      const intentsService = intentsServiceRef.current;
-      if (!intentsService) return;
-
-      // Poll status for intents that are still active
-      const activeIntents = intents.filter(
-        intent => ['pending', 'matching', 'executing'].includes(intent.status)
-      );
-
-      if (activeIntents.length === 0) return;
-
-      for (const intent of activeIntents) {
-        try {
-          const status = await intentsService.getIntentStatus({
-            intentHash: intent.id,
-          });
-          
-          // Map SDK status to our UI status
-          let newStatus: IntentStatus;
-          switch (status.status) {
-            case 'PENDING':
-            case 'TX_BROADCASTED':
-              newStatus = 'matching';
-              break;
-            case 'SETTLED':
-              newStatus = 'completed';
-              break;
-            case 'NOT_FOUND_OR_NOT_VALID':
-              newStatus = 'failed';
-              break;
-            default:
-              newStatus = intent.status;
-          }
-
-          // Update intent with new status
-          setIntents(prev => prev.map(i => {
-            if (i.id === intent.id) {
-              const updated: Intent = {
-                ...i,
-                status: newStatus,
-                settledAt: status.status === 'SETTLED' ? Date.now() : i.settledAt,
-                txHash: status.txHash || i.txHash,
-              };
-
-              // If completed, use the expected amount as received amount
-              if (status.status === 'SETTLED') {
-                updated.receivedAmount = intent.minTargetAmount;
-              }
-
-              return updated;
-            }
-            return i;
-          }));
-        } catch (err) {
-          console.error(`Failed to poll status for intent ${intent.id}:`, err);
+    const interval = setInterval(() => {
+      setIntents(prev => prev.map(intent => {
+        if (intent.status === 'matching' && Math.random() > 0.7) {
+          // Use the actual solver from the selected quote if available
+          const solver = quotes[0]?.solver || intent.solver;
+          return { ...intent, status: 'executing' as IntentStatus, solver };
         }
-      }
-    };
-
-    // Poll every 5 seconds for active intents
-    const interval = setInterval(pollIntentStatus, 5000);
-    
-    // Initial poll
-    pollIntentStatus();
+        if (intent.status === 'executing' && Math.random() > 0.5) {
+          return {
+            ...intent,
+            status: 'completed' as IntentStatus,
+            receivedAmount: intent.minTargetAmount,
+            settledAt: Date.now(),
+            txHash: '0x' + Math.random().toString(16).slice(2, 66),
+          };
+        }
+        return intent;
+      }));
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [intents, intentsServiceRef.current]);
+  }, [quotes]);
 
   // Fetch quotes when amount changes - using real-time data
   const fetchQuotes = useCallback(async () => {
@@ -288,20 +184,48 @@ export const NearIntents: React.FC = () => {
     return () => clearInterval(interval);
   }, [sourceAmount, fetchQuotes]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      if (openDropdown === 'source') {
+        if (
+          sourceDropdownRef.current &&
+          !sourceDropdownRef.current.contains(target) &&
+          sourceSelectorRef.current &&
+          !sourceSelectorRef.current.contains(target) &&
+          sourceInputRef.current &&
+          !sourceInputRef.current.contains(target)
+        ) {
+          setOpenDropdown(null);
+        }
+      } else if (openDropdown === 'target') {
+        if (
+          targetDropdownRef.current &&
+          !targetDropdownRef.current.contains(target) &&
+          targetSelectorRef.current &&
+          !targetSelectorRef.current.contains(target) &&
+          targetInputRef.current &&
+          !targetInputRef.current.contains(target)
+        ) {
+          setOpenDropdown(null);
+        }
+      }
+    };
+
+    if (openDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [openDropdown]);
+
   // Submit intent
   const handleSubmitIntent = async () => {
     if (!selectedQuote || !sourceAmount) {
       setError('Please enter an amount and select a quote');
-      return;
-    }
-
-    if (!isConnected || !accountId) {
-      setError('Please connect your NEAR wallet to submit an intent');
-      try {
-        await connectWallet();
-      } catch (err) {
-        setError('Failed to connect wallet. Please try again.');
-      }
       return;
     }
 
@@ -310,41 +234,17 @@ export const NearIntents: React.FC = () => {
       return;
     }
 
-    if (!intentsServiceRef.current) {
-      setError('Intent service not initialized. Please wait a moment and try again.');
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
-      const intentsService = intentsServiceRef.current;
+      // Simulate intent creation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       const minAmount = parseFloat(selectedQuote.expectedAmount) * (1 - slippageTolerance / 100);
       
-      // Execute swap intent using SDK
-      const result = await intentsService.executeSwapIntent({
-        sourceToken,
-        targetToken,
-        sourceAmount,
-        minTargetAmount: minAmount.toFixed(6),
-        recipient: accountId,
-      });
-
-      // Wait for intent settlement to get transaction hash
-      let intentTx;
-      try {
-        intentTx = await intentsService.waitForIntentSettlement({
-          intentHash: result.intentHash,
-        });
-      } catch (err) {
-        console.warn('Failed to wait for intent settlement:', err);
-        // Continue anyway - we have the intent hash
-      }
-
-      // Create local intent record
       const newIntent: Intent = {
-        id: result.intentHash,
+        id: `intent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         type: intentType,
         status: 'matching',
         sourceToken,
@@ -352,7 +252,7 @@ export const NearIntents: React.FC = () => {
         sourceAmount,
         minTargetAmount: minAmount.toFixed(6),
         createdAt: Date.now(),
-        expiresAt: Date.now() + NEAR_INTENTS_CONFIG.intents.defaultDeadlineSeconds * 1000,
+        expiresAt: Date.now() + 300000, // 5 minutes
         zkProofRequired: requireZkProof,
         proofCommitment: requireZkProof && selectedCredential ? selectedCredential.proofHash : undefined,
         credentialId: selectedCredential?.id,
@@ -360,7 +260,6 @@ export const NearIntents: React.FC = () => {
         inputUsd: selectedQuote.inputUsd,
         outputUsd: selectedQuote.outputUsd,
         solver: selectedQuote.solver,
-        txHash: intentTx?.hash,
       };
 
       setIntents(prev => [newIntent, ...prev]);
@@ -368,7 +267,6 @@ export const NearIntents: React.FC = () => {
       setQuotes([]);
       setSelectedQuote(null);
     } catch (err) {
-      console.error('Failed to submit intent:', err);
       setError(err instanceof Error ? err.message : 'Failed to submit intent');
     } finally {
       setIsLoading(false);
@@ -382,132 +280,6 @@ export const NearIntents: React.FC = () => {
         ? { ...i, status: 'expired' as IntentStatus } 
         : i
     ));
-  };
-
-  // Estimate withdrawal fee
-  const handleEstimateWithdrawalFee = async () => {
-    if (!intentsServiceRef.current || !withdrawalAmount || !destinationAddress) {
-      return;
-    }
-
-    setIsEstimatingFee(true);
-    setError(null);
-
-    try {
-      const intentsService = intentsServiceRef.current;
-      
-      const assetId = chainTokenToAssetId(withdrawalAsset);
-      const amount = BigInt(
-        Math.floor(parseFloat(withdrawalAmount) * Math.pow(10, withdrawalAsset.decimals))
-      );
-
-      const feeEstimation = await intentsService.estimateWithdrawalFee({
-        assetId,
-        amount,
-        destinationAddress,
-        feeInclusive: false,
-      });
-
-      // Format fee for display
-      const feeAmount = feeEstimation.amount;
-      const feeFormatted = (Number(feeAmount) / Math.pow(10, withdrawalAsset.decimals)).toFixed(6);
-
-      setWithdrawalFeeEstimation({
-        amount: feeAmount,
-        formatted: `${feeFormatted} ${withdrawalAsset.token}`,
-      });
-    } catch (err) {
-      console.error('Failed to estimate withdrawal fee:', err);
-      
-      // Handle SDK-specific errors
-      if (err instanceof FeeExceedsAmountError) {
-        setError(`Fee (${err.feeEstimation.amount}) exceeds withdrawal amount (${err.amount}). Please increase the withdrawal amount.`);
-      } else if (err instanceof MinWithdrawalAmountError) {
-        setError(`Amount below minimum withdrawal limit. Minimum: ${err.minAmount}, Requested: ${err.requestedAmount}`);
-      } else if (err instanceof TrustlineNotFoundError) {
-        setError(`Trustline not found for token ${err.assetId} on Stellar. The destination address must have a trustline for this token before withdrawal.`);
-      } else if (err instanceof TokenNotFoundInDestinationChainError) {
-        setError(`Token ${err.token} was not found on ${err.destinationChain}.`);
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to estimate withdrawal fee');
-      }
-    } finally {
-      setIsEstimatingFee(false);
-    }
-  };
-
-  // Process withdrawal
-  const handleProcessWithdrawal = async () => {
-    if (!intentsServiceRef.current || !withdrawalAmount || !destinationAddress) {
-      setError('Please fill in all withdrawal fields');
-      return;
-    }
-
-    if (!isConnected || !accountId) {
-      setError('Please connect your NEAR wallet to process withdrawal');
-      try {
-        await connectWallet();
-      } catch (err) {
-        setError('Failed to connect wallet. Please try again.');
-      }
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const intentsService = intentsServiceRef.current;
-      
-      const assetId = chainTokenToAssetId(withdrawalAsset);
-      const amount = BigInt(
-        Math.floor(parseFloat(withdrawalAmount) * Math.pow(10, withdrawalAsset.decimals))
-      );
-
-      const result = await intentsService.processWithdrawal({
-        assetId,
-        amount,
-        destinationAddress,
-        feeInclusive: false,
-      });
-
-      // Create local intent record for withdrawal
-      const newIntent: Intent = {
-        id: result.intentHash,
-        type: 'bridge',
-        status: 'matching',
-        sourceToken: withdrawalAsset,
-        targetToken: withdrawalAsset, // Same token, different chain
-        sourceAmount: withdrawalAmount,
-        minTargetAmount: withdrawalAmount, // Will be adjusted by fee
-        createdAt: Date.now(),
-        expiresAt: Date.now() + NEAR_INTENTS_CONFIG.intents.defaultDeadlineSeconds * 1000,
-        zkProofRequired: false,
-        txHash: result.intentTx.hash,
-      };
-
-      setIntents(prev => [newIntent, ...prev]);
-      setWithdrawalAmount('');
-      setDestinationAddress('');
-      setWithdrawalFeeEstimation(null);
-    } catch (err) {
-      console.error('Failed to process withdrawal:', err);
-      
-      // Handle SDK-specific errors
-      if (err instanceof FeeExceedsAmountError) {
-        setError(`Fee exceeds withdrawal amount. Please increase the withdrawal amount or use feeInclusive mode.`);
-      } else if (err instanceof MinWithdrawalAmountError) {
-        setError(`Amount below minimum withdrawal limit. Minimum: ${err.minAmount}, Requested: ${err.requestedAmount}`);
-      } else if (err instanceof TrustlineNotFoundError) {
-        setError(`Trustline not found for token ${err.assetId} on Stellar. The destination address must have a trustline for this token before withdrawal.`);
-      } else if (err instanceof TokenNotFoundInDestinationChainError) {
-        setError(`Token ${err.token} was not found on ${err.destinationChain}.`);
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to process withdrawal');
-      }
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // Get current price for display
@@ -549,51 +321,17 @@ export const NearIntents: React.FC = () => {
       {/* Intent Builder */}
       <div className="intent-builder">
         <div className="builder-header">
-          <div className="mode-tabs">
+          <div className="intent-type-tabs">
             <button 
-              className={`mode-tab ${mode === 'swap' ? 'active' : ''}`}
-              onClick={() => setMode('swap')}
+              className={`type-tab ${intentType === 'swap' ? 'active' : ''}`}
+              onClick={() => setIntentType('swap')}
             >
               <span className="tab-icon">⇄</span>
               Swap
             </button>
-            <button 
-              className={`mode-tab ${mode === 'withdrawal' ? 'active' : ''}`}
-              onClick={() => setMode('withdrawal')}
-            >
-              <span className="tab-icon">↓</span>
-              Withdraw
-            </button>
           </div>
-          {mode === 'swap' && (
-            <div className="intent-type-tabs">
-              <button 
-                className={`type-tab ${intentType === 'swap' ? 'active' : ''}`}
-                onClick={() => setIntentType('swap')}
-              >
-                <span className="tab-icon">⇄</span>
-                Swap
-              </button>
-              <button 
-                className={`type-tab ${intentType === 'bridge' ? 'active' : ''}`}
-                onClick={() => setIntentType('bridge')}
-              >
-                Bridge
-              </button>
-              <button 
-                className={`type-tab ${intentType === 'zkpof' ? 'active' : ''}`}
-                onClick={() => setIntentType('zkpof')}
-              >
-                <span className="tab-icon">ZK</span>
-                ZK Transfer
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Swap Form */}
-        {mode === 'swap' && (
-          <>
         {/* Source Input */}
         <div className="token-input-container source">
           <div className="input-label">
@@ -604,13 +342,26 @@ export const NearIntents: React.FC = () => {
           </div>
           <div className="token-input">
             <input
+              ref={sourceInputRef}
               type="text"
               value={sourceAmount}
               onChange={(e) => setSourceAmount(e.target.value.replace(/[^0-9.]/g, ''))}
               placeholder="0.00"
               className="amount-input"
+              onFocus={() => {
+                if (openDropdown !== 'source') {
+                  setOpenDropdown('source');
+                }
+              }}
             />
-            <button className="token-selector">
+            <button 
+              ref={sourceSelectorRef}
+              className="token-selector"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenDropdown(openDropdown === 'source' ? null : 'source');
+              }}
+            >
               <span className="token-icon">{sourceToken.icon}</span>
               <span className="token-name">{sourceToken.token}</span>
               <span className="chain-tag">{sourceToken.chainName}</span>
@@ -618,22 +369,30 @@ export const NearIntents: React.FC = () => {
                 <path d="M7 10l5 5 5-5z"/>
               </svg>
             </button>
-            <div className="token-dropdown">
-              {SUPPORTED_CHAINS.map((chain, idx) => (
-                <button
-                  key={idx}
-                  className={`dropdown-item ${chain.chainId === sourceToken.chainId && chain.token === sourceToken.token ? 'selected' : ''}`}
-                  onClick={() => setSourceToken(chain)}
-                >
-                  <span className="token-icon">{chain.icon}</span>
-                  <span className="token-name">{chain.token}</span>
-                  <span className="chain-tag">{chain.chainName}</span>
-                  {prices[chain.token]?.usd && (
-                    <span className="token-price">{formatUsd(prices[chain.token].usd)}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+            {openDropdown === 'source' && (
+              <div 
+                ref={sourceDropdownRef}
+                className="token-dropdown open"
+              >
+                {SUPPORTED_CHAINS.map((chain, idx) => (
+                  <button
+                    key={idx}
+                    className={`dropdown-item ${chain.chainId === sourceToken.chainId && chain.token === sourceToken.token ? 'selected' : ''}`}
+                    onClick={() => {
+                      setSourceToken(chain);
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <span className="token-icon">{chain.icon}</span>
+                    <span className="token-name">{chain.token}</span>
+                    <span className="chain-tag">{chain.chainName}</span>
+                    {prices[chain.token]?.usd && (
+                      <span className="token-price">{formatUsd(prices[chain.token].usd)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -665,13 +424,26 @@ export const NearIntents: React.FC = () => {
           </div>
           <div className="token-input">
             <input
+              ref={targetInputRef}
               type="text"
               value={selectedQuote?.expectedAmount || ''}
               placeholder="0.00"
               className="amount-input"
               readOnly
+              onFocus={() => {
+                if (openDropdown !== 'target') {
+                  setOpenDropdown('target');
+                }
+              }}
             />
-            <button className="token-selector">
+            <button 
+              ref={targetSelectorRef}
+              className="token-selector"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenDropdown(openDropdown === 'target' ? null : 'target');
+              }}
+            >
               <span className="token-icon">{targetToken.icon}</span>
               <span className="token-name">{targetToken.token}</span>
               <span className="chain-tag">{targetToken.chainName}</span>
@@ -679,22 +451,30 @@ export const NearIntents: React.FC = () => {
                 <path d="M7 10l5 5 5-5z"/>
               </svg>
             </button>
-            <div className="token-dropdown">
-              {SUPPORTED_CHAINS.filter(c => !(c.chainId === sourceToken.chainId && c.token === sourceToken.token)).map((chain, idx) => (
-                <button
-                  key={idx}
-                  className={`dropdown-item ${chain.chainId === targetToken.chainId && chain.token === targetToken.token ? 'selected' : ''}`}
-                  onClick={() => setTargetToken(chain)}
-                >
-                  <span className="token-icon">{chain.icon}</span>
-                  <span className="token-name">{chain.token}</span>
-                  <span className="chain-tag">{chain.chainName}</span>
-                  {prices[chain.token]?.usd && (
-                    <span className="token-price">{formatUsd(prices[chain.token].usd)}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+            {openDropdown === 'target' && (
+              <div 
+                ref={targetDropdownRef}
+                className="token-dropdown open"
+              >
+                {SUPPORTED_CHAINS.filter(c => !(c.chainId === sourceToken.chainId && c.token === sourceToken.token)).map((chain, idx) => (
+                  <button
+                    key={idx}
+                    className={`dropdown-item ${chain.chainId === targetToken.chainId && chain.token === targetToken.token ? 'selected' : ''}`}
+                    onClick={() => {
+                      setTargetToken(chain);
+                      setOpenDropdown(null);
+                    }}
+                  >
+                    <span className="token-icon">{chain.icon}</span>
+                    <span className="token-name">{chain.token}</span>
+                    <span className="chain-tag">{chain.chainName}</span>
+                    {prices[chain.token]?.usd && (
+                      <span className="token-price">{formatUsd(prices[chain.token].usd)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -730,25 +510,25 @@ export const NearIntents: React.FC = () => {
           </div>
         )}
 
-            {/* Advanced Options (Swap Mode Only) */}
-            <button 
-              className="advanced-toggle"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-            >
-              <span>Advanced Options</span>
-              <svg 
-                width="16" 
-                height="16" 
-                viewBox="0 0 24 24" 
-                fill="currentColor"
-                style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none' }}
-              >
-                <path d="M7 10l5 5 5-5z"/>
-              </svg>
-            </button>
+        {/* Advanced Options */}
+        <button 
+          className="advanced-toggle"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+        >
+          <span>Advanced Options</span>
+          <svg 
+            width="16" 
+            height="16" 
+            viewBox="0 0 24 24" 
+            fill="currentColor"
+            style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none' }}
+          >
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+        </button>
 
-            {showAdvanced && (
-              <div className="advanced-options">
+        {showAdvanced && (
+          <div className="advanced-options">
             <div className="option-row">
               <label>Slippage Tolerance</label>
               <div className="slippage-buttons">
@@ -763,7 +543,7 @@ export const NearIntents: React.FC = () => {
                 ))}
               </div>
             </div>
-            <div className="option-row">
+            {/* <div className="option-row">
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -774,9 +554,9 @@ export const NearIntents: React.FC = () => {
                 <span>Require ZK Proof-of-Funds</span>
               </label>
               {requireZkProof && (
-                <span className="zk-badge">ZK Privacy-preserving</span>
+                <span className="zk-badge">🔐 Privacy-preserving</span>
               )}
-            </div>
+            </div> */}
             {requireZkProof && (
               <div className="option-row zkpf-credential-row">
                 {activeCredentials.length === 0 ? (
@@ -812,117 +592,6 @@ export const NearIntents: React.FC = () => {
               </div>
             )}
           </div>
-            )}
-
-        {/* Wallet Connection Prompt */}
-        {!isConnected && (
-          <div className="wallet-connection-prompt">
-            <div className="prompt-content">
-              <span className="prompt-icon">🔐</span>
-              <div className="prompt-text">
-                <strong>Connect your NEAR wallet</strong>
-                <p>You need to connect your NEAR wallet to submit intents</p>
-              </div>
-              <button
-                onClick={async () => {
-                  try {
-                    await connectWallet();
-                  } catch (err) {
-                    setError('Failed to connect wallet. Please try again.');
-                  }
-                }}
-                className="connect-wallet-btn"
-              >
-                Connect Wallet
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Withdrawal Form */}
-        {(mode as string) === 'withdrawal' && (
-          <>
-            {/* Withdrawal Asset Input */}
-            <div className="token-input-container source">
-              <div className="input-label">
-                <span>Asset to withdraw</span>
-              </div>
-              <div className="token-input">
-                <input
-                  type="text"
-                  value={withdrawalAmount}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/[^0-9.]/g, '');
-                    setWithdrawalAmount(value);
-                    setWithdrawalFeeEstimation(null);
-                  }}
-                  placeholder="0.00"
-                  className="amount-input"
-                />
-                <button className="token-selector">
-                  <span className="token-icon">{withdrawalAsset.icon}</span>
-                  <span className="token-name">{withdrawalAsset.token}</span>
-                  <span className="chain-tag">{withdrawalAsset.chainName}</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M7 10l5 5 5-5z"/>
-                  </svg>
-                </button>
-                <div className="token-dropdown">
-                  {SUPPORTED_CHAINS.filter(c => c.chainId === 'near').map((chain, idx) => (
-                    <button
-                      key={idx}
-                      className={`dropdown-item ${chain.chainId === withdrawalAsset.chainId && chain.token === withdrawalAsset.token ? 'selected' : ''}`}
-                      onClick={() => setWithdrawalAsset(chain)}
-                    >
-                      <span className="token-icon">{chain.icon}</span>
-                      <span className="token-name">{chain.token}</span>
-                      <span className="chain-tag">{chain.chainName}</span>
-                      {prices[chain.token]?.usd && (
-                        <span className="token-price">{formatUsd(prices[chain.token].usd)}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Destination Address Input */}
-            <div className="token-input-container dest">
-              <div className="input-label">
-                <span>Destination address</span>
-              </div>
-              <div className="token-input">
-                <input
-                  type="text"
-                  value={destinationAddress}
-                  onChange={(e) => setDestinationAddress(e.target.value)}
-                  placeholder="0x... or bc1... or other chain address"
-                  className="amount-input"
-                />
-              </div>
-            </div>
-
-            {/* Fee Estimation */}
-            {withdrawalFeeEstimation && (
-              <div className="quote-details">
-                <div className="quote-row">
-                  <span className="quote-label">Withdrawal Fee</span>
-                  <span className="quote-value fee">{withdrawalFeeEstimation.formatted}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Estimate Fee Button */}
-            {withdrawalAmount && parseFloat(withdrawalAmount) > 0 && destinationAddress && (
-              <button
-                onClick={handleEstimateWithdrawalFee}
-                disabled={isEstimatingFee || !isConnected}
-                className="secondary-btn"
-              >
-                {isEstimatingFee ? 'Estimating...' : 'Estimate Fee'}
-              </button>
-            )}
-          </>
         )}
 
         {/* Error */}
@@ -933,43 +602,25 @@ export const NearIntents: React.FC = () => {
           </div>
         )}
 
-            {/* Submit Button */}
-            <button
-              onClick={handleSubmitIntent}
-              disabled={isLoading || !sourceAmount || !selectedQuote || !isConnected}
-              className="submit-intent-btn"
-              title={!isConnected ? 'Connect your NEAR wallet to submit intents' : undefined}
-            >
-              {isLoading ? (
-                <span className="loading-spinner" />
-              ) : (
-                <>
-                  <span>Submit Intent</span>
-                  {selectedQuote && (
-                    <span className="btn-sub">
-                      via {selectedQuote.solver.name}
-                    </span>
-                  )}
-                </>
+        {/* Submit Button */}
+        <button
+          onClick={handleSubmitIntent}
+          disabled={isLoading || !sourceAmount || !selectedQuote}
+          className="submit-intent-btn"
+        >
+          {isLoading ? (
+            <span className="loading-spinner" />
+          ) : (
+            <>
+              <span>Submit Intent</span>
+              {selectedQuote && (
+                <span className="btn-sub">
+                  via {selectedQuote.solver.name}
+                </span>
               )}
-            </button>
-          </>
-        )}
-
-        {(mode as string) === 'withdrawal' && (
-          <button
-            onClick={handleProcessWithdrawal}
-            disabled={isLoading || !withdrawalAmount || !destinationAddress || !isConnected || !withdrawalFeeEstimation}
-            className="submit-intent-btn"
-            title={!isConnected ? 'Connect your NEAR wallet to process withdrawal' : undefined}
-          >
-            {isLoading ? (
-              <span className="loading-spinner" />
-            ) : (
-              <span>Process Withdrawal</span>
-            )}
-          </button>
-        )}
+            </>
+          )}
+        </button>
       </div>
 
       {/* Solver Quotes */}
@@ -1069,7 +720,7 @@ export const NearIntents: React.FC = () => {
                 )}
                 {intent.zkProofRequired && (
                   <div className="zk-indicator">
-                    <span className="zk-icon">ZK</span>
+                    <span className="zk-icon">🔐</span>
                     ZK Proof Required
                     {intent.proofCommitment && (
                       <span className="commitment">{intent.proofCommitment.slice(0, 10)}...</span>
@@ -1090,7 +741,7 @@ export const NearIntents: React.FC = () => {
                   )}
                   {intent.txHash && (
                     <a 
-                      href={`https://${NEAR_INTENTS_CONFIG.networkId === 'mainnet' ? '' : 'testnet.'}nearblocks.io/txns/${intent.txHash}`}
+                      href={`https://nearblocks.io/txns/${intent.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="tx-link"
@@ -1098,14 +749,6 @@ export const NearIntents: React.FC = () => {
                       View Tx →
                     </a>
                   )}
-                  <a
-                    href={`https://explorer.near-intents.org/intents/${intent.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="intent-link"
-                  >
-                    View Intent →
-                  </a>
                 </div>
               </div>
             ))}
@@ -1131,22 +774,6 @@ export const NearIntents: React.FC = () => {
       {/* Info Section */}
       <div className="intents-info">
         <div className="info-card">
-          <div className="info-icon">🧠</div>
-          <h4>Intent-Based Architecture</h4>
-          <p>
-            Instead of constructing complex cross-chain transactions, simply express what you want. 
-            NEAR's solver network competes to fulfill your intent at the best rate.
-          </p>
-        </div>
-        <div className="info-card">
-          <div className="info-icon">ℹ</div>
-          <h4>ZK-Enhanced Privacy</h4>
-          <p>
-            Optionally require ZK proof-of-funds to verify your assets without revealing exact balances. 
-            Perfect for privacy-conscious cross-chain operations.
-          </p>
-        </div>
-        <div className="info-card">
           <div className="info-icon">⚡</div>
           <h4>Solver Competition</h4>
           <p>
@@ -1160,4 +787,3 @@ export const NearIntents: React.FC = () => {
 };
 
 export default NearIntents;
-

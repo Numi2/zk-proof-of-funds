@@ -5,7 +5,7 @@
  * Trade ZEC for anything - fiat, crypto, goods, services.
  * 
  * Now with P2P broadcast support - offers are shared across all visitors
- * using Gun.js decentralized database.
+ * using multiple sync methods (Supabase, BroadcastChannel, IndexedDB, and Vercel API).
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';

@@ -3,9 +3,9 @@
  * 
  * Uses multiple methods for reliable offer syncing across all visitors:
  * 1. Supabase Realtime (primary - most reliable)
- * 2. Gun.js P2P network (when relay servers are available)
- * 3. BroadcastChannel API (for same-browser tabs - instant)
- * 4. Shared IndexedDB with polling (for cross-device sync)
+ * 2. BroadcastChannel API (for same-browser tabs - instant)
+ * 3. Shared IndexedDB with polling (for cross-device sync)
+ * 4. Vercel API with polling (for cross-device sync)
  */
 
 import type { P2POffer, P2PUserProfile, TradingMethod } from '../types/p2p';
@@ -15,22 +15,7 @@ import { supabaseSync, isSupabaseConfigured } from './p2p-supabase';
 const VERCEL_API_BASE = '/api/p2p';
 const API_POLL_INTERVAL = 5000; // Poll every 5 seconds for real-time feel
 
-// Gun.js CDN is loaded in index.html for simplicity
-declare const Gun: any;
-
-// Public Gun relay servers - using more reliable ones
-const GUN_PEERS = [
-  'https://gun-manhattan.herokuapp.com/gun',
-  'https://gun-us.herokuapp.com/gun', 
-  'https://gun-eu.herokuapp.com/gun',
-  // Additional relays for redundancy
-  'https://gun-matrix.herokuapp.com/gun',
-  'https://gundb-relay-1.herokuapp.com/gun',
-  'https://peer.wallie.io/gun',
-];
-
 // Namespace for our data
-const GUN_NAMESPACE = 'zkpf-p2p-marketplace-v2';
 const BROADCAST_CHANNEL_NAME = 'zkpf-p2p-offers';
 const IDB_DB_NAME = 'zkpf-p2p-broadcast';
 const IDB_STORE_NAME = 'offers';
@@ -256,8 +241,6 @@ class OfferIndexedDB {
  * P2P Broadcast Service - Multi-method syncing
  */
 class P2PBroadcastService {
-  private gun: any = null;
-  private gunOffers: any = null;
   private broadcastChannel: BroadcastChannel | null = null;
   private idb: OfferIndexedDB;
   private listeners: Set<(offers: P2POffer[]) => void> = new Set();
@@ -267,7 +250,6 @@ class P2PBroadcastService {
   private statusListeners: Set<(status: string) => void> = new Set();
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private _apiPollInterval: ReturnType<typeof setInterval> | null = null;
-  private gunConnected = false;
   private apiConnected = false;
 
   constructor() {
@@ -288,7 +270,6 @@ class P2PBroadcastService {
       this.initVercelApi(),      // Primary - Vercel API with polling
       this.initSupabase(),       // Secondary - Supabase if configured
       this.initBroadcastChannel(), // Instant same-browser sync
-      this.initGun(),            // P2P fallback
       this.loadFromIDB(),        // Local persistence
     ]);
 
@@ -459,67 +440,6 @@ class P2PBroadcastService {
   }
 
   /**
-   * Initialize Gun.js for P2P sync
-   */
-  private async initGun(): Promise<void> {
-    if (typeof Gun === 'undefined') {
-      console.warn('[P2P Broadcast] Gun.js not loaded');
-      return;
-    }
-
-    try {
-      this.gun = Gun({
-        peers: GUN_PEERS,
-        localStorage: true,
-        radisk: true,
-      });
-
-      this.gunOffers = this.gun.get(GUN_NAMESPACE);
-
-      // Subscribe to Gun offers
-      this.gunOffers.map().on((data: any, key: string) => {
-        if (!data || !key) return;
-        
-        try {
-          const broadcastOffer = typeof data === 'string' ? JSON.parse(data) : data;
-          
-          if (broadcastOffer && broadcastOffer.id) {
-            const offer = fromBroadcastFormat(broadcastOffer);
-            
-            if (offer.expiresAt && offer.expiresAt < Date.now()) {
-              this.localOffers.delete(key);
-            } else if (offer.status === 'active') {
-              this.localOffers.set(key, offer);
-              // Also save to IDB for persistence
-              this.idb.saveOffer(broadcastOffer);
-            } else {
-              this.localOffers.delete(key);
-            }
-            
-            this.notifyListeners();
-          }
-        } catch (e) {
-          // Invalid data
-        }
-      });
-
-      // Track Gun connection status
-      this.gun.on('hi', () => {
-        console.log('[P2P Broadcast] Gun connected to peer');
-        this.gunConnected = true;
-      });
-
-      this.gun.on('bye', () => {
-        console.log('[P2P Broadcast] Gun peer disconnected');
-      });
-
-      console.log('[P2P Broadcast] Gun.js initialized with', GUN_PEERS.length, 'peers');
-    } catch (e) {
-      console.warn('[P2P Broadcast] Gun.js init failed:', e);
-    }
-  }
-
-  /**
    * Load offers from IndexedDB
    */
   private async loadFromIDB(): Promise<void> {
@@ -588,11 +508,6 @@ class P2PBroadcastService {
         });
       }
 
-      // Broadcast via Gun.js (P2P)
-      if (this.gunOffers) {
-        this.gunOffers.get(key).put(JSON.stringify(broadcastData));
-      }
-
       this.notifyListeners();
       console.log('[P2P Broadcast] Broadcasted offer:', key);
       return true;
@@ -629,12 +544,6 @@ class P2PBroadcastService {
           type: 'offer_removed',
           offer: { id: offerId },
         });
-      }
-
-      // Mark inactive in Gun.js
-      if (this.gunOffers && existingOffer) {
-        const broadcastData = toBroadcastFormat({ ...existingOffer, status: 'cancelled' });
-        this.gunOffers.get(offerId).put(JSON.stringify(broadcastData));
       }
 
       this.notifyListeners();
@@ -705,7 +614,6 @@ class P2PBroadcastService {
   getPeerCount(): number {
     let count = 1; // IndexedDB always works
     if (this.broadcastChannel) count++;
-    if (this.gunConnected) count++;
     if (this._apiPollInterval) count++; // API polling is active
     return count;
   }

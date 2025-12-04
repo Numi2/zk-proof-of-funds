@@ -288,7 +288,8 @@ export function ZKPFApp() {
             </div>
           </div>
           <p>
-            Shielded-by-default Zcash wallet with zero-knowledge proof capabilities. Your keys, your coins, your privacy.
+            Zcash wallet with zero-knowledge proof capabilities. 
+            Your keys, your coins, your privacy.
           </p>
         </header>
       )}
@@ -311,15 +312,16 @@ export function ZKPFApp() {
                   </Link>
                   <Link to="/dex" className="supporting-feature-card">
                     <h3>DEX Trading</h3>
-                    <p className="muted small">Trade directly from your wallet on Orderly Network. Perpetual futures, spot trading, and portfolio management.</p>
+                    <p className="muted small">DEX trading. Perpetual futures, spot trading, and portfolio management, leveraging Orderly Network.</p>
                   </Link>
                   <Link to="/p2p" className="supporting-feature-card">
                     <h3>P2P Marketplace</h3>
-                    <p className="muted small">Trade peer-to-peer with zero-knowledge verified escrow. Verify counterparty balances before committing.</p>
+                    <p className="muted small">Buy & Sell goods and services with Zcash. Peer-to-peer chat facilitates negotiation and payment between parties. Verify what you wish before committing.
+                    </p>
                   </Link>
                   <Link to="/zkpassport" className="supporting-feature-card">
                     <h3>ZKPassport</h3>
-                    <p className="muted small">Verify your identity using passport data without storing PII. Bind your verified personhood to your wallet.</p>
+                    <p className="muted small">Verify your identity, age, location, and more using passport data without storing PII or revealing sensitive information. Bind your verified personhood to your wallet.</p>
                   </Link>
                   <Link to="/bound-identity" className="supporting-feature-card">
                     <h3>Proof of real human Binding</h3>

@@ -1,0 +1,17 @@
+{
+    "$schema": "https://openapi.vercel.sh/microfrontends.json",
+    "applications": {
+      "zkpf": {
+        "development": {
+          "fallback": "zkpf.dev"
+        }
+      },
+      "v0-orderflow-trading-dashboard": {
+        "routing": [
+          {
+            "paths": ["/zkpf/orderflow"]
+          }
+        ]
+      }
+    }
+  }

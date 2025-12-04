@@ -1102,7 +1102,6 @@
 
 .verifier-endpoint-card.connected {
   border-color: rgba(100, 116, 139, 0.4);
-  box-shadow: 0 30px 70px rgba(2, 6, 23, 0.55), 0 0 0 1px rgba(100, 116, 139, 0.1);
 }
 
 .verifier-endpoint-card.connected::before {
@@ -1743,6 +1742,10 @@
   color: #a5b4fc;
   margin: 0;
   font-size: 0.85rem;
+}
+
+[data-theme='light'] .muted {
+  color: var(--text-muted);
 }
 
 .muted.small {

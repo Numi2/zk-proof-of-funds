@@ -95,7 +95,9 @@ if (typeof window === 'undefined') {
   // Window Context (Registration)
   // =====================
   
-  (() => {
+  // Wrap in try-catch to ensure it never breaks the page load
+  try {
+    (() => {
     const log = (msg) => console.info(`🔧 COI-SW: ${msg}`);
     const warn = (msg) => console.warn(`⚠️ COI-SW: ${msg}`);
     const error = (msg, e) => console.error(`❌ COI-SW: ${msg}`, e || '');
@@ -180,6 +182,10 @@ if (typeof window === 'undefined') {
         // Silent fail - don't break the app if service worker fails
         if (isLocalhost) error('Service worker registration failed:', err);
       });
-  })();
+    })();
+  } catch (e) {
+    // If anything goes wrong, log but don't break the page
+    console.warn('COI-SW: Failed to initialize:', e);
+  }
 }
 

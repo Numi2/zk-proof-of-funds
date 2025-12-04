@@ -82,6 +82,8 @@
     "axios": "^1.7.0",
     "bigint-buffer": "^1.1.5",
     "@solana/buffer-layout-utils": "^0.3.0",
-    "@solana/spl-token": "^0.4.14"
+    "@solana/spl-token": "^0.4.14",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }
